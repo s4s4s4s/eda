@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { batchDay, currentSlot, cycleDay, todayLocal } from '../core/cycle.ts'
 import { buildChannels } from '../core/export/index.ts'
 import type { ExportPayload } from '../core/export/index.ts'
-import { dayTotal, logMeal, unlogMeal } from '../core/log.ts'
+import { clearLog, dayNutrientTotals, dayTotal, logMeal, unlogMeal } from '../core/log.ts'
 import { emptyNutrientTotals, mealKbju, mealNutrients } from '../core/nutrition.ts'
 import type { AppState, Kbju, Meal, MealStatus, NutrientTotals, Settings, Slot } from '../core/types.ts'
 import { loadData } from '../data/load.ts'
@@ -100,6 +100,10 @@ export default function App() {
     setState(prev => ({ ...prev, settings }))
   }, [])
 
+  const handleClearLog = useCallback(() => {
+    setState(prev => clearLog(prev))
+  }, [])
+
   const handleLog = useCallback((status: MealStatus, fraction: number) => {
     if (!meal) return
     const now = new Date()
@@ -123,6 +127,21 @@ export default function App() {
     }
     setExportPayload(payload)
   }, [entry, meal, today, slot])
+
+  /* Выгрузка целого дня. Порядок приёмов задаётся SLOTS в сборщиках (CSV и
+     текст), поэтому здесь достаточно отдать записи как есть. Суммы уже
+     съеденные: dayTotal и dayNutrientTotals применяют долю каждой записи. */
+  const handleOpenDayExport = useCallback(() => {
+    if (!dayLog) return
+    const payload: ExportPayload = {
+      kind: 'day',
+      date: today,
+      meals: Object.values(dayLog.meals).filter((m): m is NonNullable<typeof m> => Boolean(m)),
+      total: dayTotal(dayLog),
+      nutrients: dayNutrientTotals(dayLog)
+    }
+    setExportPayload(payload)
+  }, [dayLog, today])
 
   const channels = useMemo(
     () => buildChannels({ getShortcutName: () => state.settings.shortcutName, appUrl: currentAppUrl() }),
@@ -150,17 +169,21 @@ export default function App() {
         entry={entry}
         dayEatenKcal={dayEatenKcal}
         targetKcal={state.settings.targetKcal}
+        hasDayLog={Boolean(dayLog && Object.keys(dayLog.meals).length > 0)}
         onLog={handleLog}
         onUnlog={handleUnlog}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenExport={handleOpenExport}
+        onOpenDayExport={handleOpenDayExport}
       />
 
       {settingsOpen && (
         <SettingsSheet
           settings={state.settings}
           cycleDays={menu.cycleDays}
+          log={state.log}
           onChange={updateSettings}
+          onClearLog={handleClearLog}
           onClose={() => setSettingsOpen(false)}
         />
       )}

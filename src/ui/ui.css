@@ -145,10 +145,27 @@ input {
 }
 
 .day-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
   font-size: 0.95rem;
   color: var(--fg-dim);
   padding-bottom: 0.25rem;
   border-bottom: 1px solid var(--border);
+}
+
+/* Выгрузка дня — второстепенное действие рядом с итогом дня, а не ещё одна
+   крупная кнопка: главное на экране остаётся текущий приём. */
+.day-total__export {
+  flex: none;
+  background: none;
+  border: none;
+  padding: 0.25rem 0;
+  font: inherit;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
 }
 
 .meal-missing {
@@ -274,6 +291,29 @@ input {
   background: transparent;
   color: var(--fg-dim);
   border: 1px solid var(--border);
+}
+
+/* Необратимое действие (стереть дневник) выглядит необратимым. */
+.btn--danger {
+  background: var(--danger);
+  color: var(--accent-fg);
+}
+
+.clear-log {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.clear-log__warning {
+  font-size: 0.85rem;
+  color: var(--danger);
+  line-height: 1.35;
+}
+
+.clear-log__actions {
+  display: flex;
+  gap: 0.6rem;
 }
 
 /* ---- шторки (настройки, экспорт) ---- */

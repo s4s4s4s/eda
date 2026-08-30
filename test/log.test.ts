@@ -3,7 +3,7 @@
  * снапшот КБЖУ, суммы. Никакого localStorage — только чистые функции над
  * AppState. Гоняются node-ом после сборки esbuild: `npm run test:log`.
  */
-import { dayNutrientTotals, dayTotal, eatenKbju, eatenNutrients, logMeal, unlogMeal } from '../src/core/log'
+import { clearLog, dayNutrientTotals, dayTotal, eatenKbju, eatenNutrients, logFootprint, logMeal, unlogMeal } from '../src/core/log'
 import type { AppState, Kbju, Meal, Nutrients, Product, ProductIndex } from '../src/core/types'
 
 let passed = 0
@@ -208,6 +208,27 @@ function dayNutrientTotalsChecks(): void {
   group('dayNutrientTotals: сумма дня складывает значения и полноту, пропуск не превращается в ноль')
 }
 
+function clearAndFootprintChecks(): void {
+  const idx = products(product('x', { kcal: 200, p: 10, f: 5, c: 20 }))
+  const state0 = emptyState()
+  const state1 = logMeal(state0, '2026-08-05', 'lunch', meal('lunch', 'обед', 200), idx, 'eaten', 1, 5, 't1')
+  const state2 = logMeal(state1, '2026-08-06', 'dinner', meal('dinner', 'ужин', 200), idx, 'eaten', 1, 6, 't2')
+
+  const before = logFootprint(state2.log)
+  assert(before.days === 2, `в дневнике ожидалось 2 дня, получено ${before.days}`)
+  // байты считаются по UTF-8: кириллические названия дают больше байт, чем символов
+  const chars = JSON.stringify(state2.log).length
+  assert(before.bytes > chars, `UTF-8 байт (${before.bytes}) должно быть больше, чем символов (${chars}) — иначе кириллица посчитана как ASCII`)
+  group('logFootprint: считает дни и размер дневника в байтах UTF-8, а не в символах')
+
+  const cleared = clearLog(state2)
+  assert(Object.keys(cleared.log).length === 0, 'после clearLog дневник должен быть пуст')
+  assert(cleared.settings === state2.settings, 'clearLog не должен трогать настройки')
+  assert(Object.keys(state2.log).length === 2, 'clearLog не должен мутировать исходное состояние')
+  assert(logFootprint(cleared.log).days === 0 && logFootprint(cleared.log).bytes > 0, 'пустой дневник — это 0 дней и непустой JSON "{}"')
+  group('clearLog: стирает дневник целиком, сохраняет настройки, исходное состояние не мутирует')
+}
+
 function main(): void {
   console.log('log — дневник: снапшот, перезапись, unlog, суммы')
   snapshotIsFrozenChecks()
@@ -218,6 +239,7 @@ function main(): void {
   nutrientSnapshotChecks()
   eatenNutrientsChecks()
   dayNutrientTotalsChecks()
+  clearAndFootprintChecks()
   console.log(`\nВсе проверки log пройдены (${passed} групп).`)
 }
 

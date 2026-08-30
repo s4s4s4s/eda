@@ -26,10 +26,15 @@ interface MealScreenProps {
   entry: MealLogEntry | undefined
   dayEatenKcal: number
   targetKcal: number
+  /** Есть ли в дневнике хоть одна запись за сегодня. Пока её нет, выгружать
+      нечего, и кнопки выгрузки дня на экране тоже нет: кнопка, которая отдаёт
+      пустой CSV, врёт не меньше, чем кнопка, которая ничего не отправляет. */
+  hasDayLog: boolean
   onLog: (status: MealStatus, fraction: number) => void
   onUnlog: () => void
   onOpenSettings: () => void
   onOpenExport: () => void
+  onOpenDayExport: () => void
 }
 
 const FRACTIONS: { value: number; label: string }[] = [
@@ -139,8 +144,8 @@ function NutrientsBlock({ totals }: { totals: NutrientTotals }) {
 
 export default function MealScreen({
   cycleDayNum, cycleDays, batchDayNum, slot, isCurrentSlot, onSelectSlot,
-  meal, mealKbju, mealNutrients, products, entry, dayEatenKcal, targetKcal, onLog, onUnlog,
-  onOpenSettings, onOpenExport
+  meal, mealKbju, mealNutrients, products, entry, dayEatenKcal, targetKcal, hasDayLog,
+  onLog, onUnlog, onOpenSettings, onOpenExport, onOpenDayExport
 }: MealScreenProps) {
   const [pickingFraction, setPickingFraction] = useState(false)
 
@@ -193,7 +198,12 @@ export default function MealScreen({
       </div>
 
       <div className="day-total">
-        {round(dayEatenKcal)} из {targetKcal} ккал за день
+        <span>{round(dayEatenKcal)} из {targetKcal} ккал за день</span>
+        {hasDayLog && (
+          <button type="button" className="day-total__export" onClick={onOpenDayExport}>
+            выгрузить день
+          </button>
+        )}
       </div>
 
       {meal && <NutrientsBlock totals={mealNutrients} />}

@@ -55,6 +55,23 @@ export function unlogMeal(state: AppState, date: string, slot: Slot): AppState {
   }
 }
 
+/** Стирает дневник целиком, сохраняя настройки. Нужен, когда хранилище браузера
+    переполнено: без этой операции единственным выходом остаётся очистка данных
+    сайта, которая уносит и настройки. Дни сохраняются только здесь, поэтому
+    вызывать её можно лишь по явному подтверждению человека. */
+export function clearLog(state: AppState): AppState {
+  return { ...state, log: {} }
+}
+
+/** Сколько дней и байт занимает дневник. Байты считаются по UTF-8 того же
+    JSON, который уходит в localStorage, — иначе кириллические названия
+    приёмов занижают оценку вдвое. */
+export function logFootprint(log: AppState['log']): { days: number; bytes: number } {
+  const days = Object.keys(log).length
+  const bytes = new TextEncoder().encode(JSON.stringify(log)).length
+  return { days, bytes }
+}
+
 /** Съеденное по одной записи: снапшот КБЖУ, умноженный на долю. */
 export function eatenKbju(entry: MealLogEntry): Kbju {
   const factor = entry.fraction
