@@ -321,3 +321,231 @@ button:disabled:active,
     scroll-behavior: auto !important;
   }
 }
+
+/* ---- примитив: строка нутриента с покрытием нормы ---- */
+
+/* Одна строка = один нутриент. Три честных состояния, и они не сливаются:
+   есть данные и норма — полоса; нормы нет — только значение; данных нет —
+   приглушённый курсив без полосы. Полоса нулевой длины означала бы
+   «измерили ноль», поэтому при отсутствии данных её нет вовсе. */
+.nutrient {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-2) 0;
+}
+
+.nutrient__name {
+  font-size: var(--text-15);
+  color: var(--fg-dim);
+}
+
+.nutrient__value {
+  font-size: var(--text-15);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.nutrient__pct {
+  margin-left: var(--space-2);
+  color: var(--fg-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.nutrient__bar {
+  grid-column: 1 / -1;
+  position: relative;
+  height: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-8);
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.nutrient__fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width var(--dur-sheet) var(--ease);
+}
+
+/* Норма набрана — спокойный зелёный; выше верхнего предела — красный.
+   Между ними ничего не мигает и не кричит: это справка, а не тревога. */
+.nutrient__fill--ok {
+  background: var(--ok);
+}
+
+.nutrient__fill--over {
+  background: var(--danger);
+}
+
+/* Отметка 100 % остаётся видимой, когда полоса ушла за норму. */
+.nutrient__mark {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--bg);
+  opacity: .8;
+}
+
+.nutrient__hint {
+  grid-column: 1 / -1;
+  font-size: var(--text-13);
+  line-height: var(--lh-text);
+  color: var(--fg-faint);
+}
+
+/* Данных нет — это не ноль. Значение приглушено и наклонено, полосы нет. */
+.nutrient--unknown .nutrient__value {
+  color: var(--fg-faint);
+  font-style: italic;
+}
+
+/* Сумма собрана не по всем продуктам: число верное снизу, но неполное. */
+.nutrient--partial .nutrient__value::after {
+  content: '+';
+  margin-left: 1px;
+  color: var(--fg-faint);
+}
+
+.nutrient-group {
+  margin-top: var(--space-4);
+}
+
+.nutrient-group__title {
+  font-size: var(--text-13);
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+}
+
+/* ---- примитив: отношение к ингредиенту ---- */
+
+/* Три состояния, и нейтральное не рисуется вовсе: пометка «мнения нет» — шум. */
+.stance-dot {
+  display: inline-block;
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-right: var(--space-2);
+  border-radius: 50%;
+  vertical-align: middle;
+}
+
+.stance-dot--love {
+  background: var(--ok);
+}
+
+.stance-dot--avoid {
+  background: var(--danger);
+}
+
+/* Зачёркивание — самый сильный знак в наборе, и он только у «не ем»: это
+   единственное отношение, которое жёстко влияет на будущий подбор меню. */
+.name--avoided {
+  text-decoration: line-through;
+  text-decoration-color: var(--danger);
+  text-decoration-thickness: 1px;
+}
+
+/* ---- примитив: оценка блюда ---- */
+
+.rating {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* Пять в ряд и два ряда: десять кнопок по 44 px в строку не помещаются
+   в телефон, а прокрутка сделала бы вторую половину шкалы менее вероятной. */
+.rating__scale {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: var(--space-2);
+}
+
+.rating__btn {
+  min-height: var(--tap-min);
+  border: 1px solid var(--border);
+  border-radius: var(--r-8);
+  background: var(--surface);
+  color: var(--fg-dim);
+  font-size: var(--text-17);
+  font-variant-numeric: tabular-nums;
+}
+
+.rating__btn--selected {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 700;
+}
+
+.rating__comment {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.rating__comment-input {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-8);
+  background: var(--surface);
+  color: var(--fg);
+  font-size: var(--text-15);
+  line-height: var(--lh-text);
+  resize: vertical;
+}
+
+.rating__comment-input:disabled {
+  opacity: .6;
+  cursor: not-allowed;
+}
+
+.rating__clear {
+  align-self: flex-start;
+  min-height: var(--tap-min);
+  padding: 0 var(--space-2);
+  border: none;
+  background: none;
+  color: var(--fg-faint);
+  font-size: var(--text-13);
+  text-decoration: underline;
+}
+
+/* ---- глобальная полоса поверх приложения ---- */
+
+/* Обновление версии. Приложение обновляется само, но не молча: полоса ждёт
+   нажатия и не подменяет экран под руками. */
+.update-banner {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: var(--space-3) var(--screen-pad);
+  padding-bottom: max(var(--space-3), env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow-lift);
+}
+
+.update-banner__text {
+  flex: 1;
+  min-width: 10rem;
+  font-size: var(--text-15);
+}
+
+.update-banner__actions {
+  display: flex;
+  gap: var(--space-2);
+}

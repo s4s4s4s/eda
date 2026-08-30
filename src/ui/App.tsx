@@ -1,6 +1,6 @@
-/* Держит AppState, грузит меню и справочник, считает день цикла и текущий
-   приём, раздаёт пропсы главному экрану и шторкам, сохраняет состояние при
-   каждом изменении. */
+/* Держит AppState, грузит меню, справочник и нормы, считает день цикла и
+   текущий приём, раздаёт пропсы главному экрану и шторкам, сохраняет
+   состояние при каждом изменении. */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { batchDay, currentSlot, cycleDay, todayLocal } from '../core/cycle.ts'
@@ -8,19 +8,31 @@ import { buildChannels } from '../core/export/index.ts'
 import type { ExportPayload } from '../core/export/index.ts'
 import { clearLog, dayNutrientTotals, dayTotal, logMeal, unlogMeal } from '../core/log.ts'
 import { emptyNutrientTotals, mealKbju, mealNutrients } from '../core/nutrition.ts'
+import { clearRating, rateDish, ratingOf, setStance } from '../core/preferences.ts'
+import { mealVerdict } from '../core/verdict.ts'
+import type { MealVerdict } from '../core/verdict.ts'
 import { SLOTS } from '../core/types.ts'
-import type { AppState, Kbju, Meal, MealStatus, NutrientTotals, Settings, Slot } from '../core/types.ts'
+import type {
+  AppState, IngredientStance, Kbju, Meal, MealStatus, NutrientTotals, Settings, Slot
+} from '../core/types.ts'
 import { loadData } from '../data/load.ts'
 import { defaultState, loadState, saveState } from '../state/storage.ts'
 import MealScreen from './MealScreen.tsx'
 import type { DaySlotProgress } from './MealScreen.tsx'
+import Sheet from './Sheet.tsx'
 import SettingsSheet from './SettingsSheet.tsx'
 import ExportSheet from './ExportSheet.tsx'
+import WeekSheet from './WeekSheet.tsx'
+import BookSheet from './BookSheet.tsx'
+import UpdateBanner from './UpdateBanner.tsx'
 
 const ZERO_KBJU: Kbju = { kcal: 0, p: 0, f: 0, c: 0 }
 /** Пустая сумма нутриентов: known === 0 по всем ключам, то есть «нет данных»,
     а не «нулевые значения». Показывается, когда меню на приём не найдено. */
 const NO_NUTRIENTS: NutrientTotals = emptyNutrientTotals()
+/** Пустой вердикт: сказать нечего. Это НЕ «всё плохо» — экран в таком случае
+    не рисует блок плюсов и минусов вовсе. */
+const NO_VERDICT: MealVerdict = { pros: [], cons: [] }
 
 function minutesOfDay(now: Date): number {
   return now.getHours() * 60 + now.getMinutes()
@@ -59,6 +71,8 @@ export default function App() {
   })
   const [manualSlot, setManualSlot] = useState<ManualSlot | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [weekOpen, setWeekOpen] = useState(false)
+  const [bookOpen, setBookOpen] = useState(false)
   const [exportPayload, setExportPayload] = useState<ExportPayload | null>(null)
 
   /* Провал сохранения не глушим: экран обязан сказать, что записанного приёма
@@ -84,7 +98,7 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const { menu, products } = useMemo(() => loadData(), [])
+  const { menu, products, norms } = useMemo(() => loadData(), [])
 
   /* Дата и текущий приём идут от ОДНОГО минутного таймера. Считать дату один
      раз при монтировании нельзя: приложение, открытое до полуночи и оставленное
@@ -130,7 +144,23 @@ export default function App() {
 
   const dayLog = state.log[today]
   const entry = dayLog?.meals[slot]
-  const dayEatenKcal = useMemo(() => (dayLog ? dayTotal(dayLog).kcal : 0), [dayLog])
+
+  /* Суммы за день считаются один раз и идут и в прогресс дня, и в покрытие
+     норм: нормы суточные, сравнивать с ними один приём было бы враньём.
+     Дня без записей нет — тогда это «нет данных», а не нули. */
+  const dayKbju = useMemo(() => (dayLog ? dayTotal(dayLog) : ZERO_KBJU), [dayLog])
+  const dayNutrients = useMemo(
+    () => (dayLog ? dayNutrientTotals(dayLog) : NO_NUTRIENTS),
+    [dayLog]
+  )
+
+  /* Плюсы и минусы считаются по ТЕКУЩЕМУ приёму, а не по дню: они про то, что
+     сейчас в контейнере. Правила — в core/verdict.ts, экран их не повторяет. */
+  const verdict = useMemo(
+    () => (meal ? mealVerdict(meal, currentMealNutrients, norms, state.preferences) : NO_VERDICT),
+    [meal, currentMealNutrients, norms, state.preferences]
+  )
+  const currentRating = meal ? ratingOf(state.preferences, meal.id) : undefined
 
   /* Прогресс дня рисуется сегментами по всем четырём приёмам, поэтому экрану
      нужен весь день, а не только текущий приём. План берётся из меню; если
@@ -157,6 +187,31 @@ export default function App() {
   const handleClearLog = useCallback(() => {
     setState(prev => clearLog(prev))
   }, [])
+
+  /* Книга предпочтений. Отметка «всё равно» приходит как null и СНИМАЕТ запись:
+     нейтральное отношение — это отсутствие мнения, а не третье мнение. */
+  const handleSetStance = useCallback((productId: string, stance: IngredientStance | null) => {
+    setState(prev => ({ ...prev, preferences: setStance(prev.preferences, productId, stance) }))
+  }, [])
+
+  const handleRate = useCallback((mealId: string, score: number, comment: string) => {
+    const now = new Date().toISOString()
+    setState(prev => ({ ...prev, preferences: rateDish(prev.preferences, mealId, score, comment, now) }))
+  }, [])
+
+  const handleClearRating = useCallback((mealId: string) => {
+    setState(prev => ({ ...prev, preferences: clearRating(prev.preferences, mealId) }))
+  }, [])
+
+  /* Экран приёма оценивает то блюдо, которое на нём открыто, и потому не знает
+     про идентификаторы: он зовёт эти две обёртки, а не общие обработчики. */
+  const handleRateCurrent = useCallback((score: number, comment: string) => {
+    if (meal) handleRate(meal.id, score, comment)
+  }, [meal, handleRate])
+
+  const handleClearRatingCurrent = useCallback(() => {
+    if (meal) handleClearRating(meal.id)
+  }, [meal, handleClearRating])
 
   const handleLog = useCallback((status: MealStatus, fraction: number) => {
     if (!meal) return
@@ -219,15 +274,26 @@ export default function App() {
         meal={meal}
         mealKbju={currentMealKbju}
         mealNutrients={currentMealNutrients}
+        dayNutrients={dayNutrients}
+        norms={norms}
+        preferences={state.preferences}
+        verdict={verdict}
         products={products}
         entry={entry}
+        rating={currentRating}
+        onRate={handleRateCurrent}
+        onClearRating={handleClearRatingCurrent}
         daySlots={daySlots}
-        dayEatenKcal={dayEatenKcal}
+        dayEatenKcal={dayKbju.kcal}
         targetKcal={state.settings.targetKcal}
+        dayProteinG={dayKbju.p}
+        targetProteinG={state.settings.targetProteinG}
         hasDayLog={Boolean(dayLog && Object.keys(dayLog.meals).length > 0)}
         onLog={handleLog}
         onUnlog={handleUnlog}
         onOpenSettings={() => setSettingsOpen(true)}
+        onOpenWeek={() => setWeekOpen(true)}
+        onOpenBook={() => setBookOpen(true)}
         onOpenExport={handleOpenExport}
         onOpenDayExport={handleOpenDayExport}
       />
@@ -243,21 +309,36 @@ export default function App() {
         />
       )}
 
-      {exportPayload && (
-        <div className="sheet">
-          <div className="sheet__backdrop" onClick={() => setExportPayload(null)} />
-          <div className="sheet__panel">
-            <span className="sheet__grabber" aria-hidden="true" />
-            <header className="sheet__header">
-              <h1 className="sheet__title">Выгрузить</h1>
-              <button type="button" className="sheet__close" onClick={() => setExportPayload(null)} aria-label="Закрыть">✕</button>
-            </header>
-            <div className="sheet__body">
-              <ExportSheet payload={exportPayload} channels={channels} onConfirmed={handleExportConfirmed} />
-            </div>
-          </div>
-        </div>
+      {weekOpen && (
+        <WeekSheet
+          log={state.log}
+          today={today}
+          targetKcal={state.settings.targetKcal}
+          targetProteinG={state.settings.targetProteinG}
+          norms={norms}
+          onClose={() => setWeekOpen(false)}
+        />
       )}
+
+      {bookOpen && (
+        <BookSheet
+          menu={menu}
+          products={products}
+          preferences={state.preferences}
+          onSetStance={handleSetStance}
+          onRate={handleRate}
+          onClearRating={handleClearRating}
+          onClose={() => setBookOpen(false)}
+        />
+      )}
+
+      {exportPayload && (
+        <Sheet title="Выгрузить" onClose={() => setExportPayload(null)}>
+          <ExportSheet payload={exportPayload} channels={channels} onConfirmed={handleExportConfirmed} />
+        </Sheet>
+      )}
+
+      <UpdateBanner />
     </>
   )
 }

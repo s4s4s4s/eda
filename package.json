@@ -10,14 +10,18 @@
     "check-menu": "esbuild scripts/check-menu.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/eda/check-menu.mjs && node node_modules/.cache/eda/check-menu.mjs",
     "products": "node scripts/build-products.mjs",
     "icons": "node scripts/make-icons.mjs",
-    "test": "npm run test:data && npm run test:cycle && npm run test:nutrition && npm run test:rules && npm run test:log && npm run test:storage && npm run test:export",
+    "test": "npm run test:data && npm run test:cycle && npm run test:nutrition && npm run test:rules && npm run test:log && npm run test:storage && npm run test:export && npm run test:norms && npm run test:week && npm run test:preferences && npm run test:verdict",
     "test:cycle": "esbuild test/cycle.test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/eda/cycle.mjs && node node_modules/.cache/eda/cycle.mjs",
     "test:nutrition": "esbuild test/nutrition.test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/eda/nutrition.mjs && node node_modules/.cache/eda/nutrition.mjs",
     "test:rules": "esbuild test/rules.test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/eda/rules.mjs && node node_modules/.cache/eda/rules.mjs",
     "test:log": "esbuild test/log.test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/eda/log.mjs && node node_modules/.cache/eda/log.mjs",
     "test:export": "esbuild test/export.test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/eda/export.mjs && node node_modules/.cache/eda/export.mjs",
     "test:data": "esbuild test/data.test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/eda/data.mjs && node node_modules/.cache/eda/data.mjs",
-    "test:storage": "esbuild test/storage.test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/eda/storage.mjs && node node_modules/.cache/eda/storage.mjs"
+    "test:storage": "esbuild test/storage.test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/eda/storage.mjs && node node_modules/.cache/eda/storage.mjs",
+    "test:norms": "esbuild test/norms.test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/eda/norms.mjs && node node_modules/.cache/eda/norms.mjs",
+    "test:week": "esbuild test/week.test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/eda/week.mjs && node node_modules/.cache/eda/week.mjs",
+    "test:preferences": "esbuild test/preferences.test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/eda/preferences.mjs && node node_modules/.cache/eda/preferences.mjs",
+    "test:verdict": "esbuild test/verdict.test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/eda/verdict.mjs && node node_modules/.cache/eda/verdict.mjs"
   },
   "dependencies": {
     "js-yaml": "^4.1.0",

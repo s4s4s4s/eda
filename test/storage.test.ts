@@ -25,6 +25,8 @@ function defaultStateChecks(): void {
   assert(s.settings.targetKcal === 3200, `targetKcal по умолчанию 3200, получено ${s.settings.targetKcal}`)
   assert(s.settings.shortcutName === '', 'shortcutName по умолчанию пустая строка')
   assert(Object.keys(s.log).length === 0, 'дневник по умолчанию пуст')
+  assert(Object.keys(s.preferences.ingredients).length === 0, 'ingredients по умолчанию пуст')
+  assert(Object.keys(s.preferences.dishes).length === 0, 'dishes по умолчанию пуст')
   group('defaultState: валидное дефолтное состояние')
 }
 
@@ -41,6 +43,7 @@ function roundTripChecks(): void {
     meals: {
       lunch: {
         slot: 'lunch',
+        mealId: 'obed-losos-kinoa',
         status: 'partial',
         fraction: 0.5,
         kbju: { kcal: 400, p: 20, f: 10, c: 40 },
@@ -52,6 +55,12 @@ function roundTripChecks(): void {
         title: 'Обед',
         loggedAt: '2026-08-05T13:00:00'
       }
+    }
+  }
+  original.preferences = {
+    ingredients: { tofu: 'avoid', losos: 'love' },
+    dishes: {
+      'obed-losos-kinoa': { score: 8, comment: 'вкусно, но соли многовато', ratedAt: '2026-08-05T13:05:00' }
     }
   }
 
@@ -182,6 +191,115 @@ function migrationV1ToV2Checks(): void {
   group('deserialize: миграция v1 -> v2 сохраняет дни и КБЖУ, нутриенты становятся пустыми (known = 0)')
 }
 
+// ---- миграция v2 -> v3: preferences и mealId появляются, дневник не теряется ---
+
+/* Состояние версии 2 не знает ни preferences, ни MealLogEntry.mealId. После
+   миграции дневник обязан выжить целиком (оба дня), preferences — появиться
+   пустой книгой, а mealId у поднятых записей — стать пустой строкой (запись
+   нельзя привязать к блюду задним числом, см. комментарий в types.ts). */
+function migrationV2ToV3Checks(): void {
+  const v2 = {
+    version: 2,
+    settings: { cycleStartDate: '2026-08-01', cycleShift: 0, targetKcal: 3200, shortcutName: '' },
+    log: {
+      '2026-08-10': {
+        cycleDay: 1,
+        meals: {
+          breakfast: {
+            slot: 'breakfast',
+            status: 'eaten',
+            fraction: 1,
+            kbju: { kcal: 500, p: 25, f: 15, c: 50 },
+            nutrients: {},
+            title: 'Овсянка',
+            loggedAt: '2026-08-10T08:00:00'
+          }
+        }
+      },
+      '2026-08-11': {
+        cycleDay: 2,
+        meals: {
+          lunch: {
+            slot: 'lunch',
+            status: 'partial',
+            fraction: 0.5,
+            kbju: { kcal: 900, p: 55, f: 35, c: 80 },
+            nutrients: {},
+            title: 'Плов',
+            loggedAt: '2026-08-11T13:00:00'
+          }
+        }
+      }
+    }
+  }
+
+  const migrated = deserialize(JSON.stringify(v2))
+  assert(migrated.version === CURRENT_VERSION, `версия после миграции ожидалась ${CURRENT_VERSION}, получено ${migrated.version}`)
+  assert(Object.keys(migrated.log).length === 2, `дневник версии 2 обязан пережить миграцию целиком (2 дня), получено ${Object.keys(migrated.log).length}`)
+  assert(migrated.log['2026-08-10'].meals.breakfast?.title === 'Овсянка', 'содержимое первого дня сохранилось')
+  assert(migrated.log['2026-08-11'].meals.lunch?.kbju.kcal === 900, 'КБЖУ второго дня сохранилось')
+  assert(migrated.log['2026-08-10'].meals.breakfast?.mealId === '', `у записи версии 2 mealId обязан стать пустой строкой, получено «${migrated.log['2026-08-10'].meals.breakfast?.mealId}»`)
+  assert(migrated.log['2026-08-11'].meals.lunch?.mealId === '', `у записи версии 2 mealId обязан стать пустой строкой, получено «${migrated.log['2026-08-11'].meals.lunch?.mealId}»`)
+  assert(Object.keys(migrated.preferences.ingredients).length === 0, 'у состояния версии 2 не было preferences — ingredients после миграции пуст')
+  assert(Object.keys(migrated.preferences.dishes).length === 0, 'у состояния версии 2 не было preferences — dishes после миграции пуст')
+
+  group('deserialize: миграция v2 -> v3 поднимает состояние версии 2 без потерь — дневник цел, mealId пустые, preferences пустые')
+}
+
+// ---- ingredients: мусорное значение теряет только испорченный ключ -----------
+
+function ingredientsGarbageChecks(): void {
+  const raw = {
+    version: CURRENT_VERSION,
+    settings: { cycleStartDate: '2026-08-01', cycleShift: 0, targetKcal: 3200, shortcutName: '' },
+    log: {},
+    preferences: {
+      ingredients: { losos: 'love', tofu: 'avoid', brokkoli: 'neutral', ogurets: 42, pomidor: null },
+      dishes: {}
+    }
+  }
+
+  const result = deserialize(JSON.stringify(raw))
+  assert(result.preferences.ingredients.losos === 'love', 'валидная запись love сохраняется')
+  assert(result.preferences.ingredients.tofu === 'avoid', 'валидная запись avoid сохраняется')
+  assert(!('brokkoli' in result.preferences.ingredients), 'значение вне love/avoid ("neutral") выбрасывается вместе с ключом')
+  assert(!('ogurets' in result.preferences.ingredients), 'числовое значение выбрасывается вместе с ключом')
+  assert(!('pomidor' in result.preferences.ingredients), 'null выбрасывается вместе с ключом')
+  assert(Object.keys(result.preferences.ingredients).length === 2, `ожидались только 2 валидных ключа, получено ${JSON.stringify(result.preferences.ingredients)}`)
+
+  group('preferences.ingredients: значение-мусор теряет только испорченный ключ, остальные выживают')
+}
+
+// ---- dishes: битый балл или тип теряют запись целиком -------------------------
+
+function dishesGarbageChecks(): void {
+  const raw = {
+    version: CURRENT_VERSION,
+    settings: { cycleStartDate: '2026-08-01', cycleShift: 0, targetKcal: 3200, shortcutName: '' },
+    log: {},
+    preferences: {
+      ingredients: {},
+      dishes: {
+        'blyudo-nol': { score: 0, comment: 'ноль недопустим', ratedAt: '2026-08-01T10:00:00' },
+        'blyudo-odinnadtsat': { score: 11, comment: 'больше десяти недопустимо', ratedAt: '2026-08-01T10:00:00' },
+        'blyudo-drob': { score: 7.5, comment: 'дробный балл недопустим', ratedAt: '2026-08-01T10:00:00' },
+        'blyudo-stroka': { score: '8', comment: 'балл строкой недопустим', ratedAt: '2026-08-01T10:00:00' },
+        'blyudo-validnoe': { score: 8, comment: 'ровно то, что нужно', ratedAt: '2026-08-01T10:00:00' }
+      }
+    }
+  }
+
+  const result = deserialize(JSON.stringify(raw))
+  assert(!('blyudo-nol' in result.preferences.dishes), 'score === 0 недопустим (нуля-оценки не существует)')
+  assert(!('blyudo-odinnadtsat' in result.preferences.dishes), 'score === 11 выходит за пределы 1..10')
+  assert(!('blyudo-drob' in result.preferences.dishes), 'дробный score недопустим')
+  assert(!('blyudo-stroka' in result.preferences.dishes), 'score строкой недопустим')
+  assert(result.preferences.dishes['blyudo-validnoe']?.score === 8, 'валидная запись сохраняется')
+  assert(Object.keys(result.preferences.dishes).length === 1, `ожидалась ровно 1 валидная запись, получено ${JSON.stringify(result.preferences.dishes)}`)
+
+  group('preferences.dishes: балл вне 1..10, дробный или нечисловой роняет только эту запись')
+}
+
 function main(): void {
   console.log('storage — хранилище состояния: дефолт, round-trip, мусор, миграция')
   defaultStateChecks()
@@ -189,6 +307,9 @@ function main(): void {
   garbageChecks()
   migrationPreservesLogChecks()
   migrationV1ToV2Checks()
+  migrationV2ToV3Checks()
+  ingredientsGarbageChecks()
+  dishesGarbageChecks()
   console.log(`\nВсе проверки storage пройдены (${passed} групп).`)
 }
 

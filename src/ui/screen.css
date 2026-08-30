@@ -41,16 +41,35 @@
   gap: var(--space-2);
 }
 
+/* Строка дня переносится только по разделителю, а не посреди фразы: с тремя
+   кнопками-иконками справа места на одну строку уже не хватает, и «партия:
+   день 1 / из 4» читалось бы как обрывок. */
 .screen__day-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  min-width: 0;
   font-size: var(--text-15);
   color: var(--fg-dim);
+}
+
+.screen__day-line > span {
+  white-space: nowrap;
 }
 
 .screen__day-line-sep {
   margin: 0 var(--space-1);
 }
 
-.screen__settings-btn {
+.screen__header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* Неделя и настройки — одинаковые кнопки-иконки: обе ведут в шторку и обе
+   держат зону пальца. Разница между ними только в иконке. */
+.screen__icon-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -212,6 +231,57 @@
   color: var(--fg-faint);
 }
 
+/* ---- плюсы и минусы приёма: справка, а не сигнализация ---- */
+
+/* Рисуется только при наличии — компонент сам решает, вернуть ли пусто.
+   Колонки разделены зазором сетки и переносятся на узком экране: одна под
+   другой, а не давятся в две колонки насильно. */
+.meal-verdict {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+
+.meal-verdict__col {
+  flex: 1 1 12rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* Заголовок называет столбец, а не кричит: тот же приглушённый регистр, что и
+   у заголовков состава, только с цветом стороны. */
+.meal-verdict__title {
+  margin: 0;
+  font-size: var(--text-13);
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.meal-verdict__title--pro {
+  color: var(--ok);
+}
+
+.meal-verdict__title--con {
+  color: var(--danger);
+}
+
+.meal-verdict__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.meal-verdict__item {
+  font-size: var(--text-15);
+  line-height: var(--lh-text);
+  color: var(--fg-dim);
+}
+
 /* ---- 5. сборка ---- */
 
 .meal-steps {
@@ -306,7 +376,20 @@
   transition: width var(--dur-sheet) var(--ease);
 }
 
-/* ---- 8. микронутриенты приёма ---- */
+/* Белок к цели под сегментами приёмов: калории говорят «сколько», белок —
+   «то ли». Полоса — примитив .nutrient__bar из темы, своего вида у неё нет. */
+.day-protein {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.day-protein__value {
+  font-size: var(--text-15);
+  color: var(--fg-dim);
+}
+
+/* ---- 8. микронутриенты: покрытие суточных норм ---- */
 
 /* Свёрнутый блок под числами. Главное на экране — приём и его состав, поэтому
    раскрытый список прокручивается, а не растягивает первый экран. */
@@ -339,44 +422,48 @@
   color: var(--fg-faint);
 }
 
-.meal-nutrients__list {
+/* Переключатель охвата. Нормы суточные, поэтому процент осмыслен только за
+   день; «этот приём» показывает те же строки без полос и процентов. */
+.meal-nutrients__modes {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.meal-nutrients__note {
   margin: var(--space-2) 0 0;
-  padding: 0;
-  list-style: none;
+  font-size: var(--text-13);
+  color: var(--fg-faint);
+}
+
+.meal-nutrients__list {
+  margin-top: var(--space-2);
   max-height: 45vh;
   padding-right: var(--space-2);
   overflow-y: auto;
 }
 
-.meal-nutrient {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding: var(--space-1) 0;
-  font-size: var(--text-13);
+.meal-nutrients__rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-.meal-nutrient__name {
-  color: var(--fg-dim);
+/* Строка со сноской нажимается целиком — сноска на телефоне иначе недостижима.
+   Собственного вида у кнопки нет: сетку, отступы и состояния даёт примитив
+   .nutrient из темы, здесь снимается только оформление кнопки. */
+.nutrient-row {
+  list-style: none;
 }
 
-.meal-nutrient__value {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-1);
-  white-space: nowrap;
-}
-
-.meal-nutrient__hint {
-  font-size: var(--text-13);
-  color: var(--fg-faint);
-}
-
-/* «Нет данных» намеренно приглушено, но не спрятано: отсутствие строки читалось
-   бы как «этого в еде нет», а это не одно и то же. */
-.meal-nutrient--unknown .meal-nutrient__value {
-  color: var(--fg-faint);
-  font-style: italic;
+.nutrient-row__btn {
+  width: 100%;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
 /* ---- 9. панель действий: липкая, под большим пальцем ---- */
@@ -422,6 +509,24 @@
   font-size: var(--text-17);
   font-weight: 600;
   color: var(--ok);
+}
+
+/* ---- оценка по горячим следам: под липкой панелью действий ---- */
+
+/* Живёт после .meal-actions в потоке: панель липкая и остаётся на месте, этот
+   блок раскрывается прокруткой вниз. Заголовок — вопрос, а не команда: оценка
+   необязательна, и экран об этом не давит. */
+.meal-rating {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: var(--space-2);
+}
+
+.meal-rating__title {
+  font-size: var(--text-20);
+  font-weight: 700;
+  line-height: var(--lh-tight);
 }
 
 /* ---- отказ сохранения ---- */

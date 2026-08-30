@@ -24,6 +24,7 @@ export function logMeal(
   const nutrients = mealNutrients(meal, products)
   const entry: MealLogEntry = {
     slot,
+    mealId: meal.id,
     status,
     fraction,
     kbju,

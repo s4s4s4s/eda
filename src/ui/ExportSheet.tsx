@@ -1,7 +1,10 @@
 /* Шторка выгрузки съеденного. Числа — крупно и первым делом: это запасной путь,
    который работает, даже если все каналы мертвы. Дальше — список каналов: доступный
    даёт кнопку, недоступный — неяркую строку с причиной. Канала нет в реестре —
-   на экране его нет: список ровно повторяет то, что вернул buildChannels. */
+   на экране его нет: список ровно повторяет то, что вернул buildChannels.
+   Статус отправки живёт в живой области (role="status", aria-live="polite"),
+   которая присутствует в разметке всегда — иначе для незрячего нажатие
+   «выгрузить» проходит бесследно. */
 
 import { useCallback, useEffect, useState } from 'react'
 import { NUTRIENT_KEYS, NUTRIENT_TITLE, NUTRIENT_UNIT, SLOT_TITLE } from '../core/types.ts'
@@ -133,22 +136,24 @@ export default function ExportSheet({ payload, channels, onConfirmed }: ExportSh
               >
                 {channel.title}
               </button>
-              {state?.kind === 'sending' && (
-                <span className="export-channel__status export-channel__status--pending">Отправляю…</span>
-              )}
-              {state?.kind === 'ok' && (
-                <span className="export-channel__status export-channel__status--ok">
-                  {state.note ?? 'Готово'}
-                </span>
-              )}
-              {state?.kind === 'pending' && (
-                <span className={`export-channel__status export-channel__status--pending${state.confirmed ? ' export-channel__status--ok' : ''}`}>
-                  {state.confirmed ? 'Подтверждено' : state.note}
-                </span>
-              )}
-              {state?.kind === 'error' && (
-                <span className="export-channel__status export-channel__status--error">{state.error}</span>
-              )}
+              <span role="status" aria-live="polite">
+                {state?.kind === 'sending' && (
+                  <span className="export-channel__status export-channel__status--pending">Отправляю…</span>
+                )}
+                {state?.kind === 'ok' && (
+                  <span className="export-channel__status export-channel__status--ok">
+                    {state.note ?? 'Готово'}
+                  </span>
+                )}
+                {state?.kind === 'pending' && (
+                  <span className={`export-channel__status export-channel__status--pending${state.confirmed ? ' export-channel__status--ok' : ''}`}>
+                    {state.confirmed ? 'Подтверждено' : state.note}
+                  </span>
+                )}
+                {state?.kind === 'error' && (
+                  <span className="export-channel__status export-channel__status--error">{state.error}</span>
+                )}
+              </span>
               {channel.id === 'csv' && state?.kind === 'ok' && state.note === CSV_FALLBACK_NOTE && payload.kind === 'day' && (
                 <textarea
                   className="export-channel__csv-text"

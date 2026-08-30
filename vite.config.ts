@@ -10,7 +10,10 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // 'prompt', а не 'autoUpdate': новая версия скачивается сама, но подменяет
+      // экран только по нажатию человека. Тихая подмена под руками — это потеря
+      // контроля: цифры на экране меняются, и непонятно почему.
+      registerType: 'prompt',
       includeAssets: ['apple-touch-icon.png', 'favicon-32.png'],
       manifest: {
         id: './',

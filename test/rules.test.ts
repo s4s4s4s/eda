@@ -34,7 +34,7 @@ function item(productId: string, qty: { g?: number; pieces?: number; tbsp?: numb
 }
 
 function meal(slot: Slot, items: Item[]): Meal {
-  return { slot, title: slot, steps: [], items }
+  return { slot, id: `${slot}-test`, title: slot, steps: [], items }
 }
 
 function day(dayNum: number, meals: Meal[]): MenuDay {

@@ -66,6 +66,7 @@ function mealKbjuChecks(): void {
   )
   const meal: Meal = {
     slot: 'lunch',
+    id: 'meal-a-b',
     title: 't',
     steps: [],
     items: [
@@ -107,14 +108,14 @@ function dayKbjuControlChecks(): void {
     day: 1,
     meals: [
       {
-        slot: 'lunch', title: 't', steps: [],
+        slot: 'lunch', id: 'meal-lunch-ab', title: 't', steps: [],
         items: [
           { product: 'a', g: 200, where: 'container' },
           { product: 'b', g: 100, where: 'container' }
         ]
       },
       {
-        slot: 'dinner', title: 't', steps: [],
+        slot: 'dinner', id: 'meal-dinner-cd', title: 't', steps: [],
         items: [
           { product: 'c', pieces: 3, where: 'packet' },
           { product: 'd', tbsp: 2, where: 'packet' }
@@ -173,7 +174,7 @@ function missingNutrientKeepsSumHonestChecks(): void {
     product('b', { kcal: 100, p: 0, f: 0, c: 0 }, { micro100: { fiber: 20 } })
   )
   const meal: Meal = {
-    slot: 'lunch', title: 't', steps: [],
+    slot: 'lunch', id: 'meal-lunch-ab', title: 't', steps: [],
     items: [
       { product: 'a', g: 100, where: 'container' },
       { product: 'b', g: 100, where: 'container' }
@@ -200,7 +201,7 @@ function unknownEverywhereChecks(): void {
     product('b', { kcal: 100, p: 0, f: 0, c: 0 }, { micro100: { fiber: 20 } })
   )
   const meal: Meal = {
-    slot: 'lunch', title: 't', steps: [],
+    slot: 'lunch', id: 'meal-lunch-ab', title: 't', steps: [],
     items: [
       { product: 'a', g: 100, where: 'container' },
       { product: 'b', g: 100, where: 'container' }
@@ -220,7 +221,7 @@ function honestZeroIsKnownChecks(): void {
     product('b', { kcal: 100, p: 0, f: 0, c: 0 }, { micro100: { sodium: 0 } })
   )
   const meal: Meal = {
-    slot: 'lunch', title: 't', steps: [],
+    slot: 'lunch', id: 'meal-lunch-ab', title: 't', steps: [],
     items: [
       { product: 'a', g: 100, where: 'container' },
       { product: 'b', g: 100, where: 'container' }
@@ -247,7 +248,7 @@ function totalsArithmeticChecks(): void {
     product('b', { kcal: 100, p: 0, f: 0, c: 0 }, { micro100: { fiber: 20 } })
   )
   const meal: Meal = {
-    slot: 'lunch', title: 't', steps: [],
+    slot: 'lunch', id: 'meal-lunch-ab', title: 't', steps: [],
     items: [
       { product: 'a', g: 100, where: 'container' },
       { product: 'b', g: 100, where: 'container' }
@@ -274,8 +275,8 @@ function dayNutrientsChecks(): void {
   const day: MenuDay = {
     day: 1,
     meals: [
-      { slot: 'lunch', title: 't', steps: [], items: [{ product: 'a', g: 100, where: 'container' }] },
-      { slot: 'dinner', title: 't', steps: [], items: [{ product: 'b', g: 200, where: 'container' }] }
+      { slot: 'lunch', id: 'meal-lunch-a', title: 't', steps: [], items: [{ product: 'a', g: 100, where: 'container' }] },
+      { slot: 'dinner', id: 'meal-dinner-b', title: 't', steps: [], items: [{ product: 'b', g: 200, where: 'container' }] }
     ]
   }
   const totals = dayNutrients(day, idx)

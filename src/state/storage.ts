@@ -9,7 +9,7 @@
    дефолту — см. комментарии внутри deserialize. */
 
 import { NUTRIENT_KEYS } from '../core/types.ts'
-import type { AppState, DayLog, MealLogEntry, NutrientTotals, Settings } from '../core/types.ts'
+import type { AppState, DayLog, MealLogEntry, NutrientTotals, Preferences, Settings } from '../core/types.ts'
 import { todayLocal } from '../core/cycle.ts'
 import { emptyNutrientTotals } from '../core/nutrition.ts'
 
@@ -18,23 +18,30 @@ export const STORAGE_KEY = 'eda.state.v1'
 
 /** Текущая версия формата AppState. Меняется только вместе с миграцией ниже.
     v1 -> v2: у записи приёма появился снапшот нутриентов (MealLogEntry.nutrients).
+    v2 -> v3: появилась книга предпочтений (AppState.preferences) и снапшот
+    идентификатора блюда в записи дневника (MealLogEntry.mealId). У записей
+    версии 2 идентификатора не было — они получают пустую строку (см.
+    комментарий к MealLogEntry.mealId в types.ts): по названию блюдо не
+    восстанавливается, совпадение названий не есть тождество блюд.
     Ключ localStorage при этом НЕ меняется: он адресует хранилище, а не формат,
     и его смена означала бы потерю уже записанных дней. */
-export const CURRENT_VERSION = 2
+export const CURRENT_VERSION = 3
 
-/** Дефолтные настройки и пустой дневник — то, с чем открывается приложение
-    в первый раз или после потери состояния. */
+/** Дефолтные настройки, пустой дневник и пустая книга предпочтений — то, с чем
+    открывается приложение в первый раз или после потери состояния. */
 export function defaultState(): AppState {
   const settings: Settings = {
     cycleStartDate: todayLocal(new Date()),
     cycleShift: 0,
     targetKcal: 3200,
+    targetProteinG: 120,
     shortcutName: ''
   }
   return {
     version: CURRENT_VERSION,
     settings,
-    log: {}
+    log: {},
+    preferences: { ingredients: {}, dishes: {} }
   }
 }
 
@@ -88,6 +95,9 @@ function sanitizeMealEntry(v: unknown): MealLogEntry | null {
   if (typeof v.loggedAt !== 'string') return null
   return {
     slot: slot as never,
+    // запись версии 2 и старше mealId не несёт — пустая строка значит
+    // «нельзя привязать к блюду», см. комментарий MealLogEntry.mealId.
+    mealId: typeof v.mealId === 'string' ? v.mealId : '',
     status: v.status,
     fraction: v.fraction,
     kbju: v.kbju as { kcal: number; p: number; f: number; c: number },
@@ -136,20 +146,52 @@ function sanitizeSettings(v: unknown): Settings {
     cycleStartDate: typeof v.cycleStartDate === 'string' && v.cycleStartDate ? v.cycleStartDate : def.cycleStartDate,
     cycleShift: typeof v.cycleShift === 'number' ? v.cycleShift : def.cycleShift,
     targetKcal: typeof v.targetKcal === 'number' ? v.targetKcal : def.targetKcal,
+    targetProteinG: typeof v.targetProteinG === 'number' ? v.targetProteinG : def.targetProteinG,
     shortcutName: typeof v.shortcutName === 'string' ? v.shortcutName : def.shortcutName
   }
 }
 
+/** Проверяет и чинит книгу предпочтений. Запись, которую нельзя доверять
+    целиком, выпадает вместе с ключом — она не чинится подстановкой:
+    - ingredients принимает только значения 'love' и 'avoid', любой другой
+      мусор (в том числе прежнее третье значение) выбрасывается вместе с ключом;
+    - dishes принимает запись, только если score — целое 1..10, comment —
+      строка, ratedAt — строка; иначе вся запись выпадает.
+    Состояние версии 2 и старше preferences не несёт вовсе — sanitizePreferences
+    на входе undefined отдаёт пустую книгу, ровно как defaultState(). */
+function sanitizePreferences(v: unknown): Preferences {
+  const ingredientsRaw = isPlainObject(v) && isPlainObject(v.ingredients) ? v.ingredients : {}
+  const ingredients: Preferences['ingredients'] = {}
+  for (const [key, stance] of Object.entries(ingredientsRaw)) {
+    if (stance === 'love' || stance === 'avoid') ingredients[key] = stance
+  }
+
+  const dishesRaw = isPlainObject(v) && isPlainObject(v.dishes) ? v.dishes : {}
+  const dishes: Preferences['dishes'] = {}
+  for (const [key, ratingRaw] of Object.entries(dishesRaw)) {
+    if (!isPlainObject(ratingRaw)) continue
+    const score = ratingRaw.score
+    if (typeof score !== 'number' || !Number.isInteger(score) || score < 1 || score > 10) continue
+    if (typeof ratingRaw.comment !== 'string') continue
+    if (typeof ratingRaw.ratedAt !== 'string') continue
+    dishes[key] = { score, comment: ratingRaw.comment, ratedAt: ratingRaw.ratedAt }
+  }
+
+  return { ingredients, dishes }
+}
+
 /** Миграция состояния произвольной старой версии к CURRENT_VERSION.
     Все шаги «vN -> vN+1» на сегодня выражаются через sanitize*-функции: они
-    достраивают недостающие поля (v1 -> v2 — снапшот нутриентов) и чинят битые,
-    не теряя уже записанных дней. Появится шаг, который так не выражается, —
-    он встаёт сюда явной цепочкой до вызова sanitize*. */
+    достраивают недостающие поля (v1 -> v2 — снапшот нутриентов, v2 -> v3 —
+    книга предпочтений и mealId записи) и чинят битые, не теряя уже записанных
+    дней. Появится шаг, который так не выражается, — он встаёт сюда явной
+    цепочкой до вызова sanitize*. */
 function migrate(raw: Record<string, unknown>): AppState {
   return {
     version: CURRENT_VERSION,
     settings: sanitizeSettings(raw.settings),
-    log: sanitizeLog(raw.log)
+    log: sanitizeLog(raw.log),
+    preferences: sanitizePreferences(raw.preferences)
   }
 }
 

@@ -316,3 +316,241 @@
   color: var(--fg-faint);
   font-style: italic;
 }
+
+/* ---- неделя ---- */
+
+.week-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.week-summary {
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.week-summary__line {
+  margin: 0;
+  font-size: var(--text-17);
+  line-height: var(--lh-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.week-summary__ratio {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-15);
+  color: var(--fg-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.week-summary--empty {
+  margin: 0;
+  font-size: var(--text-15);
+  color: var(--fg-faint);
+  font-style: italic;
+}
+
+.week-days {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.week-day {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.week-day:last-child {
+  border-bottom: none;
+}
+
+.week-day__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.week-day__label {
+  font-size: var(--text-15);
+}
+
+.week-day__cycle {
+  color: var(--fg-dim);
+}
+
+.week-day__kcal {
+  font-size: var(--text-15);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.week-day__meals {
+  font-size: var(--text-13);
+  color: var(--fg-dim);
+}
+
+/* День без записей — приглушённая строка, не нулевой день: ни полосы, ни цифр. */
+.week-day--empty {
+  flex-direction: row;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.week-day--empty .week-day__label {
+  color: var(--fg-faint);
+}
+
+.week-day__hint {
+  font-size: var(--text-13);
+  color: var(--fg-faint);
+  font-style: italic;
+}
+
+.week-section__title {
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-13);
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+}
+
+.week-nutrients {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.week-no-data {
+  margin: 0;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+  font-size: var(--text-13);
+  line-height: var(--lh-text);
+  color: var(--fg-faint);
+  font-style: italic;
+}
+
+/* «Итоги недели»: все позиции, сгруппированные так же, как в MealScreen —
+   первая группа не получает лишний отступ сверху (.nutrient-group уже несёт
+   margin-top var(--space-4), она рассчитана на соседей внутри одного списка). */
+.week-coverage .nutrient-group:first-child {
+  margin-top: 0;
+}
+
+/* ---- Шторка «Книга»: разделы «Блюда» и «Ингредиенты» ---- */
+
+.book-tabs {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.book-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.book-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.book-dish {
+  border: 1px solid var(--border);
+  border-radius: var(--r-8);
+  background: var(--surface);
+}
+
+/* Вся строка — цель нажатия: раскрывает RatingEditor на месте, без перехода
+   на отдельный экран. */
+.book-dish__head {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  width: 100%;
+  min-height: var(--tap-min);
+  padding: var(--space-3);
+  border: none;
+  border-radius: var(--r-8);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.book-dish__title {
+  font-size: var(--text-17);
+  font-weight: 600;
+}
+
+.book-dish__meta {
+  font-size: var(--text-13);
+  color: var(--fg-dim);
+}
+
+.book-dish__rating {
+  font-size: var(--text-15);
+  font-variant-numeric: tabular-nums;
+}
+
+/* «Не оценено» — отдельное состояние, не ноль и не прочерк: приглушённый
+   курсив, тот же приём, что и у «нет данных» в остальном приложении. */
+.book-dish__rating--empty {
+  color: var(--fg-faint);
+  font-style: italic;
+  font-variant-numeric: normal;
+}
+
+.book-dish__editor {
+  padding: 0 var(--space-3) var(--space-3);
+}
+
+.book-filter {
+  margin-bottom: var(--space-1);
+}
+
+.book-ingredient {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.book-ingredient__name {
+  display: flex;
+  align-items: center;
+  font-size: var(--text-17);
+}
+
+.book-ingredient__controls {
+  display: flex;
+  flex: none;
+  gap: var(--space-1);
+}
+
+.book-empty {
+  margin: 0;
+  padding: var(--space-6) 0;
+  color: var(--fg-faint);
+  font-style: italic;
+  text-align: center;
+}

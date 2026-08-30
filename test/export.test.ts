@@ -53,6 +53,7 @@ function mealPayload(overrides: Partial<Extract<ExportPayload, { kind: 'meal' }>
 function mealEntry(overrides: Partial<MealLogEntry> = {}): MealLogEntry {
   return {
     slot: 'lunch',
+    mealId: 'kasha',
     status: 'eaten',
     fraction: 1,
     kbju: kbju(400, 20, 10, 30),

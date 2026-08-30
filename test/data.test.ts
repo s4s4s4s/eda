@@ -116,46 +116,54 @@ cycleDays: 2
 days:
   - day: 1
     meals:
-      - slot: breakfast
+      - id: fixture-meal-1
+        slot: breakfast
         title: Овсянка с бразильским орехом
         steps: [Разогреть контейнер, Досыпать пакетик]
         items:
           - { product: oats, g: 90, where: container }
           - { product: brazil-nut, pieces: 2, where: packet }
           - { product: flaxseed, tbsp: 1, where: packet }
-      - slot: lunch
+      - id: fixture-meal-2
+        slot: lunch
         title: Лосось
         steps: []
         items:
           - { product: salmon, g: 170, where: container }
-      - slot: dinner
+      - id: fixture-meal-3
+        slot: dinner
         title: Лосось на ужин
         steps: []
         items:
           - { product: salmon, g: 150, where: container }
-      - slot: snack
+      - id: fixture-meal-4
+        slot: snack
         title: Орехи
         steps: []
         items:
           - { product: brazil-nut, pieces: 2, where: packet }
   - day: 2
     meals:
-      - slot: breakfast
+      - id: fixture-meal-5
+        slot: breakfast
         title: Овсянка
         steps: []
         items:
           - { product: oats, g: 90, where: container }
-      - slot: lunch
+      - id: fixture-meal-6
+        slot: lunch
         title: Лосось
         steps: []
         items:
           - { product: salmon, g: 170, where: container }
-      - slot: dinner
+      - id: fixture-meal-7
+        slot: dinner
         title: Лосось
         steps: []
         items:
           - { product: salmon, g: 170, where: container }
-      - slot: snack
+      - id: fixture-meal-8
+        slot: snack
         title: Лён
         steps: []
         items:
@@ -186,19 +194,23 @@ cycleDays: 1
 days:
   - day: 1
     meals:
-      - slot: breakfast
+      - id: fixture-meal-9
+        slot: breakfast
         title: t
         steps: []
         items: [{ product: unicorn-meat, g: 100, where: container }]
-      - slot: lunch
+      - id: fixture-meal-10
+        slot: lunch
         title: t
         steps: []
         items: [{ product: salmon, g: 170, where: container }]
-      - slot: dinner
+      - id: fixture-meal-11
+        slot: dinner
         title: t
         steps: []
         items: [{ product: salmon, g: 170, where: container }]
-      - slot: snack
+      - id: fixture-meal-12
+        slot: snack
         title: t
         steps: []
         items: [{ product: flaxseed, tbsp: 1, where: packet }]
@@ -249,7 +261,8 @@ cycleDays: 1
 days:
   - day: 1
     meals:
-      - slot: breakfast
+      - id: fixture-meal-13
+        slot: breakfast
         title: t
         steps: []
         items: [{ product: salmon, g: 170, where: container }]
@@ -261,23 +274,28 @@ cycleDays: 1
 days:
   - day: 1
     meals:
-      - slot: breakfast
+      - id: fixture-meal-14
+        slot: breakfast
         title: t
         steps: []
         items: [{ product: salmon, g: 170, where: container }]
-      - slot: breakfast
+      - id: fixture-meal-15
+        slot: breakfast
         title: t2
         steps: []
         items: [{ product: salmon, g: 170, where: container }]
-      - slot: lunch
+      - id: fixture-meal-16
+        slot: lunch
         title: t
         steps: []
         items: [{ product: salmon, g: 170, where: container }]
-      - slot: dinner
+      - id: fixture-meal-17
+        slot: dinner
         title: t
         steps: []
         items: [{ product: salmon, g: 170, where: container }]
-      - slot: snack
+      - id: fixture-meal-18
+        slot: snack
         title: t
         steps: []
         items: [{ product: salmon, g: 170, where: container }]
@@ -319,19 +337,23 @@ cycleDays: 1
 days:
   - day: 1
     meals:
-      - slot: breakfast
+      - id: fixture-meal-19
+        slot: breakfast
         title: t
         steps: []
         items: [${yamlInlineItem(item)}]
-      - slot: lunch
+      - id: fixture-meal-20
+        slot: lunch
         title: t
         steps: []
         items: [{ product: salmon, g: 170, where: container }]
-      - slot: dinner
+      - id: fixture-meal-21
+        slot: dinner
         title: t
         steps: []
         items: [{ product: salmon, g: 170, where: container }]
-      - slot: snack
+      - id: fixture-meal-22
+        slot: snack
         title: t
         steps: []
         items: [{ product: flaxseed, tbsp: 1, where: packet }]
@@ -347,19 +369,23 @@ function yamlInlineItem(item: Record<string, unknown>): string {
 function validDayBlock(day: number): string {
   return `  - day: ${day}
     meals:
-      - slot: breakfast
+      - id: fixture-meal-23
+        slot: breakfast
         title: t
         steps: []
         items: [{ product: oats, g: 90, where: container }]
-      - slot: lunch
+      - id: fixture-meal-24
+        slot: lunch
         title: t
         steps: []
         items: [{ product: salmon, g: 170, where: container }]
-      - slot: dinner
+      - id: fixture-meal-25
+        slot: dinner
         title: t
         steps: []
         items: [{ product: salmon, g: 170, where: container }]
-      - slot: snack
+      - id: fixture-meal-26
+        slot: snack
         title: t
         steps: []
         items: [{ product: flaxseed, tbsp: 1, where: packet }]`
@@ -425,6 +451,198 @@ products:
     'parseProducts: micro100g не в виде набора «ключ: число» — ошибка')
 }
 
+// ---- Meal.id -----------------------------------------------------------------
+
+function mealIdChecks(): void {
+  const products = baseProducts()
+
+  // 1. id отсутствует
+  assertThrows(() => parseMenu(`
+cycleDays: 1
+days:
+  - day: 1
+    meals:
+      - slot: breakfast
+        title: t
+        steps: []
+        items: [{ product: oats, g: 90, where: container }]
+      - id: fixture-id-lunch
+        slot: lunch
+        title: t
+        steps: []
+        items: [{ product: salmon, g: 170, where: container }]
+      - id: fixture-id-dinner
+        slot: dinner
+        title: t
+        steps: []
+        items: [{ product: salmon, g: 170, where: container }]
+      - id: fixture-id-snack
+        slot: snack
+        title: t
+        steps: []
+        items: [{ product: flaxseed, tbsp: 1, where: packet }]
+`, products), ['День 1', 'id'], 'у приёма не задан id')
+
+  // 2. id с заглавными буквами
+  assertThrows(() => parseMenu(`
+cycleDays: 1
+days:
+  - day: 1
+    meals:
+      - id: Fixture-Id
+        slot: breakfast
+        title: t
+        steps: []
+        items: [{ product: oats, g: 90, where: container }]
+      - id: fixture-id-lunch
+        slot: lunch
+        title: t
+        steps: []
+        items: [{ product: salmon, g: 170, where: container }]
+      - id: fixture-id-dinner
+        slot: dinner
+        title: t
+        steps: []
+        items: [{ product: salmon, g: 170, where: container }]
+      - id: fixture-id-snack
+        slot: snack
+        title: t
+        steps: []
+        items: [{ product: flaxseed, tbsp: 1, where: packet }]
+`, products), ['День 1', 'Fixture-Id'], 'id с заглавными буквами — ошибка формата')
+
+  // 3. id кириллицей
+  assertThrows(() => parseMenu(`
+cycleDays: 1
+days:
+  - day: 1
+    meals:
+      - id: "овсянка"
+        slot: breakfast
+        title: t
+        steps: []
+        items: [{ product: oats, g: 90, where: container }]
+      - id: fixture-id-lunch
+        slot: lunch
+        title: t
+        steps: []
+        items: [{ product: salmon, g: 170, where: container }]
+      - id: fixture-id-dinner
+        slot: dinner
+        title: t
+        steps: []
+        items: [{ product: salmon, g: 170, where: container }]
+      - id: fixture-id-snack
+        slot: snack
+        title: t
+        steps: []
+        items: [{ product: flaxseed, tbsp: 1, where: packet }]
+`, products), ['День 1', 'овсянка'], 'id кириллицей — ошибка формата')
+
+  // 4. один и тот же id у двух РАЗНЫХ по составу блюд — ошибка
+  assertThrows(() => parseMenu(`
+cycleDays: 2
+days:
+  - day: 1
+    meals:
+      - id: shared-id
+        slot: breakfast
+        title: Овсянка
+        steps: []
+        items: [{ product: oats, g: 90, where: container }]
+      - id: fixture-id-lunch-1
+        slot: lunch
+        title: t
+        steps: []
+        items: [{ product: salmon, g: 170, where: container }]
+      - id: fixture-id-dinner-1
+        slot: dinner
+        title: t
+        steps: []
+        items: [{ product: salmon, g: 170, where: container }]
+      - id: fixture-id-snack-1
+        slot: snack
+        title: t
+        steps: []
+        items: [{ product: flaxseed, tbsp: 1, where: packet }]
+  - day: 2
+    meals:
+      - id: shared-id
+        slot: breakfast
+        title: Лосось
+        steps: []
+        items: [{ product: salmon, g: 170, where: container }]
+      - id: fixture-id-lunch-2
+        slot: lunch
+        title: t
+        steps: []
+        items: [{ product: salmon, g: 170, where: container }]
+      - id: fixture-id-dinner-2
+        slot: dinner
+        title: t
+        steps: []
+        items: [{ product: salmon, g: 170, where: container }]
+      - id: fixture-id-snack-2
+        slot: snack
+        title: t
+        steps: []
+        items: [{ product: flaxseed, tbsp: 1, where: packet }]
+`, products), ['shared-id', 'День 2'], 'один id у двух разных по составу блюд — ошибка')
+
+  // 5. один и тот же id у ДВУХ ОДИНАКОВЫХ по составу блюд в разных днях — допустимо
+  const reusedIdMenu = parseMenu(`
+cycleDays: 2
+days:
+  - day: 1
+    meals:
+      - id: same-dish
+        slot: breakfast
+        title: Овсянка
+        steps: []
+        items: [{ product: oats, g: 90, where: container }]
+      - id: fixture-id-lunch-3
+        slot: lunch
+        title: t
+        steps: []
+        items: [{ product: salmon, g: 170, where: container }]
+      - id: fixture-id-dinner-3
+        slot: dinner
+        title: t
+        steps: []
+        items: [{ product: salmon, g: 170, where: container }]
+      - id: fixture-id-snack-3
+        slot: snack
+        title: t
+        steps: []
+        items: [{ product: flaxseed, tbsp: 1, where: packet }]
+  - day: 2
+    meals:
+      - id: same-dish
+        slot: breakfast
+        title: Овсянка
+        steps: []
+        items: [{ product: oats, g: 90, where: container }]
+      - id: fixture-id-lunch-4
+        slot: lunch
+        title: t
+        steps: []
+        items: [{ product: salmon, g: 170, where: container }]
+      - id: fixture-id-dinner-4
+        slot: dinner
+        title: t
+        steps: []
+        items: [{ product: salmon, g: 170, where: container }]
+      - id: fixture-id-snack-4
+        slot: snack
+        title: t
+        steps: []
+        items: [{ product: flaxseed, tbsp: 1, where: packet }]
+`, products)
+  assert(reusedIdMenu.days[0].meals[0].id === 'same-dish' && reusedIdMenu.days[1].meals[0].id === 'same-dish',
+    'id одного и того же блюда, повторённого буквально в другом дне, допустим без ошибки')
+  group('parseMenu: id обязателен, формат ^[a-z0-9-]+$, дубль id при разном составе — ошибка, при одинаковом — допустим')
+}
+
 function main(): void {
   console.log('data — парсер продуктов и меню')
   parseProductsChecks()
@@ -433,6 +651,7 @@ function main(): void {
   microErrorChecks()
   parseMenuValidChecks()
   brokenMenuChecks()
+  mealIdChecks()
   console.log(`\nВсе проверки data пройдены (${passed} групп).`)
 }
 

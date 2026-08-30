@@ -22,9 +22,10 @@ function products(...list: Product[]): ProductIndex {
   return map
 }
 
-function meal(slot: 'breakfast' | 'lunch' | 'dinner' | 'snack', title: string, kcalPer100: number): Meal {
+function meal(slot: 'breakfast' | 'lunch' | 'dinner' | 'snack', title: string, kcalPer100: number, id = `${slot}-${title}`): Meal {
   return {
     slot,
+    id,
     title,
     steps: [],
     items: [{ product: 'x', g: 100, where: 'container' }]
@@ -35,7 +36,8 @@ function emptyState(): AppState {
   return {
     version: 1,
     settings: { cycleStartDate: '2026-08-01', cycleShift: 0, targetKcal: 3200, shortcutName: '' },
-    log: {}
+    log: {},
+    preferences: { ingredients: {}, dishes: {} }
   }
 }
 
@@ -117,7 +119,7 @@ function mixChecks(): void {
     product('d', { kcal: 500, p: 25, f: 15, c: 45 })
   )
   const mealFor = (slot: 'breakfast' | 'lunch' | 'dinner' | 'snack', productId: string, title: string): Meal => ({
-    slot, title, steps: [], items: [{ product: productId, g: 100, where: 'container' }]
+    slot, id: `${slot}-${productId}`, title, steps: [], items: [{ product: productId, g: 100, where: 'container' }]
   })
 
   let state = emptyState()
@@ -151,6 +153,7 @@ function nutrientSnapshotChecks(): void {
   )
   const twoItemMeal: Meal = {
     slot: 'lunch',
+    id: 'obed-dvukh-pozitsy',
     title: 'Обед',
     steps: [],
     items: [
@@ -168,6 +171,7 @@ function nutrientSnapshotChecks(): void {
     `витамин K в снапшоте ожидался 20 при полноте 1/2, получено ${JSON.stringify(entry.nutrients.vitK)}`)
   assert(entry.nutrients.vitB12.known === 0 && entry.nutrients.vitB12.value === 0,
     'нутриент, неизвестный обеим позициям, попадает в снапшот как «нет данных», а не как ноль-значение')
+  assert(entry.mealId === twoItemMeal.id, `mealId снапшота ожидался ${twoItemMeal.id}, получено ${entry.mealId}`)
 
   group('logMeal: снапшот нутриентов записывается рядом с КБЖУ и несёт полноту')
 }
@@ -190,7 +194,7 @@ function dayNutrientTotalsChecks(): void {
     product('b', { kcal: 600, p: 30, f: 20, c: 50 }, { fiber: 20 })
   )
   const mealFor = (slot: 'breakfast' | 'lunch', productId: string): Meal => ({
-    slot, title: slot, steps: [], items: [{ product: productId, g: 100, where: 'container' }]
+    slot, id: `${slot}-${productId}`, title: slot, steps: [], items: [{ product: productId, g: 100, where: 'container' }]
   })
 
   let state = emptyState()
