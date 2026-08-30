@@ -10,8 +10,10 @@ import { useMemo } from 'react'
 import { normRatio } from '../core/norms.ts'
 import { weekCoverage, weekSummary } from '../core/week.ts'
 import type { DaySummary, WeekCoverage, WeekNutrient, WeekSummary } from '../core/week.ts'
-import { NUTRIENT_GROUP, NUTRIENT_TITLE, NUTRIENT_UNIT, SLOTS } from '../core/types.ts'
-import type { AppState, NutrientGroup, NutrientKey, NutrientNorms } from '../core/types.ts'
+import {
+  NUTRIENT_GROUP, NUTRIENT_GROUP_ORDER, NUTRIENT_TITLE, NUTRIENT_UNIT, SLOTS
+} from '../core/types.ts'
+import type { AppState, NutrientKey, NutrientNorms } from '../core/types.ts'
 import { formatNutrientAmount } from '../core/export/format.ts'
 import Sheet from './Sheet.tsx'
 
@@ -198,7 +200,6 @@ function buildDeficitRows(nutrients: WeekNutrient[], norms: NutrientNorms): Defi
    cdrr — это уровень снижения риска, а не предел безопасности. Поэтому
    overCdrr НИКОГДА не красит полосу, только несёт текстовую оговорку — путать
    его с overUl запрещено декларацией задачи. */
-const WEEK_GROUP_ORDER: NutrientGroup[] = ['витамины', 'минералы', 'прочее']
 
 function WeekCoverageRow({ cov }: { cov: WeekCoverage }) {
   const { key, value, daysWithData, dayCount, partialDays, ratio, state, ul, overUl, cdrr, overCdrr } = cov
@@ -248,7 +249,7 @@ function WeekCoverageSection({ coverage }: { coverage: WeekCoverage[] }) {
     <section className="week-section">
       <h2 className="week-section__title">Итоги недели</h2>
       <div className="week-coverage">
-        {WEEK_GROUP_ORDER.map((group) => {
+        {NUTRIENT_GROUP_ORDER.map((group) => {
           const rows = coverage.filter((c) => NUTRIENT_GROUP[c.key] === group)
           if (rows.length === 0) return null
           return (

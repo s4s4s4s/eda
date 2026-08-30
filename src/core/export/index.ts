@@ -32,7 +32,7 @@ export async function sendViaChannel(channel: ExportChannel, payload: ExportPayl
 }
 
 export type { Availability, ExportChannel, ExportPayload, ExportResult } from './types.ts'
-export { readCallback, buildShortcutUrl, isIOS, healthNutrients } from './health-shortcut.ts'
+export { readCallback, buildShortcutUrl, isIOS, healthNutrients, NO_HEALTHKIT_TYPE } from './health-shortcut.ts'
 export { CSV_FALLBACK_NOTE, CSV_SHARED_NOTE, CSV_NOT_A_DAY_ERROR } from './csv.ts'
 export {
   buildDayCsv, CSV_HEADER, CSV_NUTRIENT_COLUMNS, dayClipboardText, eatenNutrientsOf, eatenOf,

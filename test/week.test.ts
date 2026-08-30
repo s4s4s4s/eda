@@ -5,6 +5,7 @@
  */
 import { logMeal } from '../src/core/log'
 import { weekCoverage, weekSummary } from '../src/core/week'
+import { NUTRIENT_KEYS } from '../src/core/types'
 import type { AppState, Kbju, Meal, NutrientNorm, NutrientNorms, Nutrients, Product, ProductIndex, Slot } from '../src/core/types'
 
 let passed = 0
@@ -229,8 +230,8 @@ function coverageNoDataChecks(): void {
   assert(fiber.ratio === null, `ratio без данных ожидался null, получено ${fiber.ratio}`)
   assert(fiber.norm === null, `норма окна без данных ожидалась null, получено ${fiber.norm}`)
 
-  // Позиция без данных обязана остаться в списке — все 29 ключей всегда присутствуют.
-  assert(coverage.length === 29, `weekCoverage ожидал 29 позиций, получено ${coverage.length}`)
+  // Позиция без данных обязана остаться в списке — все ключи NUTRIENT_KEYS всегда присутствуют.
+  assert(coverage.length === NUTRIENT_KEYS.length, `weekCoverage ожидал ${NUTRIENT_KEYS.length} позиций, получено ${coverage.length}`)
   assert(coverage.some((c) => c.key === 'fiber'), 'позиция без данных не должна пропадать из списка')
 
   group('weekCoverage: нутриент без данных остаётся в списке с состоянием no-data, value 0 и ratio null')

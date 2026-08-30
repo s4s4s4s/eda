@@ -14,9 +14,11 @@ import type { NutrientCoverage } from '../core/norms.ts'
 import { formatNutrientAmount, NO_DATA_TEXT } from '../core/export/format.ts'
 import { stanceOf } from '../core/preferences.ts'
 import type { MealMinus, MealPlus, MealVerdict } from '../core/verdict.ts'
-import { NUTRIENT_GROUP, NUTRIENT_TITLE, NUTRIENT_UNIT, SLOT_TITLE, SLOTS } from '../core/types.ts'
+import {
+  NUTRIENT_GROUP, NUTRIENT_GROUP_ORDER, NUTRIENT_TITLE, NUTRIENT_UNIT, SLOT_TITLE, SLOTS
+} from '../core/types.ts'
 import type {
-  DishRating, Item, Kbju, Meal, MealLogEntry, MealStatus, NutrientGroup, NutrientNorms,
+  DishRating, Item, Kbju, Meal, MealLogEntry, MealStatus, NutrientNorms,
   NutrientTotals, Preferences, ProductIndex, Slot
 } from '../core/types.ts'
 import RatingEditor from './RatingEditor.tsx'
@@ -262,8 +264,6 @@ function DayProtein({ eatenG, targetG }: { eatenG: number; targetG: number }) {
     за день; «этот приём» показывает те же строки без полос и процентов. */
 type NutrientsMode = 'day' | 'meal'
 
-const GROUP_ORDER: NutrientGroup[] = ['витамины', 'минералы', 'прочее']
-
 const MODE_LABEL: Record<NutrientsMode, string> = {
   day: 'за день',
   meal: 'этот приём'
@@ -409,7 +409,7 @@ function NutrientsBlock({
       )}
 
       <div className="meal-nutrients__list">
-        {GROUP_ORDER.map(group => {
+        {NUTRIENT_GROUP_ORDER.map(group => {
           const groupRows = rows.filter(c => NUTRIENT_GROUP[c.key] === group)
           return (
             <section key={group} className="nutrient-group">

@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { NUTRIENT_KEYS, NUTRIENT_TITLE, NUTRIENT_UNIT, SLOT_TITLE } from '../core/types.ts'
-import { buildDayCsv, CSV_FALLBACK_NOTE, dayClipboardText, eatenNutrientsOf, eatenOf, formatDateShort, formatNutrientAmount, mealClipboardText, NO_DATA_TEXT, readCallback, sendViaChannel } from '../core/export/index.ts'
+import { buildDayCsv, CSV_FALLBACK_NOTE, dayClipboardText, eatenNutrientsOf, eatenOf, formatDateShort, formatNutrientAmount, mealClipboardText, NO_DATA_TEXT, NO_HEALTHKIT_TYPE, readCallback, sendViaChannel } from '../core/export/index.ts'
 import type { ExportChannel, ExportPayload } from '../core/export/index.ts'
 import type { Kbju, NutrientTotals } from '../core/types.ts'
 
@@ -136,6 +136,18 @@ export default function ExportSheet({ payload, channels, onConfirmed }: ExportSh
               >
                 {channel.title}
               </button>
+              {/* Граница канала названа ДО нажатия, а не после: узнать, что часть
+                  чисел не уехала, из отчёта об уже сделанной отправке — то же
+                  враньё кнопкой, только отложенное. Список собирается из
+                  NO_HEALTHKIT_TYPE, чтобы не разойтись с тем, что реально
+                  уходит в словарь «Команд». */}
+              {channel.id === 'health-shortcut' && (
+                <span className="export-channel__caveat">
+                  {`В Apple Health не уедет ${NO_HEALTHKIT_TYPE.length} нутриентов — `}
+                  {NO_HEALTHKIT_TYPE.map(key => NUTRIENT_TITLE[key]).join(', ')}
+                  {': у Health нет для них поля.'}
+                </span>
+              )}
               <span role="status" aria-live="polite">
                 {state?.kind === 'sending' && (
                   <span className="export-channel__status export-channel__status--pending">Отправляю…</span>

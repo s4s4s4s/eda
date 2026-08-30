@@ -241,7 +241,7 @@ function totalsArithmeticChecks(): void {
   const empty = emptyNutrientTotals()
   assert(NUTRIENT_KEYS.every(k => empty[k].value === 0 && empty[k].known === 0 && empty[k].total === 0),
     'emptyNutrientTotals: все ключи на месте и пусты')
-  assert(Object.keys(empty).length === 29, `ожидалось 29 ключей, получено ${Object.keys(empty).length}`)
+  assert(Object.keys(empty).length === NUTRIENT_KEYS.length, `ожидалось ${NUTRIENT_KEYS.length} ключей, получено ${Object.keys(empty).length}`)
 
   const idx = products(
     product('a', { kcal: 100, p: 0, f: 0, c: 0 }, { micro100: { fiber: 10, vitK: 40 } }),

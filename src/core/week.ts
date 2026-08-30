@@ -153,7 +153,7 @@ export function weekSummary(log: AppState['log'], endDate: string, dayCount = 7)
   return { days, daysWithLog, avgKcal, avgProteinG, nutrients }
 }
 
-/** Итоги недели: все 29 позиций, в порядке NUTRIENT_KEYS, ни одна не пропущена.
+/** Итоги недели: все позиции NUTRIENT_KEYS, в их порядке, ни одна не пропущена.
     Считает заново по summary.days (а не по WeekNutrient.avgValue), чтобы норма
     окна получалась прямым произведением amount * daysWithData, без обратного
     восстановления суммы делением-и-умножением через среднее. */

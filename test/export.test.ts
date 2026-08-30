@@ -9,11 +9,11 @@ import {
   buildDayCsv, CSV_HEADER, CSV_NUTRIENT_COLUMNS, dayClipboardText, mealClipboardText, NO_DATA_TEXT
 } from '../src/core/export/format.ts'
 import { emptyNutrientTotals } from '../src/core/nutrition.ts'
-import { NUTRIENT_KEYS } from '../src/core/types.ts'
+import { NUTRIENT_KEYS, NUTRIENT_UNIT } from '../src/core/types.ts'
 import type { NutrientTotals } from '../src/core/types.ts'
 import { clipboardChannel } from '../src/core/export/clipboard.ts'
 import { CSV_FALLBACK_NOTE, CSV_NOT_A_DAY_ERROR, csvChannel } from '../src/core/export/csv.ts'
-import { buildShortcutUrl, healthNutrients, healthShortcutChannel, readCallback } from '../src/core/export/health-shortcut.ts'
+import { buildShortcutUrl, healthNutrients, healthShortcutChannel, NO_HEALTHKIT_TYPE, readCallback } from '../src/core/export/health-shortcut.ts'
 import { buildChannels, sendViaChannel } from '../src/core/export/index.ts'
 import type { Kbju, MealLogEntry } from '../src/core/types.ts'
 
@@ -144,8 +144,13 @@ function csvChecks(): void {
   // девять колонок остались на своих местах и в прежнем порядке
   assert(lines[0].startsWith('date,slot,title,kcal,protein,fat,carbs,fraction,status,'), `неверное начало заголовка: ${lines[0]}`)
   assert(lines[0] === CSV_HEADER, `заголовок должен совпадать с CSV_HEADER: ${lines[0]}`)
-  assert(CSV_NUTRIENT_COLUMNS.length === 29, `колонок нутриентов ожидалось 29, получено ${CSV_NUTRIENT_COLUMNS.length}`)
-  assert(lines[0].split(',').length === 9 + 29 + 1, `колонок ожидалось 39, получено ${lines[0].split(',').length}`)
+  // Колонки нутриентов идут строго от списка ключей, а не от отдельного
+  // перечня: тест сверяется с NUTRIENT_KEYS, а не с числом, которое устареет
+  // при следующем расширении списка нутриентов.
+  assert(CSV_NUTRIENT_COLUMNS.length === NUTRIENT_KEYS.length,
+    `колонок нутриентов ожидалось ${NUTRIENT_KEYS.length} (по числу NUTRIENT_KEYS), получено ${CSV_NUTRIENT_COLUMNS.length}`)
+  assert(lines[0].split(',').length === 9 + NUTRIENT_KEYS.length + 1,
+    `колонок ожидалось ${9 + NUTRIENT_KEYS.length + 1}, получено ${lines[0].split(',').length}`)
   assert(lines.length === meals.length + 1, `строк ожидалось ${meals.length + 1} (заголовок + записи), получено ${lines.length}`)
   assert(body.includes('\r\n') && !body.replace(/\r\n/g, '').includes('\n'), 'перевод строки должен быть CRLF, а не голым LF')
 
@@ -332,6 +337,43 @@ function csvNutrientCellsChecks(): void {
   group('buildDayCsv: колонка на каждый нутриент, пустая ячейка = нет данных, честный ноль = 0, неполные названы')
 }
 
+// ---- CSV: колонка на каждый NUTRIENT_KEYS, новый нутриент без данных -------
+
+function csvColumnsMatchNutrientKeysChecks(): void {
+  // Ровно одна колонка на ключ, без второго источника правды: список колонок
+  // строится из NUTRIENT_KEYS, а не хранится отдельно.
+  const suffixByKey: Record<string, string> = { 'г': 'g', 'мг': 'mg', 'мкг': 'ug' }
+  const expectedColumns = NUTRIENT_KEYS.map(key => `${key}_${suffixByKey[NUTRIENT_UNIT[key]]}`)
+  assert(CSV_NUTRIENT_COLUMNS.length === NUTRIENT_KEYS.length,
+    `колонок нутриентов должно быть ровно ${NUTRIENT_KEYS.length} (по числу ключей), получено ${CSV_NUTRIENT_COLUMNS.length}`)
+  assert(expectedColumns.every((c, i) => CSV_NUTRIENT_COLUMNS[i] === c),
+    `колонки должны идти в порядке и составе NUTRIENT_KEYS, получено ${CSV_NUTRIENT_COLUMNS.join(',')}`)
+
+  // Новый нутриент (холин), по которому нет ни одной позиции со знанием —
+  // «нет данных» в CSV, то есть пустая ячейка, а не 0.
+  const entry = mealEntry({
+    slot: 'breakfast',
+    title: 'Каша',
+    fraction: 1,
+    kbju: kbju(300, 10, 5, 40),
+    nutrients: totals({
+      fiber: { value: 8, known: 2, total: 2 }
+      // choline, epa, dha, каротиноиды и т.д. намеренно не заданы — known остаётся 0
+    })
+  })
+  const csv = buildDayCsv(dayPayload([entry], kbju(300, 10, 5, 40)))
+  const lines = csv.slice(1).split('\r\n')
+  const columns = lines[0].split(',')
+  const row = lines[1].split(',')
+  const cell = (name: string): string => row[columns.indexOf(name)]
+
+  for (const key of ['choline_mg', 'epa_g', 'dha_g', 'betaCarotene_ug', 'lycopene_ug']) {
+    assert(cell(key) === '', `новый нутриент без данных должен быть пустой ячейкой (нет данных), получено «${cell(key)}» для ${key}`)
+  }
+
+  group('buildDayCsv: колонки строго от NUTRIENT_KEYS, новый нутриент без данных — пустая ячейка')
+}
+
 // ---- буфер обмена: «нет данных» вместо нуля ---------------------------------
 
 function clipboardNutrientsChecks(): void {
@@ -386,14 +428,53 @@ function healthNutrientsChecks(): void {
   group('healthNutrients: известные (включая честный ноль) уходят в Health, «нет данных» не отправляется вовсе')
 }
 
+// ---- Health: нутриенты без типа в HealthKit не отправляются НИКОГДА, даже известные ----
+
+function healthNoTypeNutrientsChecks(): void {
+  // Фиксация решения, а не догадка: у HealthKit нет отдельного quantity-типа
+  // для этих одиннадцати нутриентов — они не должны попадать в Health, даже
+  // если для них есть полное знание (known === total).
+  const expectedNoType: string[] = [
+    'linoleic', 'ala', 'epa', 'dha', 'retinol', 'choline',
+    'betaCarotene', 'alphaCarotene', 'betaCryptoxanthin', 'lycopene', 'luteinZeaxanthin'
+  ]
+  assert(NO_HEALTHKIT_TYPE.length === expectedNoType.length
+    && expectedNoType.every(k => NO_HEALTHKIT_TYPE.includes(k as typeof NO_HEALTHKIT_TYPE[number])),
+    `набор нутриентов без типа в HealthKit разошёлся с ожидаемым, получено: ${NO_HEALTHKIT_TYPE.join(', ')}`)
+
+  const fullKnowledge = { value: 5, known: 1, total: 1 }
+  const payload = mealPayload({
+    fraction: 1,
+    nutrients: totals(Object.fromEntries(NUTRIENT_KEYS.map(k => [k, fullKnowledge])) as Partial<Record<keyof NutrientTotals, { value: number; known: number; total: number }>>)
+  })
+  const dict = healthNutrients(payload)
+
+  assert(NO_HEALTHKIT_TYPE.every(k => !(k in dict)),
+    `в Health не должны попадать нутриенты без HealthKit-типа, даже известные, просочились: ${NO_HEALTHKIT_TYPE.filter(k => k in dict).join(', ')}`)
+
+  // dict — строгое подмножество NUTRIENT_KEYS (никаких посторонних ключей)
+  const dictKeys = Object.keys(dict)
+  assert(dictKeys.every(k => (NUTRIENT_KEYS as readonly string[]).includes(k)),
+    `в словарь Health попал ключ вне NUTRIENT_KEYS: ${dictKeys.filter(k => !(NUTRIENT_KEYS as readonly string[]).includes(k)).join(', ')}`)
+
+  // а нутриенты С типом в HealthKit при полном знании обязаны отправиться
+  const someWithType = NUTRIENT_KEYS.filter(k => !NO_HEALTHKIT_TYPE.includes(k))
+  assert(someWithType.every(k => k in dict),
+    `нутриент с типом в HealthKit и полным знанием обязан уйти в словарь, отсутствуют: ${someWithType.filter(k => !(k in dict)).join(', ')}`)
+
+  group('healthNutrients: подмножество NUTRIENT_KEYS без ключей из NO_HEALTHKIT_TYPE, даже при полном знании')
+}
+
 async function main(): Promise<void> {
   console.log('Export — clipboard/CSV/Health каналы, форматирование, реестр')
   mealClipboardTextChecks()
   dayClipboardTextChecks()
   csvChecks()
   csvNutrientCellsChecks()
+  csvColumnsMatchNutrientKeysChecks()
   clipboardNutrientsChecks()
   healthNutrientsChecks()
+  healthNoTypeNutrientsChecks()
   await clipboardChecks()
   await csvChannelChecks()
   healthAvailabilityChecks()

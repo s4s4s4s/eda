@@ -14,10 +14,12 @@
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 
+import yaml from 'js-yaml'
+
 import { parseNorms } from '../src/core/data'
 import { normRatio, nutrientCoverage } from '../src/core/norms'
 import { emptyNutrientTotals } from '../src/core/nutrition'
-import { NUTRIENT_GROUP, NUTRIENT_KEYS } from '../src/core/types'
+import { NUTRIENT_GROUP, NUTRIENT_KEYS, NUTRIENT_UNIT } from '../src/core/types'
 import type { NutrientCoverage } from '../src/core/norms'
 import type { NutrientKey, NutrientNorms, NutrientTotals } from '../src/core/types'
 
@@ -78,26 +80,48 @@ function row(rows: NutrientCoverage[], key: NutrientKey): NutrientCoverage {
 
 // ---- состав data/norms.yaml -------------------------------------------------
 
-const WITHOUT_NORM: readonly NutrientKey[] = ['sugar', 'satFat', 'monoFat', 'polyFat', 'cholesterol']
+const WITHOUT_NORM: readonly NutrientKey[] = [
+  'sugar', 'satFat', 'monoFat', 'polyFat', 'cholesterol',
+  'epa', 'dha', 'retinol',
+  'betaCarotene', 'alphaCarotene', 'betaCryptoxanthin', 'lycopene', 'luteinZeaxanthin'
+]
 
 function fileContentChecks(): void {
   const norms = realNorms()
   const keys = Object.keys(norms)
 
-  assert(keys.length === 24, `в norms.yaml ожидалось 24 нормы, получено ${keys.length}: ${keys.join(', ')}`)
-  group('norms.yaml: нормы заданы ровно для 24 нутриентов')
+  assert(keys.length === 27, `в norms.yaml ожидалось 27 норм, получено ${keys.length}: ${keys.join(', ')}`)
+  group('norms.yaml: нормы заданы ровно для 27 нутриентов')
 
   for (const key of WITHOUT_NORM) {
     assert(norms[key] === undefined, `у «${key}» нормы быть не должно, а она есть`)
   }
-  assert(keys.length + WITHOUT_NORM.length === NUTRIENT_KEYS.length, 'сумма «с нормой» и «без нормы» должна давать все 29 ключей')
-  group('norms.yaml: у сахаров, насыщенных, моно-, полиненасыщенных и холестерина нормы нет — и это не ноль')
+  assert(keys.length + WITHOUT_NORM.length === NUTRIENT_KEYS.length,
+    `сумма «с нормой» и «без нормы» должна давать все ${NUTRIENT_KEYS.length} ключей`)
+  group('norms.yaml: у сахаров, насыщенных/моно-/полиненасыщенных жиров, холестерина, ЭПК, ДГК, ретинола и каротиноидов нормы нет — и это не ноль')
 
   const allowed = new Set<string>(NUTRIENT_KEYS)
   for (const key of keys) {
     assert(allowed.has(key), `ключ «${key}» отсутствует в NUTRIENT_KEYS — единица нормы не определена`)
   }
   group('norms.yaml: каждый ключ норм входит в NUTRIENT_KEYS (единица берётся из NUTRIENT_UNIT)')
+
+  // parseNorms уже сверяет unit с NUTRIENT_UNIT и падает при расхождении (см.
+  // brokenYamlChecks), но проверяет по одной записи за раз изнутри парсера —
+  // на выходе поле unit не хранится (оно контрольная сумма, а не данные).
+  // Здесь читаем реальный файл напрямую и сверяем unit КАЖДОЙ записи, чтобы
+  // тест ловил рассинхрон (в т.ч. промах в 1000 раз, как было с медью) сам,
+  // а не полагался на то, что через parseNorms когда-нибудь пройдёт плохое
+  // значение и он вспомнит проверить.
+  const file = path.join(findRepoRoot(process.cwd()), 'data', 'norms.yaml')
+  const rawFile = yaml.load(readFileSync(file, 'utf8')) as { norms: Record<string, { unit?: string }> }
+  for (const key of keys) {
+    const rawUnit = rawFile.norms[key]?.unit
+    const expected = NUTRIENT_UNIT[key as NutrientKey]
+    assert(rawUnit === expected,
+      `«${key}»: unit в norms.yaml (${String(rawUnit)}) должен совпадать с NUTRIENT_UNIT (${expected}) — иначе повторится история с медью`)
+  }
+  group('norms.yaml: unit каждой записи в файле совпадает с NUTRIENT_UNIT (контрольная сумма против промаха в 1000 раз)')
 
   const sodium = norms.sodium
   assert(sodium !== undefined, 'у натрия должна быть норма')
@@ -107,15 +131,36 @@ function fileContentChecks(): void {
   assert(typeof sodium!.note === 'string' && sodium!.note!.length > 0, 'натрий: должна быть оговорка про CDRR')
   group('norms.yaml: у натрия прочитан cdrr 2300, а ul отсутствует')
 
-  assert(norms.magnesium !== undefined && norms.magnesium!.ul === undefined, 'магний: предел 350 мг относится к добавкам и в данные попадать не должен')
+  /* Предел записывается ТОЛЬКО если источник относит его к суммарному
+     потреблению. Пределы, заданные на добавки, обогащённые продукты или на
+     отдельную форму нутриента, к съеденной еде неприменимы: сравнение с ними
+     покрасило бы полосу без основания. Правило проверяется списком, а не одним
+     магнием, — иначе следующий «дозаполненный для полноты» предел снова
+     пройдёт молча. */
+  const UL_NOT_APPLICABLE: { key: NutrientKey; why: string }[] = [
+    { key: 'magnesium', why: 'предел 350 мг относится к магнию из препаратов, а не из еды' },
+    { key: 'vitA', why: 'предел 3000 мкг относится только к готовому ретинолу, а не к сумме RAE' },
+    { key: 'vitE', why: 'предел 1000 мг относится к синтетическому альфа-токоферолу из добавок' },
+    { key: 'niacin', why: 'предел 35 мг относится к ниацину из добавок и обогащённых продуктов' },
+    { key: 'folate', why: 'предел 1000 мкг относится к синтетической фолиевой кислоте, а не к фолату еды' }
+  ]
+  for (const { key, why } of UL_NOT_APPLICABLE) {
+    const norm = norms[key]
+    assert(norm !== undefined, `${key}: норма должна быть в файле`)
+    assert(norm!.ul === undefined, `${key}: ${why} — в данные он попадать не должен`)
+    assert(typeof norm!.note === 'string' && norm!.note!.length > 0,
+      `${key}: раз предел не записан, причина обязана быть названа в note — иначе его вернут «для полноты»`)
+  }
+  assert(norms.vitA!.amount === 900 && norms.vitA!.basis === 'rda',
+    'витамин A: норма 900 мкг RAE (rda) должна остаться на месте')
   assert(norms.water !== undefined && norms.water!.comparable === false, 'вода: должна быть помечена как несравнимая')
   assert(norms.calcium !== undefined && norms.calcium!.comparable === true, 'кальций: comparable по умолчанию — true')
-  group('norms.yaml: comparable по умолчанию true, у воды — false; неприменимый предел магния не записан')
+  group('norms.yaml: comparable по умолчанию true, у воды — false; неприменимые к еде верхние пределы не записаны')
 
   assert(NUTRIENT_GROUP.vitC === 'витамины' && NUTRIENT_GROUP.calcium === 'минералы' && NUTRIENT_GROUP.water === 'прочее',
     'NUTRIENT_GROUP: витамин C — витамины, кальций — минералы, вода — прочее')
-  assert(NUTRIENT_KEYS.every(k => NUTRIENT_GROUP[k] !== undefined), 'NUTRIENT_GROUP должен покрывать все 29 ключей')
-  group('types: группа задана для всех 29 нутриентов')
+  assert(NUTRIENT_KEYS.every(k => NUTRIENT_GROUP[k] !== undefined), `NUTRIENT_GROUP должен покрывать все ${NUTRIENT_KEYS.length} ключей`)
+  group(`types: группа задана для всех ${NUTRIENT_KEYS.length} нутриентов`)
 }
 
 // ---- отсутствие данных не превращается в ноль -------------------------------
@@ -126,7 +171,7 @@ function noDataChecks(): void {
 
   assert(rows.length === NUTRIENT_KEYS.length, `ожидалось ${NUTRIENT_KEYS.length} строк, получено ${rows.length}`)
   assert(rows.every((r, i) => r.key === NUTRIENT_KEYS[i]), 'порядок строк должен совпадать с NUTRIENT_KEYS')
-  group('nutrientCoverage: все 29 ключей всегда на месте и в порядке NUTRIENT_KEYS')
+  group(`nutrientCoverage: все ${NUTRIENT_KEYS.length} ключей всегда на месте и в порядке NUTRIENT_KEYS`)
 
   const calcium = row(rows, 'calcium')
   assert(calcium.value === null, `known === 0 должен давать value null, получено ${String(calcium.value)}`)

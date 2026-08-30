@@ -184,7 +184,7 @@ function migrationV1ToV2Checks(): void {
   assert(migrated.settings.shortcutName === 'ЗаписатьЕду', 'настройки версии 1 сохраняются')
 
   assert(!!lunch.nutrients, 'после миграции у записи обязан появиться снапшот нутриентов')
-  assert(Object.keys(lunch.nutrients).length === 29, `в снапшоте ожидалось 29 ключей, получено ${Object.keys(lunch.nutrients).length}`)
+  assert(Object.keys(lunch.nutrients).length === NUTRIENT_KEYS.length, `в снапшоте ожидалось ${NUTRIENT_KEYS.length} ключей, получено ${Object.keys(lunch.nutrients).length}`)
   assert(NUTRIENT_KEYS.every(k => lunch.nutrients[k].known === 0 && lunch.nutrients[k].total === 0),
     'нутриенты записи версии 1 обязаны стать пустыми с нулевой известностью, а не нулевыми значениями')
 

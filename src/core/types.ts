@@ -36,10 +36,13 @@ export interface Kbju {
 
 export const NUTRIENT_KEYS = [
   'fiber', 'sugar', 'satFat', 'monoFat', 'polyFat', 'cholesterol',
+  'linoleic', 'ala', 'epa', 'dha',
   'calcium', 'iron', 'magnesium', 'phosphorus', 'potassium', 'sodium',
   'zinc', 'copper', 'manganese', 'selenium',
-  'vitA', 'vitC', 'vitD', 'vitE', 'vitK',
+  'vitA', 'retinol', 'vitC', 'vitD', 'vitE', 'vitK',
   'thiamin', 'riboflavin', 'niacin', 'vitB6', 'folate', 'vitB12', 'pantothenic',
+  'choline',
+  'betaCarotene', 'alphaCarotene', 'betaCryptoxanthin', 'lycopene', 'luteinZeaxanthin',
   'water'
 ] as const
 
@@ -61,6 +64,10 @@ export const NUTRIENT_UNIT: Record<NutrientKey, NutrientUnit> = {
   monoFat: 'г',
   polyFat: 'г',
   cholesterol: 'мг',
+  linoleic: 'г',
+  ala: 'г',
+  epa: 'г',
+  dha: 'г',
   calcium: 'мг',
   iron: 'мг',
   magnesium: 'мг',
@@ -72,6 +79,7 @@ export const NUTRIENT_UNIT: Record<NutrientKey, NutrientUnit> = {
   manganese: 'мг',
   selenium: 'мкг',
   vitA: 'мкг',
+  retinol: 'мкг',
   vitC: 'мг',
   vitD: 'мкг',
   vitE: 'мг',
@@ -83,6 +91,12 @@ export const NUTRIENT_UNIT: Record<NutrientKey, NutrientUnit> = {
   folate: 'мкг',
   vitB12: 'мкг',
   pantothenic: 'мг',
+  choline: 'мг',
+  betaCarotene: 'мкг',
+  alphaCarotene: 'мкг',
+  betaCryptoxanthin: 'мкг',
+  lycopene: 'мкг',
+  luteinZeaxanthin: 'мкг',
   water: 'г'
 }
 
@@ -94,6 +108,10 @@ export const NUTRIENT_TITLE: Record<NutrientKey, string> = {
   monoFat: 'Мононенасыщенные жиры',
   polyFat: 'Полиненасыщенные жиры',
   cholesterol: 'Холестерин',
+  linoleic: 'Линолевая кислота (омега-6)',
+  ala: 'Альфа-линоленовая кислота (омега-3)',
+  epa: 'ЭПК (омега-3)',
+  dha: 'ДГК (омега-3)',
   calcium: 'Кальций',
   iron: 'Железо',
   magnesium: 'Магний',
@@ -105,6 +123,7 @@ export const NUTRIENT_TITLE: Record<NutrientKey, string> = {
   manganese: 'Марганец',
   selenium: 'Селен',
   vitA: 'Витамин A',
+  retinol: 'Ретинол (готовый витамин A)',
   vitC: 'Витамин C',
   vitD: 'Витамин D',
   vitE: 'Витамин E',
@@ -116,20 +135,46 @@ export const NUTRIENT_TITLE: Record<NutrientKey, string> = {
   folate: 'Фолаты',
   vitB12: 'Витамин B12',
   pantothenic: 'Пантотеновая кислота (B5)',
+  choline: 'Холин',
+  betaCarotene: 'Бета-каротин',
+  alphaCarotene: 'Альфа-каротин',
+  betaCryptoxanthin: 'Бета-криптоксантин',
+  lycopene: 'Ликопин',
+  luteinZeaxanthin: 'Лютеин и зеаксантин',
   water: 'Вода'
 }
 
 /** Раздел, в который нутриент попадает при показе. Группировка смысловая, а не
-    оформительская: витамины и минералы человек читает разными списками. */
-export type NutrientGroup = 'витамины' | 'минералы' | 'прочее'
+    оформительская: витамины и минералы человек читает разными списками.
+
+    Жиры собраны в один раздел целиком: разводить «полиненасыщенные жиры» и
+    линолевую кислоту по разным спискам бессмысленно — вторая является частью
+    первых. Холестерин формально не жирная кислота, но читается вместе с ними,
+    поэтому раздел называется «жиры», а не «жирные кислоты». */
+export type NutrientGroup = 'витамины' | 'минералы' | 'жиры' | 'каротиноиды' | 'прочее'
+
+/** Порядок разделов на экране. Живёт рядом с самой группировкой, а не копиями в
+    каждом экране: копии молча теряют новый раздел, и нутриент исчезает из
+    показа, не оставив следа. */
+export const NUTRIENT_GROUP_ORDER: readonly NutrientGroup[] = [
+  'витамины',
+  'минералы',
+  'жиры',
+  'каротиноиды',
+  'прочее'
+]
 
 export const NUTRIENT_GROUP: Record<NutrientKey, NutrientGroup> = {
   fiber: 'прочее',
   sugar: 'прочее',
-  satFat: 'прочее',
-  monoFat: 'прочее',
-  polyFat: 'прочее',
-  cholesterol: 'прочее',
+  satFat: 'жиры',
+  monoFat: 'жиры',
+  polyFat: 'жиры',
+  cholesterol: 'жиры',
+  linoleic: 'жиры',
+  ala: 'жиры',
+  epa: 'жиры',
+  dha: 'жиры',
   calcium: 'минералы',
   iron: 'минералы',
   magnesium: 'минералы',
@@ -141,6 +186,7 @@ export const NUTRIENT_GROUP: Record<NutrientKey, NutrientGroup> = {
   manganese: 'минералы',
   selenium: 'минералы',
   vitA: 'витамины',
+  retinol: 'витамины',
   vitC: 'витамины',
   vitD: 'витамины',
   vitE: 'витамины',
@@ -152,6 +198,12 @@ export const NUTRIENT_GROUP: Record<NutrientKey, NutrientGroup> = {
   folate: 'витамины',
   vitB12: 'витамины',
   pantothenic: 'витамины',
+  choline: 'прочее',
+  betaCarotene: 'каротиноиды',
+  alphaCarotene: 'каротиноиды',
+  betaCryptoxanthin: 'каротиноиды',
+  lycopene: 'каротиноиды',
+  luteinZeaxanthin: 'каротиноиды',
   water: 'прочее'
 }
 
@@ -180,7 +232,7 @@ export interface NutrientNorm {
 }
 
 /** Карта норм ЧАСТИЧНАЯ НАМЕРЕННО: отсутствие ключа означает «нормы нет», а не
-    «норма ноль». Пять ключей нормы не имеют — см. шапку data/norms.yaml. */
+    «норма ноль». Часть ключей нормы не имеет вовсе — см. шапку data/norms.yaml. */
 export type NutrientNorms = Partial<Record<NutrientKey, NutrientNorm>>
 
 /** Сумма одного нутриента по набору позиций — ЧИСЛО ВМЕСТЕ С ЕГО ПОЛНОТОЙ.
@@ -198,8 +250,8 @@ export interface NutrientTotal {
   total: number
 }
 
-/** Сумма по приёму или дню: все 29 ключей присутствуют всегда — отсутствие
-    данных выражается через known === 0, а не через отсутствие ключа. */
+/** Сумма по приёму или дню: все ключи NUTRIENT_KEYS присутствуют всегда —
+    отсутствие данных выражается через known === 0, а не через отсутствие ключа. */
 export type NutrientTotals = Record<NutrientKey, NutrientTotal>
 
 export interface Product {

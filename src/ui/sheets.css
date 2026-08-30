@@ -228,6 +228,16 @@
   line-height: var(--lh-text);
 }
 
+/* Оговорка к живому каналу: тише кнопки, но читаемо — это не сноска мелким
+   шрифтом внизу договора, а часть того, что человек решает перед нажатием. */
+.export-channel__caveat {
+  display: block;
+  margin-top: var(--space-2);
+  font-size: var(--text-13);
+  line-height: var(--lh-text);
+  color: var(--fg-dim);
+}
+
 .export-channel__status {
   font-size: var(--text-15);
 }

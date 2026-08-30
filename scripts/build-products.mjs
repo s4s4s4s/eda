@@ -39,6 +39,10 @@ const NUTRIENT_IDS = { kcal: '1008', protein: '1003', fat: '1004', carbs: '1005'
 // Отсутствие строки в food_nutrient.csv для конкретного продукта — это НЕ ноль,
 // поле в таком случае просто не попадает в micro100g (см. сборку entry.micro100g).
 // id и unit_name проверены по nutrient.csv, таблица сверки — в отчёте прогона.
+// Порядок ключей здесь = порядок NUTRIENT_KEYS в src/core/types.ts и порядок
+// строк micro100g в data/products.yaml. Держится вручную и намеренно: файл
+// справочника читают глазами, сверяя число с источником, и группы (жиры рядом
+// с жирами, витамины с витаминами) читаются, а хвост из дописанных ключей — нет.
 const MICRO_NUTRIENT_IDS = {
   fiber: '1079',
   sugar: '2000',
@@ -46,6 +50,18 @@ const MICRO_NUTRIENT_IDS = {
   monoFat: '1292',
   polyFat: '1293',
   cholesterol: '1253',
+  // ПНЖК: 1269/1270 — суммарные 18:2 и 18:3 (все изомеры), а не изомер-
+  // специфичные 1316 (18:2 n-6 c,c, линолевая) и 1404 (18:3 n-3, ALA).
+  // Изомер-специфичные id заполнены у малой доли продуктов проекта, суммарные —
+  // почти у всех; точные числа печатает каждый прогон в разделе отчёта «Сверка
+  // приближения по ПНЖК» (см. APPROXIMATION_CHECK_IDS ниже), проверять надо там,
+  // а не верить этой строке. Практически весь пищевой 18:2 — линолевая кислота,
+  // а 18:3 — ALA, так что подстановка суммы вместо изомера — честное
+  // приближение, а не ноль.
+  linoleic: '1269',
+  ala: '1270',
+  epa: '1278',
+  dha: '1272',
   calcium: '1087',
   iron: '1089',
   magnesium: '1090',
@@ -57,6 +73,7 @@ const MICRO_NUTRIENT_IDS = {
   manganese: '1101',
   selenium: '1103',
   vitA: '1106',
+  retinol: '1105',
   vitC: '1162',
   vitD: '1114',
   vitE: '1109',
@@ -65,10 +82,29 @@ const MICRO_NUTRIENT_IDS = {
   riboflavin: '1166',
   niacin: '1167',
   vitB6: '1175',
-  folate: '1177',
+  // Folate, DFE (не "Folate, total" 1177): норма DRI по фолатам задана в DFE
+  // (dietary folate equivalents), и складывать с ней "Folate, total" было бы
+  // сравнением разного. Смена источника числа осознанная.
+  folate: '1190',
   vitB12: '1178',
   pantothenic: '1170',
+  choline: '1180',
+  betaCarotene: '1107',
+  alphaCarotene: '1108',
+  betaCryptoxanthin: '1120',
+  lycopene: '1122',
+  luteinZeaxanthin: '1123',
   water: '1051',
+};
+
+// Эти id в данные НЕ идут: они собираются только ради отчёта прогона, чтобы
+// приближение выше («суммарные 18:2 и 18:3 вместо изомер-специфичных») не
+// оставалось словом автора. Каждый прогон печатает заполненность обоих
+// вариантов по продуктам проекта — цифру, на которой держится решение, можно
+// перепроверить в любой момент, а не поверить комментарию.
+const APPROXIMATION_CHECK_IDS = {
+  linoleic: { used: '1269', usedName: 'PUFA 18:2', exact: '1316', exactName: 'PUFA 18:2 n-6 c,c' },
+  ala: { used: '1270', usedName: 'PUFA 18:3', exact: '1404', exactName: 'PUFA 18:3 n-3 c,c,c (ALA)' },
 };
 
 // ---------------------------------------------------------------------------
@@ -372,6 +408,7 @@ async function main() {
   const wantedNutrientIds = new Set([
     ...Object.values(NUTRIENT_IDS),
     ...Object.values(MICRO_NUTRIENT_IDS),
+    ...Object.values(APPROXIMATION_CHECK_IDS).map((c) => c.exact),
   ]);
   const nutrients = {}; // fdc_id -> { nutrient_id -> amount }
   await streamCsv(foodNutrientCsv, (row) => {
@@ -489,6 +526,25 @@ async function main() {
   console.log('\nПродукты, у которых нет больше половины набора микронутриентов:');
   if (sparseProducts.length === 0) console.log('  нет таких');
   else for (const s of sparseProducts) console.log(`  - ${s}`);
+
+  // Сверка приближения по ПНЖК: заполненность взятого id против изомер-
+  // специфичного. Печатается всегда — решение «берём суммарный» держится
+  // на этих числах, и они должны быть видны, а не жить в комментарии.
+  console.log('\nСверка приближения по ПНЖК (заполненность по продуктам проекта):');
+  for (const [field, c] of Object.entries(APPROXIMATION_CHECK_IDS)) {
+    let haveUsed = 0;
+    let haveExact = 0;
+    for (const p of PRODUCTS) {
+      const n = nutrients[String(p.fdcId)];
+      if (n?.[c.used] !== undefined) haveUsed++;
+      if (n?.[c.exact] !== undefined) haveExact++;
+    }
+    const pct = (n) => Math.round((n / productCount) * 100);
+    console.log(
+      `  ${field}: взят id ${c.used} "${c.usedName}" — ${haveUsed}/${productCount} (${pct(haveUsed)}%); ` +
+      `изомер-специфичный id ${c.exact} "${c.exactName}" — ${haveExact}/${productCount} (${pct(haveExact)}%)`
+    );
+  }
 
   const microUnitsLines = Object.entries(MICRO_NUTRIENT_IDS).map(
     ([field, id]) => `#   ${field}: ${nutrientUnits[id]} (id ${id}, "${nutrientNames[id]}")`,

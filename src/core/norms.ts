@@ -42,7 +42,7 @@ export function normRatio(norm: NutrientNorm, value: number): number | null {
   return value / norm.amount
 }
 
-/** Покрытие по всем 29 нутриентам, в порядке NUTRIENT_KEYS. Ключ присутствует
+/** Покрытие по всем нутриентам NUTRIENT_KEYS, в их порядке. Ключ присутствует
     всегда — отсутствие данных выражается состоянием, а не пропуском строки. */
 export function nutrientCoverage(totals: NutrientTotals, norms: NutrientNorms): NutrientCoverage[] {
   return NUTRIENT_KEYS.map(key => {

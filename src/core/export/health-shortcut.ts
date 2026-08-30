@@ -69,8 +69,26 @@ function eatenNutrientTotals(payload: ExportPayload): NutrientTotals {
     : payload.nutrients
 }
 
+/** Нутриенты, для которых у HealthKit нет собственного quantity-типа записи
+    питания — это факт справочника HKQuantityTypeIdentifier, а не наша нехватка
+    данных. HealthKit знает суммарные dietaryFatPolyunsaturated/Monounsaturated/
+    Saturated (уже отправляются), но не различает внутри них отдельные жирные
+    кислоты — линолевую, альфа-линоленовую, ЭПК, ДГК. У холина, ретинола
+    отдельно от витамина A и у всех пяти каротиноидов (бета-каротин,
+    альфа-каротин, бета-криптоксантин, ликопин, лютеин+зеаксантин) тоже нет
+    отдельного идентификатора. Правило жёсткое: нет поля в HealthKit — мы его
+    НЕ отправляем и НЕ подменяем похожим полем (например, ретинол под видом
+    dietaryVitaminA исказил бы уже отправляемый vitA). */
+export const NO_HEALTHKIT_TYPE: readonly NutrientKey[] = [
+  'linoleic', 'ala', 'epa', 'dha', 'retinol', 'choline',
+  'betaCarotene', 'alphaCarotene', 'betaCryptoxanthin', 'lycopene', 'luteinZeaxanthin'
+]
+
+const NO_HEALTHKIT_TYPE_SET = new Set<NutrientKey>(NO_HEALTHKIT_TYPE)
+
 /** Нутриенты для словаря «Команд». В словарь попадают ТОЛЬКО те, о которых
-    известно хоть что-то (known > 0). Нутриент без данных не кладётся вовсе:
+    известно хоть что-то (known > 0) И для которых у HealthKit есть
+    quantity-тип (см. NO_HEALTHKIT_TYPE). Нутриент без данных не кладётся вовсе:
     пусть Health лучше не знает, чем знает неверное — ноль там неотличим от
     измеренного нуля и молча испортит статистику за месяцы. Частичное знание
     (known < total) отправляется: это занижение, но оно посчитано по реальным
@@ -79,6 +97,7 @@ export function healthNutrients(payload: ExportPayload): Partial<Record<Nutrient
   const totals = eatenNutrientTotals(payload)
   const dict: Partial<Record<NutrientKey, number>> = {}
   for (const key of NUTRIENT_KEYS) {
+    if (NO_HEALTHKIT_TYPE_SET.has(key)) continue
     const total = totals[key]
     if (total.known === 0) continue
     dict[key] = round3(total.value)
@@ -147,7 +166,12 @@ export function healthShortcutChannel(getShortcutName: () => string, appUrl: str
       const url = buildShortcutUrl(getShortcutName().trim(), payload, new Date(), appUrl)
       const loc = (globalThis as unknown as { location?: { href: string } }).location
       if (loc) loc.href = url
-      return { ok: 'pending', note: 'Открываю Команды. Запись подтвердится, когда команда вернёт вас сюда' }
+      return {
+        ok: 'pending',
+        note: 'Открываю Команды. Запись подтвердится, когда команда вернёт вас сюда. '
+          + 'В Apple Health не уедут холин, каротиноиды, ретинол отдельно от витамина A, '
+          + 'линолевая, альфа-линоленовая, ЭПК и ДГК — у Health нет для них поля'
+      }
     }
   }
 }

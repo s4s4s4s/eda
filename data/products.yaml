@@ -18,6 +18,10 @@
 #   monoFat: G (id 1292, "Fatty acids, total monounsaturated")
 #   polyFat: G (id 1293, "Fatty acids, total polyunsaturated")
 #   cholesterol: MG (id 1253, "Cholesterol")
+#   linoleic: G (id 1269, "PUFA 18:2")
+#   ala: G (id 1270, "PUFA 18:3")
+#   epa: G (id 1278, "PUFA 20:5 n-3 (EPA)")
+#   dha: G (id 1272, "PUFA 22:6 n-3 (DHA)")
 #   calcium: MG (id 1087, "Calcium, Ca")
 #   iron: MG (id 1089, "Iron, Fe")
 #   magnesium: MG (id 1090, "Magnesium, Mg")
@@ -29,6 +33,7 @@
 #   manganese: MG (id 1101, "Manganese, Mn")
 #   selenium: UG (id 1103, "Selenium, Se")
 #   vitA: UG (id 1106, "Vitamin A, RAE")
+#   retinol: UG (id 1105, "Retinol")
 #   vitC: MG (id 1162, "Vitamin C, total ascorbic acid")
 #   vitD: UG (id 1114, "Vitamin D (D2 + D3)")
 #   vitE: MG (id 1109, "Vitamin E (alpha-tocopherol)")
@@ -37,9 +42,15 @@
 #   riboflavin: MG (id 1166, "Riboflavin")
 #   niacin: MG (id 1167, "Niacin")
 #   vitB6: MG (id 1175, "Vitamin B-6")
-#   folate: UG (id 1177, "Folate, total")
+#   folate: UG (id 1190, "Folate, DFE")
 #   vitB12: UG (id 1178, "Vitamin B-12")
 #   pantothenic: MG (id 1170, "Pantothenic acid")
+#   choline: MG (id 1180, "Choline, total")
+#   betaCarotene: UG (id 1107, "Carotene, beta")
+#   alphaCarotene: UG (id 1108, "Carotene, alpha")
+#   betaCryptoxanthin: UG (id 1120, "Cryptoxanthin, beta")
+#   lycopene: UG (id 1122, "Lycopene")
+#   luteinZeaxanthin: UG (id 1123, "Lutein + zeaxanthin")
 #   water: G (id 1051, "Water")
 products:
   salmon:
@@ -60,6 +71,10 @@ products:
       monoFat: 3.77
       polyFat: 3.886
       cholesterol: 55
+      linoleic: 0.9
+      ala: 0.167
+      epa: 0.862
+      dha: 1.104
       calcium: 9
       iron: 0.34
       magnesium: 27
@@ -71,6 +86,7 @@ products:
       manganese: 0.011
       selenium: 24
       vitA: 58
+      retinol: 58
       vitC: 3.9
       vitD: 11
       vitE: 3.55
@@ -82,6 +98,12 @@ products:
       folate: 26
       vitB12: 3.23
       pantothenic: 1.547
+      choline: 78.5
+      betaCarotene: 0
+      alphaCarotene: 0
+      betaCryptoxanthin: 0
+      lycopene: 0
+      luteinZeaxanthin: 0
       water: 64.89
   trout:
     name: форель радужная
@@ -101,6 +123,10 @@ products:
       monoFat: 1.979
       polyFat: 1.507
       cholesterol: 59
+      linoleic: 0.492
+      ala: 0.067
+      epa: 0.217
+      dha: 0.516
       calcium: 25
       iron: 0.31
       magnesium: 25
@@ -112,6 +138,7 @@ products:
       manganese: 0.011
       selenium: 23.6
       vitA: 84
+      retinol: 84
       vitC: 2.9
       vitD: 15.9
       vitE: 2.34
@@ -123,6 +150,12 @@ products:
       folate: 11
       vitB12: 4.3
       pantothenic: 1.667
+      choline: 65
+      betaCarotene: 0
+      alphaCarotene: 0
+      betaCryptoxanthin: 0
+      lycopene: 0
+      luteinZeaxanthin: 0
       water: 73.8
   mackerel:
     name: скумбрия атлантическая
@@ -142,6 +175,10 @@ products:
       monoFat: 5.456
       polyFat: 3.35
       cholesterol: 70
+      linoleic: 0.219
+      ala: 0.159
+      epa: 0.898
+      dha: 1.401
       calcium: 12
       iron: 1.63
       magnesium: 76
@@ -153,6 +190,7 @@ products:
       manganese: 0.015
       selenium: 44.1
       vitA: 50
+      retinol: 50
       vitC: 0.4
       vitD: 16.1
       vitE: 1.52
@@ -164,6 +202,12 @@ products:
       folate: 1
       vitB12: 8.71
       pantothenic: 0.856
+      choline: 65
+      betaCarotene: 0
+      alphaCarotene: 0
+      betaCryptoxanthin: 0
+      lycopene: 0
+      luteinZeaxanthin: 0
       water: 63.55
   turkey-thigh:
     name: филе бедра индейки (без кожи)
@@ -183,6 +227,10 @@ products:
       monoFat: 0.756
       polyFat: 0.613
       cholesterol: 79
+      linoleic: 0.524
+      ala: 0.028
+      epa: 0.001
+      dha: 0.002
       calcium: 11
       iron: 1.04
       magnesium: 25
@@ -194,6 +242,7 @@ products:
       manganese: 0.014
       selenium: 22.4
       vitA: 13
+      retinol: 13
       vitC: 0
       vitD: 0.3
       vitE: 0.12
@@ -204,6 +253,12 @@ products:
       vitB6: 0.44
       vitB12: 2.05
       pantothenic: 0.935
+      choline: 69.6
+      betaCarotene: 0
+      alphaCarotene: 0
+      betaCryptoxanthin: 0
+      lycopene: 0
+      luteinZeaxanthin: 0
       water: 76.01
   chicken-breast:
     name: куриная грудка (без кожи)
@@ -223,6 +278,10 @@ products:
       monoFat: 0.689
       polyFat: 0.424
       cholesterol: 73
+      linoleic: 0.319
+      ala: 0.013
+      epa: 0.003
+      dha: 0.004
       calcium: 5
       iron: 0.37
       magnesium: 28
@@ -234,6 +293,7 @@ products:
       manganese: 0.011
       selenium: 22.8
       vitA: 9
+      retinol: 9
       vitC: 0
       vitD: 0
       vitE: 0.56
@@ -245,6 +305,12 @@ products:
       folate: 9
       vitB12: 0.21
       pantothenic: 1.495
+      choline: 82.1
+      betaCarotene: 0
+      alphaCarotene: 0
+      betaCryptoxanthin: 0
+      lycopene: 0
+      luteinZeaxanthin: 0
       water: 73.9
   chicken-hearts:
     name: куриные сердечки
@@ -263,6 +329,10 @@ products:
       monoFat: 2.37
       polyFat: 2.71
       cholesterol: 136
+      linoleic: 1.91
+      ala: 0.07
+      epa: 0
+      dha: 0
       calcium: 12
       iron: 5.96
       magnesium: 15
@@ -274,6 +344,7 @@ products:
       manganese: 0.089
       selenium: 4.3
       vitA: 9
+      retinol: 9
       vitC: 3.2
       thiamin: 0.152
       riboflavin: 0.728
@@ -301,6 +372,10 @@ products:
       monoFat: 1.756
       polyFat: 0.181
       cholesterol: 65
+      linoleic: 0.145
+      ala: 0.014
+      epa: 0
+      dha: 0
       calcium: 16
       iron: 1.93
       magnesium: 23
@@ -312,6 +387,7 @@ products:
       manganese: 0.014
       selenium: 25.2
       vitA: 0
+      retinol: 0
       vitC: 0
       vitE: 0.28
       vitK: 1.1
@@ -322,6 +398,12 @@ products:
       folate: 13
       vitB12: 1.88
       pantothenic: 0.654
+      choline: 92.3
+      betaCarotene: 0
+      alphaCarotene: 0
+      betaCryptoxanthin: 0
+      lycopene: 0
+      luteinZeaxanthin: 0
       water: 73.32
   egg:
     name: яйцо куриное целое
@@ -341,6 +423,10 @@ products:
       monoFat: 3.658
       polyFat: 1.911
       cholesterol: 372
+      linoleic: 1.555
+      ala: 0.048
+      epa: 0
+      dha: 0.058
       calcium: 56
       iron: 1.75
       magnesium: 12
@@ -352,6 +438,7 @@ products:
       manganese: 0.028
       selenium: 30.7
       vitA: 160
+      retinol: 160
       vitC: 0
       vitD: 2
       vitE: 1.05
@@ -363,6 +450,12 @@ products:
       folate: 47
       vitB12: 0.89
       pantothenic: 1.533
+      choline: 293.8
+      betaCarotene: 0
+      alphaCarotene: 0
+      betaCryptoxanthin: 9
+      lycopene: 0
+      luteinZeaxanthin: 503
       water: 76.15
     pieceG: 50
     pieceSource: fdc
@@ -384,6 +477,10 @@ products:
       monoFat: 0.812
       polyFat: 0.195
       cholesterol: 10
+      linoleic: 0.12
+      ala: 0.075
+      epa: 0
+      dha: 0
       calcium: 113
       iron: 0.03
       magnesium: 10
@@ -395,6 +492,7 @@ products:
       manganese: 0.004
       selenium: 3.7
       vitA: 46
+      retinol: 45
       vitC: 0
       vitD: 1.3
       vitE: 0.07
@@ -406,6 +504,12 @@ products:
       folate: 5
       vitB12: 0.45
       pantothenic: 0.373
+      choline: 14.3
+      betaCarotene: 7
+      alphaCarotene: 0
+      betaCryptoxanthin: 0
+      lycopene: 0
+      luteinZeaxanthin: 0
       water: 88.13
   tvorog:
     name: творог
@@ -427,6 +531,10 @@ products:
       monoFat: 0.516
       polyFat: 0.083
       cholesterol: 12
+      linoleic: 0.07
+      ala: 0.007
+      epa: 0.001
+      dha: 0
       calcium: 111
       iron: 0.13
       magnesium: 9
@@ -438,6 +546,7 @@ products:
       manganese: 0.015
       selenium: 11.9
       vitA: 68
+      retinol: 68
       vitC: 0
       vitD: 0
       vitE: 0.08
@@ -449,6 +558,12 @@ products:
       folate: 8
       vitB12: 0.47
       pantothenic: 0.524
+      choline: 16.3
+      betaCarotene: 6
+      alphaCarotene: 0
+      betaCryptoxanthin: 0
+      lycopene: 0
+      luteinZeaxanthin: 0
       water: 81.24
   greek-yogurt:
     name: греческий йогурт натуральный
@@ -469,6 +584,10 @@ products:
       monoFat: 0.486
       polyFat: 0.076
       cholesterol: 10
+      linoleic: 0.065
+      ala: 0.007
+      epa: 0
+      dha: 0
       calcium: 115
       iron: 0.04
       magnesium: 11
@@ -480,6 +599,7 @@ products:
       manganese: 0.007
       selenium: 12.4
       vitA: 90
+      retinol: 90
       vitC: 0.8
       vitD: 0
       vitE: 0.04
@@ -491,6 +611,12 @@ products:
       folate: 12
       vitB12: 0.52
       pantothenic: 0.47
+      choline: 15.2
+      betaCarotene: 6
+      alphaCarotene: 0
+      betaCryptoxanthin: 0
+      lycopene: 0
+      luteinZeaxanthin: 1
       water: 83.56
   oats:
     name: овсяные хлопья
@@ -510,6 +636,10 @@ products:
       monoFat: 1.98
       polyFat: 2.3
       cholesterol: 0
+      linoleic: 2.2
+      ala: 0.1
+      epa: 0
+      dha: 0
       calcium: 52
       iron: 4.25
       magnesium: 138
@@ -521,6 +651,7 @@ products:
       manganese: 3.63
       selenium: 28.9
       vitA: 0
+      retinol: 0
       vitC: 0
       vitD: 0
       vitE: 0.42
@@ -532,6 +663,12 @@ products:
       folate: 32
       vitB12: 0
       pantothenic: 1.12
+      choline: 40.4
+      betaCarotene: 0
+      alphaCarotene: 0
+      betaCryptoxanthin: 0
+      lycopene: 0
+      luteinZeaxanthin: 180
       water: 10.84
   quinoa:
     name: киноа
@@ -550,6 +687,10 @@ products:
       monoFat: 1.613
       polyFat: 3.292
       cholesterol: 0
+      linoleic: 2.977
+      ala: 0.26
+      epa: 0
+      dha: 0.047
       calcium: 47
       iron: 4.57
       magnesium: 197
@@ -561,6 +702,7 @@ products:
       manganese: 2.033
       selenium: 8.5
       vitA: 1
+      retinol: 0
       vitD: 0
       vitE: 2.44
       vitK: 0
@@ -571,6 +713,12 @@ products:
       folate: 184
       vitB12: 0
       pantothenic: 0.772
+      choline: 70.2
+      betaCarotene: 8
+      alphaCarotene: 0
+      betaCryptoxanthin: 1
+      lycopene: 0
+      luteinZeaxanthin: 163
       water: 13.28
   bulgur:
     name: булгур
@@ -590,6 +738,10 @@ products:
       monoFat: 0.173
       polyFat: 0.541
       cholesterol: 0
+      linoleic: 0.518
+      ala: 0.023
+      epa: 0
+      dha: 0
       calcium: 35
       iron: 2.46
       magnesium: 164
@@ -601,6 +753,7 @@ products:
       manganese: 3.048
       selenium: 2.3
       vitA: 0
+      retinol: 0
       vitC: 0
       vitD: 0
       vitE: 0.06
@@ -612,6 +765,12 @@ products:
       folate: 27
       vitB12: 0
       pantothenic: 1.045
+      choline: 28.1
+      betaCarotene: 5
+      alphaCarotene: 0
+      betaCryptoxanthin: 0
+      lycopene: 0
+      luteinZeaxanthin: 220
       water: 9
   buckwheat:
     name: гречневая крупа
@@ -630,6 +789,10 @@ products:
       monoFat: 0.828
       polyFat: 0.828
       cholesterol: 0
+      linoleic: 0.766
+      ala: 0.062
+      epa: 0
+      dha: 0
       calcium: 17
       iron: 2.47
       magnesium: 221
@@ -641,6 +804,7 @@ products:
       manganese: 1.618
       selenium: 8.4
       vitA: 0
+      retinol: 0
       vitC: 0
       vitD: 0
       thiamin: 0.224
@@ -650,6 +814,7 @@ products:
       folate: 42
       vitB12: 0
       pantothenic: 1.233
+      choline: 54.2
       water: 8.41
   pearl-barley:
     name: перловая крупа
@@ -669,6 +834,10 @@ products:
       monoFat: 0.149
       polyFat: 0.56
       cholesterol: 0
+      linoleic: 0.505
+      ala: 0.055
+      epa: 0
+      dha: 0
       calcium: 29
       iron: 2.5
       magnesium: 79
@@ -680,6 +849,7 @@ products:
       manganese: 1.322
       selenium: 37.7
       vitA: 1
+      retinol: 0
       vitC: 0
       vitD: 0
       vitE: 0.02
@@ -691,6 +861,12 @@ products:
       folate: 23
       vitB12: 0
       pantothenic: 0.282
+      choline: 37.8
+      betaCarotene: 13
+      alphaCarotene: 0
+      betaCryptoxanthin: 0
+      lycopene: 0
+      luteinZeaxanthin: 160
       water: 10.09
   lentils:
     name: чечевица
@@ -710,6 +886,10 @@ products:
       monoFat: 0.193
       polyFat: 0.526
       cholesterol: 0
+      linoleic: 0.414
+      ala: 0.112
+      epa: 0
+      dha: 0
       calcium: 35
       iron: 6.51
       magnesium: 47
@@ -721,6 +901,7 @@ products:
       manganese: 1.393
       selenium: 0.1
       vitA: 2
+      retinol: 0
       vitC: 4.5
       vitD: 0
       vitE: 0.49
@@ -732,6 +913,12 @@ products:
       folate: 479
       vitB12: 0
       pantothenic: 2.14
+      choline: 96.4
+      betaCarotene: 23
+      alphaCarotene: 0
+      betaCryptoxanthin: 0
+      lycopene: 0
+      luteinZeaxanthin: 0
       water: 8.26
   chickpeas:
     name: нут
@@ -751,6 +938,10 @@ products:
       monoFat: 1.377
       polyFat: 2.731
       cholesterol: 0
+      linoleic: 2.629
+      ala: 0.102
+      epa: 0
+      dha: 0
       calcium: 57
       iron: 4.31
       magnesium: 79
@@ -762,6 +953,7 @@ products:
       manganese: 4.15
       selenium: 0
       vitA: 3
+      retinol: 0
       vitC: 4
       vitD: 0
       vitE: 0.82
@@ -773,6 +965,12 @@ products:
       folate: 557
       vitB12: 0
       pantothenic: 1.588
+      choline: 99.3
+      betaCarotene: 40
+      alphaCarotene: 0
+      betaCryptoxanthin: 0
+      lycopene: 0
+      luteinZeaxanthin: 0
       water: 7.68
   white-beans:
     name: фасоль белая
@@ -792,6 +990,10 @@ products:
       monoFat: 0.074
       polyFat: 0.364
       cholesterol: 0
+      linoleic: 0.198
+      ala: 0.166
+      epa: 0
+      dha: 0
       calcium: 240
       iron: 10.44
       magnesium: 190
@@ -803,6 +1005,7 @@ products:
       manganese: 1.796
       selenium: 12.8
       vitA: 0
+      retinol: 0
       vitC: 0
       vitD: 0
       vitE: 0.21
@@ -814,6 +1017,12 @@ products:
       folate: 388
       vitB12: 0
       pantothenic: 0.732
+      choline: 66.2
+      betaCarotene: 0
+      alphaCarotene: 0
+      betaCryptoxanthin: 0
+      lycopene: 0
+      luteinZeaxanthin: 0
       water: 11.32
   red-beans:
     name: фасоль красная
@@ -833,6 +1042,10 @@ products:
       monoFat: 0.064
       polyFat: 0.457
       cholesterol: 0
+      linoleic: 0.178
+      ala: 0.279
+      epa: 0
+      dha: 0
       calcium: 143
       iron: 8.2
       magnesium: 140
@@ -844,6 +1057,7 @@ products:
       manganese: 1.021
       selenium: 3.2
       vitA: 0
+      retinol: 0
       vitC: 4.5
       vitD: 0
       vitE: 0.22
@@ -855,6 +1069,11 @@ products:
       folate: 394
       vitB12: 0
       pantothenic: 0.78
+      betaCarotene: 0
+      alphaCarotene: 0
+      betaCryptoxanthin: 0
+      lycopene: 0
+      luteinZeaxanthin: 0
       water: 11.75
   cashew:
     name: кешью обжаренный
@@ -874,6 +1093,10 @@ products:
       monoFat: 27.317
       polyFat: 7.836
       cholesterol: 0
+      linoleic: 7.66
+      ala: 0.161
+      epa: 0
+      dha: 0
       calcium: 45
       iron: 6
       magnesium: 260
@@ -885,6 +1108,7 @@ products:
       manganese: 0.826
       selenium: 11.7
       vitA: 0
+      retinol: 0
       vitC: 0
       vitD: 0
       vitE: 0.92
@@ -896,6 +1120,12 @@ products:
       folate: 69
       vitB12: 0
       pantothenic: 1.217
+      choline: 61
+      betaCarotene: 0
+      alphaCarotene: 0
+      betaCryptoxanthin: 0
+      lycopene: 0
+      luteinZeaxanthin: 23
       water: 1.7
   hazelnut:
     name: фундук обжаренный
@@ -915,6 +1145,10 @@ products:
       monoFat: 46.608
       polyFat: 8.463
       cholesterol: 0
+      linoleic: 8.403
+      ala: 0.06
+      epa: 0
+      dha: 0
       calcium: 123
       iron: 4.38
       magnesium: 173
@@ -926,6 +1160,7 @@ products:
       manganese: 5.55
       selenium: 4.1
       vitA: 3
+      retinol: 0
       vitC: 3.8
       vitD: 0
       vitE: 15.28
@@ -936,6 +1171,8 @@ products:
       folate: 88
       vitB12: 0
       pantothenic: 0.923
+      betaCarotene: 36
+      alphaCarotene: 1
       water: 2.52
   almond:
     name: миндаль обжаренный
@@ -955,6 +1192,10 @@ products:
       monoFat: 33.076
       polyFat: 12.955
       cholesterol: 0
+      linoleic: 12.945
+      ala: 0.01
+      epa: 0
+      dha: 0
       calcium: 268
       iron: 3.73
       magnesium: 279
@@ -966,6 +1207,7 @@ products:
       manganese: 2.232
       selenium: 2
       vitA: 0
+      retinol: 0
       vitC: 0
       vitD: 0
       vitE: 23.9
@@ -977,6 +1219,12 @@ products:
       folate: 55
       vitB12: 0
       pantothenic: 0.321
+      choline: 52.1
+      betaCarotene: 1
+      alphaCarotene: 0
+      betaCryptoxanthin: 0
+      lycopene: 0
+      luteinZeaxanthin: 1
       water: 2.41
   brazil-nut:
     name: бразильский орех
@@ -997,6 +1245,10 @@ products:
       monoFat: 23.879
       polyFat: 24.399
       cholesterol: 0
+      linoleic: 24.363
+      ala: 0.036
+      epa: 0
+      dha: 0
       calcium: 160
       iron: 2.43
       magnesium: 376
@@ -1008,6 +1260,7 @@ products:
       manganese: 1.223
       selenium: 1917
       vitA: 0
+      retinol: 0
       vitC: 0.7
       vitD: 0
       vitE: 5.65
@@ -1019,6 +1272,12 @@ products:
       folate: 22
       vitB12: 0
       pantothenic: 0.184
+      choline: 28.8
+      betaCarotene: 0
+      alphaCarotene: 0
+      betaCryptoxanthin: 0
+      lycopene: 0
+      luteinZeaxanthin: 0
       water: 3.42
     pieceG: 5
     pieceSource: fdc
@@ -1040,6 +1299,10 @@ products:
       monoFat: 7.527
       polyFat: 28.73
       cholesterol: 0
+      linoleic: 5.903
+      ala: 22.813
+      epa: 0
+      dha: 0
       calcium: 255
       iron: 5.73
       magnesium: 392
@@ -1051,6 +1314,7 @@ products:
       manganese: 2.482
       selenium: 25.4
       vitA: 0
+      retinol: 0
       vitC: 0.6
       vitD: 0
       vitE: 0.31
@@ -1062,6 +1326,12 @@ products:
       folate: 87
       vitB12: 0
       pantothenic: 0.985
+      choline: 78.7
+      betaCarotene: 0
+      alphaCarotene: 0
+      betaCryptoxanthin: 0
+      lycopene: 0
+      luteinZeaxanthin: 651
       water: 6.96
     tbspG: 7
     tbspSource: fdc
@@ -1082,6 +1352,8 @@ products:
       monoFat: 2.309
       polyFat: 23.665
       cholesterol: 0
+      linoleic: 5.835
+      ala: 17.83
       calcium: 631
       iron: 7.72
       magnesium: 335
@@ -1097,7 +1369,6 @@ products:
       thiamin: 0.62
       riboflavin: 0.17
       niacin: 8.83
-      folate: 49
       vitB12: 0
       water: 5.8
     tbspG: 12
@@ -1120,6 +1391,10 @@ products:
       monoFat: 72.961
       polyFat: 10.523
       cholesterol: 0
+      linoleic: 9.762
+      ala: 0.761
+      epa: 0
+      dha: 0
       calcium: 1
       iron: 0.56
       magnesium: 0
@@ -1131,6 +1406,7 @@ products:
       manganese: 0
       selenium: 0
       vitA: 0
+      retinol: 0
       vitC: 0
       vitD: 0
       vitE: 14.35
@@ -1142,6 +1418,12 @@ products:
       folate: 0
       vitB12: 0
       pantothenic: 0
+      choline: 0.3
+      betaCarotene: 0
+      alphaCarotene: 0
+      betaCryptoxanthin: 0
+      lycopene: 0
+      luteinZeaxanthin: 0
       water: 0
     tbspG: 13.5
     tbspSource: fdc
@@ -1163,6 +1445,10 @@ products:
       monoFat: 0.031
       polyFat: 0.112
       cholesterol: 0
+      linoleic: 0.049
+      ala: 0.063
+      epa: 0
+      dha: 0
       calcium: 47
       iron: 0.73
       magnesium: 21
@@ -1174,6 +1460,7 @@ products:
       manganese: 0.21
       selenium: 2.5
       vitA: 31
+      retinol: 0
       vitC: 89.2
       vitD: 0
       vitE: 0.78
@@ -1185,6 +1472,12 @@ products:
       folate: 63
       vitB12: 0
       pantothenic: 0.573
+      choline: 18.7
+      betaCarotene: 361
+      alphaCarotene: 25
+      betaCryptoxanthin: 1
+      lycopene: 0
+      luteinZeaxanthin: 1403
       water: 89.3
   bell-pepper:
     name: перец сладкий
@@ -1204,6 +1497,10 @@ products:
       monoFat: 0.007
       polyFat: 0.156
       cholesterol: 0
+      linoleic: 0.1
+      ala: 0.056
+      epa: 0
+      dha: 0
       calcium: 7
       iron: 0.43
       magnesium: 12
@@ -1215,6 +1512,7 @@ products:
       manganese: 0.112
       selenium: 0.1
       vitA: 157
+      retinol: 0
       vitC: 127.7
       vitD: 0
       vitE: 1.58
@@ -1226,6 +1524,12 @@ products:
       folate: 46
       vitB12: 0
       pantothenic: 0.317
+      choline: 5.6
+      betaCarotene: 1624
+      alphaCarotene: 20
+      betaCryptoxanthin: 490
+      lycopene: 0
+      luteinZeaxanthin: 51
       water: 92.21
   zucchini:
     name: цукини (кабачок)
@@ -1245,6 +1549,10 @@ products:
       monoFat: 0.011
       polyFat: 0.091
       cholesterol: 0
+      linoleic: 0.03
+      ala: 0.061
+      epa: 0
+      dha: 0
       calcium: 16
       iron: 0.37
       magnesium: 18
@@ -1256,6 +1564,7 @@ products:
       manganese: 0.177
       selenium: 0.2
       vitA: 10
+      retinol: 0
       vitC: 17.9
       vitD: 0
       vitE: 0.12
@@ -1267,6 +1576,12 @@ products:
       folate: 24
       vitB12: 0
       pantothenic: 0.204
+      choline: 9.5
+      betaCarotene: 120
+      alphaCarotene: 0
+      betaCryptoxanthin: 0
+      lycopene: 0
+      luteinZeaxanthin: 2125
       water: 94.79
   carrot:
     name: морковь
@@ -1286,6 +1601,10 @@ products:
       monoFat: 0.012
       polyFat: 0.102
       cholesterol: 0
+      linoleic: 0.1
+      ala: 0.002
+      epa: 0
+      dha: 0
       calcium: 33
       iron: 0.3
       magnesium: 12
@@ -1297,6 +1616,7 @@ products:
       manganese: 0.143
       selenium: 0.1
       vitA: 835
+      retinol: 0
       vitC: 5.9
       vitD: 0
       vitE: 0.66
@@ -1308,6 +1628,12 @@ products:
       folate: 19
       vitB12: 0
       pantothenic: 0.273
+      choline: 8.8
+      betaCarotene: 8285
+      alphaCarotene: 3477
+      betaCryptoxanthin: 0
+      lycopene: 1
+      luteinZeaxanthin: 256
       water: 88.29
   spinach:
     name: шпинат
@@ -1327,6 +1653,10 @@ products:
       monoFat: 0.01
       polyFat: 0.165
       cholesterol: 0
+      linoleic: 0.026
+      ala: 0.138
+      epa: 0
+      dha: 0
       calcium: 99
       iron: 2.71
       magnesium: 79
@@ -1338,6 +1668,7 @@ products:
       manganese: 0.897
       selenium: 1
       vitA: 469
+      retinol: 0
       vitC: 28.1
       vitD: 0
       vitE: 2.03
@@ -1349,6 +1680,12 @@ products:
       folate: 194
       vitB12: 0
       pantothenic: 0.065
+      choline: 19.3
+      betaCarotene: 5626
+      alphaCarotene: 0
+      betaCryptoxanthin: 0
+      lycopene: 0
+      luteinZeaxanthin: 12198
       water: 91.4
   cabbage:
     name: капуста белокочанная
@@ -1368,6 +1705,10 @@ products:
       monoFat: 0.017
       polyFat: 0.017
       cholesterol: 0
+      linoleic: 0.017
+      ala: 0
+      epa: 0
+      dha: 0
       calcium: 40
       iron: 0.47
       magnesium: 12
@@ -1379,6 +1720,7 @@ products:
       manganese: 0.16
       selenium: 0.3
       vitA: 5
+      retinol: 0
       vitC: 36.6
       vitD: 0
       vitE: 0.15
@@ -1390,6 +1732,12 @@ products:
       folate: 43
       vitB12: 0
       pantothenic: 0.212
+      choline: 10.7
+      betaCarotene: 42
+      alphaCarotene: 33
+      betaCryptoxanthin: 0
+      lycopene: 0
+      luteinZeaxanthin: 30
       water: 92.18
   kale:
     name: кале
@@ -1409,6 +1757,10 @@ products:
       monoFat: 0.104
       polyFat: 0.673
       cholesterol: 0
+      linoleic: 0.291
+      ala: 0.378
+      epa: 0
+      dha: 0
       calcium: 254
       iron: 1.6
       magnesium: 33
@@ -1420,6 +1772,7 @@ products:
       manganese: 0.92
       selenium: 0.9
       vitA: 241
+      retinol: 0
       vitC: 93.4
       vitD: 0
       vitE: 0.66
@@ -1431,6 +1784,12 @@ products:
       folate: 62
       vitB12: 0
       pantothenic: 0.37
+      choline: 0.5
+      betaCarotene: 2873
+      alphaCarotene: 0
+      betaCryptoxanthin: 27
+      lycopene: 0
+      luteinZeaxanthin: 6261
       water: 89.63
   chard:
     name: мангольд
@@ -1450,6 +1809,10 @@ products:
       monoFat: 0.04
       polyFat: 0.07
       cholesterol: 0
+      linoleic: 0.063
+      ala: 0.007
+      epa: 0
+      dha: 0
       calcium: 51
       iron: 1.8
       magnesium: 81
@@ -1461,6 +1824,7 @@ products:
       manganese: 0.366
       selenium: 0.9
       vitA: 306
+      retinol: 0
       vitC: 30
       vitD: 0
       vitE: 1.89
@@ -1472,6 +1836,12 @@ products:
       folate: 14
       vitB12: 0
       pantothenic: 0.172
+      choline: 18
+      betaCarotene: 3647
+      alphaCarotene: 45
+      betaCryptoxanthin: 0
+      lycopene: 0
+      luteinZeaxanthin: 11000
       water: 92.66
   sweet-potato:
     name: батат
@@ -1491,6 +1861,10 @@ products:
       monoFat: 0.001
       polyFat: 0.014
       cholesterol: 0
+      linoleic: 0.013
+      ala: 0.001
+      epa: 0
+      dha: 0
       calcium: 30
       iron: 0.61
       magnesium: 25
@@ -1502,6 +1876,7 @@ products:
       manganese: 0.258
       selenium: 0.6
       vitA: 709
+      retinol: 0
       vitC: 2.4
       vitD: 0
       vitE: 0.26
@@ -1513,6 +1888,12 @@ products:
       folate: 11
       vitB12: 0
       pantothenic: 0.8
+      choline: 12.3
+      betaCarotene: 8509
+      alphaCarotene: 7
+      betaCryptoxanthin: 0
+      lycopene: 0
+      luteinZeaxanthin: 0
       water: 77.28
   pumpkin:
     name: тыква
@@ -1532,6 +1913,10 @@ products:
       monoFat: 0.013
       polyFat: 0.005
       cholesterol: 0
+      linoleic: 0.002
+      ala: 0.003
+      epa: 0
+      dha: 0
       calcium: 21
       iron: 0.8
       magnesium: 12
@@ -1543,6 +1928,7 @@ products:
       manganese: 0.125
       selenium: 0.3
       vitA: 426
+      retinol: 0
       vitC: 9
       vitD: 0
       vitE: 1.06
@@ -1554,6 +1940,12 @@ products:
       folate: 16
       vitB12: 0
       pantothenic: 0.298
+      choline: 8.2
+      betaCarotene: 3100
+      alphaCarotene: 4016
+      betaCryptoxanthin: 0
+      lycopene: 0
+      luteinZeaxanthin: 1500
       water: 91.6
   eggplant:
     name: баклажан
@@ -1573,6 +1965,10 @@ products:
       monoFat: 0.016
       polyFat: 0.076
       cholesterol: 0
+      linoleic: 0.063
+      ala: 0.013
+      epa: 0
+      dha: 0
       calcium: 9
       iron: 0.23
       magnesium: 14
@@ -1584,6 +1980,7 @@ products:
       manganese: 0.232
       selenium: 0.3
       vitA: 1
+      retinol: 0
       vitC: 2.2
       vitD: 0
       vitE: 0.3
@@ -1595,6 +1992,12 @@ products:
       folate: 22
       vitB12: 0
       pantothenic: 0.281
+      choline: 6.9
+      betaCarotene: 14
+      alphaCarotene: 0
+      betaCryptoxanthin: 0
+      lycopene: 0
+      luteinZeaxanthin: 36
       water: 92.3
   onion:
     name: лук репчатый
@@ -1614,6 +2017,10 @@ products:
       monoFat: 0.013
       polyFat: 0.017
       cholesterol: 0
+      linoleic: 0.013
+      ala: 0.004
+      epa: 0
+      dha: 0
       calcium: 23
       iron: 0.21
       magnesium: 10
@@ -1625,6 +2032,7 @@ products:
       manganese: 0.129
       selenium: 0.5
       vitA: 0
+      retinol: 0
       vitC: 7.4
       vitD: 0
       vitE: 0.02
@@ -1636,6 +2044,12 @@ products:
       folate: 19
       vitB12: 0
       pantothenic: 0.123
+      choline: 6.1
+      betaCarotene: 1
+      alphaCarotene: 0
+      betaCryptoxanthin: 0
+      lycopene: 0
+      luteinZeaxanthin: 4
       water: 89.11
   garlic:
     name: чеснок
@@ -1655,6 +2069,10 @@ products:
       monoFat: 0.011
       polyFat: 0.249
       cholesterol: 0
+      linoleic: 0.229
+      ala: 0.02
+      epa: 0
+      dha: 0
       calcium: 181
       iron: 1.7
       magnesium: 25
@@ -1666,6 +2084,7 @@ products:
       manganese: 1.672
       selenium: 14.2
       vitA: 0
+      retinol: 0
       vitC: 31.2
       vitD: 0
       vitE: 0.08
@@ -1677,6 +2096,12 @@ products:
       folate: 3
       vitB12: 0
       pantothenic: 0.596
+      choline: 23.2
+      betaCarotene: 5
+      alphaCarotene: 0
+      betaCryptoxanthin: 0
+      lycopene: 0
+      luteinZeaxanthin: 16
       water: 58.58
   tomato:
     name: томаты
@@ -1696,6 +2121,10 @@ products:
       monoFat: 0.031
       polyFat: 0.083
       cholesterol: 0
+      linoleic: 0.08
+      ala: 0.003
+      epa: 0
+      dha: 0
       calcium: 10
       iron: 0.27
       magnesium: 11
@@ -1707,6 +2136,7 @@ products:
       manganese: 0.114
       selenium: 0
       vitA: 42
+      retinol: 0
       vitC: 13.7
       vitD: 0
       vitE: 0.54
@@ -1718,6 +2148,12 @@ products:
       folate: 15
       vitB12: 0
       pantothenic: 0.089
+      choline: 6.7
+      betaCarotene: 449
+      alphaCarotene: 101
+      betaCryptoxanthin: 0
+      lycopene: 2573
+      luteinZeaxanthin: 123
       water: 94.52
   shiitake:
     name: шиитаке
@@ -1769,6 +2205,10 @@ products:
       monoFat: 0.031
       polyFat: 0.123
       cholesterol: 0
+      linoleic: 0.123
+      ala: 0
+      epa: 0
+      dha: 0
       calcium: 3
       iron: 1.33
       magnesium: 18
@@ -1780,6 +2220,7 @@ products:
       manganese: 0.113
       selenium: 2.6
       vitA: 2
+      retinol: 0
       vitC: 0
       vitD: 0.7
       vitE: 0
@@ -1791,6 +2232,12 @@ products:
       folate: 38
       vitB12: 0
       pantothenic: 1.294
+      choline: 48.7
+      betaCarotene: 29
+      alphaCarotene: 0
+      betaCryptoxanthin: 0
+      lycopene: 0
+      luteinZeaxanthin: 0
       water: 89.18
   peach:
     name: персик
@@ -1810,6 +2257,10 @@ products:
       monoFat: 0.067
       polyFat: 0.086
       cholesterol: 0
+      linoleic: 0.084
+      ala: 0.002
+      epa: 0
+      dha: 0
       calcium: 6
       iron: 0.25
       magnesium: 9
@@ -1821,6 +2272,7 @@ products:
       manganese: 0.061
       selenium: 0.1
       vitA: 16
+      retinol: 0
       vitC: 6.6
       vitD: 0
       vitE: 0.73
@@ -1832,6 +2284,12 @@ products:
       folate: 4
       vitB12: 0
       pantothenic: 0.153
+      choline: 6.1
+      betaCarotene: 162
+      alphaCarotene: 0
+      betaCryptoxanthin: 67
+      lycopene: 0
+      luteinZeaxanthin: 91
       water: 88.87
   apple:
     name: яблоко
@@ -1851,6 +2309,10 @@ products:
       monoFat: 0.007
       polyFat: 0.051
       cholesterol: 0
+      linoleic: 0.043
+      ala: 0.009
+      epa: 0
+      dha: 0
       calcium: 6
       iron: 0.12
       magnesium: 5
@@ -1862,6 +2324,7 @@ products:
       manganese: 0.035
       selenium: 0
       vitA: 3
+      retinol: 0
       vitC: 4.6
       vitD: 0
       vitE: 0.18
@@ -1873,6 +2336,12 @@ products:
       folate: 3
       vitB12: 0
       pantothenic: 0.061
+      choline: 3.4
+      betaCarotene: 27
+      alphaCarotene: 0
+      betaCryptoxanthin: 11
+      lycopene: 0
+      luteinZeaxanthin: 29
       water: 85.56
   banana:
     name: банан
@@ -1892,6 +2361,10 @@ products:
       monoFat: 0.032
       polyFat: 0.073
       cholesterol: 0
+      linoleic: 0.046
+      ala: 0.027
+      epa: 0
+      dha: 0
       calcium: 5
       iron: 0.26
       magnesium: 27
@@ -1903,6 +2376,7 @@ products:
       manganese: 0.27
       selenium: 1
       vitA: 3
+      retinol: 0
       vitC: 8.7
       vitD: 0
       vitE: 0.1
@@ -1914,6 +2388,12 @@ products:
       folate: 20
       vitB12: 0
       pantothenic: 0.334
+      choline: 9.8
+      betaCarotene: 26
+      alphaCarotene: 25
+      betaCryptoxanthin: 0
+      lycopene: 0
+      luteinZeaxanthin: 22
       water: 74.91
   pear:
     name: груша
@@ -1933,6 +2413,10 @@ products:
       monoFat: 0.084
       polyFat: 0.094
       cholesterol: 0
+      linoleic: 0.093
+      ala: 0.001
+      epa: 0
+      dha: 0
       calcium: 9
       iron: 0.18
       magnesium: 7
@@ -1944,6 +2428,7 @@ products:
       manganese: 0.048
       selenium: 0.1
       vitA: 1
+      retinol: 0
       vitC: 4.3
       vitD: 0
       vitE: 0.12
@@ -1955,6 +2440,12 @@ products:
       folate: 7
       vitB12: 0
       pantothenic: 0.049
+      choline: 5.1
+      betaCarotene: 14
+      alphaCarotene: 1
+      betaCryptoxanthin: 2
+      lycopene: 0
+      luteinZeaxanthin: 44
       water: 83.96
   raisins:
     name: изюм
@@ -1974,6 +2465,10 @@ products:
       monoFat: 0.024
       polyFat: 0.053
       cholesterol: 0
+      linoleic: 0.039
+      ala: 0.014
+      epa: 0
+      dha: 0
       calcium: 62
       iron: 1.79
       magnesium: 36
@@ -1985,6 +2480,7 @@ products:
       manganese: 0.281
       selenium: 0.6
       vitA: 0
+      retinol: 0
       vitC: 2.3
       vitD: 0
       vitE: 0.12
@@ -1995,6 +2491,12 @@ products:
       vitB6: 0.174
       folate: 5
       vitB12: 0
+      choline: 11.1
+      betaCarotene: 0
+      alphaCarotene: 0
+      betaCryptoxanthin: 0
+      lycopene: 0
+      luteinZeaxanthin: 0
       water: 15.46
   dates:
     name: финики
@@ -2014,6 +2516,10 @@ products:
       monoFat: 0.036
       polyFat: 0.019
       cholesterol: 0
+      linoleic: 0.016
+      ala: 0.003
+      epa: 0
+      dha: 0
       calcium: 39
       iron: 1.02
       magnesium: 43
@@ -2025,6 +2531,7 @@ products:
       manganese: 0.262
       selenium: 3
       vitA: 0
+      retinol: 0
       vitC: 0.4
       vitD: 0
       vitE: 0.05
@@ -2036,6 +2543,12 @@ products:
       folate: 19
       vitB12: 0
       pantothenic: 0.589
+      choline: 6.3
+      betaCarotene: 6
+      alphaCarotene: 0
+      betaCryptoxanthin: 0
+      lycopene: 0
+      luteinZeaxanthin: 75
       water: 20.53
   pomegranate:
     name: гранат (зёрна)
@@ -2055,6 +2568,10 @@ products:
       monoFat: 0.093
       polyFat: 0.079
       cholesterol: 0
+      linoleic: 0.079
+      ala: 0
+      epa: 0
+      dha: 0
       calcium: 10
       iron: 0.3
       magnesium: 12
@@ -2066,6 +2583,7 @@ products:
       manganese: 0.119
       selenium: 0.5
       vitA: 0
+      retinol: 0
       vitC: 10.2
       vitD: 0
       vitE: 0.6
@@ -2077,6 +2595,12 @@ products:
       folate: 38
       vitB12: 0
       pantothenic: 0.377
+      choline: 7.6
+      betaCarotene: 0
+      alphaCarotene: 0
+      betaCryptoxanthin: 0
+      lycopene: 0
+      luteinZeaxanthin: 0
       water: 77.93
   blueberry:
     name: черника
@@ -2096,6 +2620,10 @@ products:
       monoFat: 0.047
       polyFat: 0.146
       cholesterol: 0
+      linoleic: 0.088
+      ala: 0.058
+      epa: 0
+      dha: 0
       calcium: 6
       iron: 0.28
       magnesium: 6
@@ -2107,6 +2635,7 @@ products:
       manganese: 0.336
       selenium: 0.1
       vitA: 3
+      retinol: 0
       vitC: 9.7
       vitD: 0
       vitE: 0.57
@@ -2118,6 +2647,12 @@ products:
       folate: 6
       vitB12: 0
       pantothenic: 0.124
+      choline: 6
+      betaCarotene: 32
+      alphaCarotene: 0
+      betaCryptoxanthin: 0
+      lycopene: 0
+      luteinZeaxanthin: 80
       water: 84.21
   lemon:
     name: лимон
@@ -2137,6 +2672,10 @@ products:
       monoFat: 0.011
       polyFat: 0.089
       cholesterol: 0
+      linoleic: 0.063
+      ala: 0.026
+      epa: 0
+      dha: 0
       calcium: 26
       iron: 0.6
       magnesium: 8
@@ -2148,6 +2687,7 @@ products:
       manganese: 0.03
       selenium: 0.4
       vitA: 1
+      retinol: 0
       vitC: 53
       vitD: 0
       vitE: 0.15
@@ -2159,6 +2699,12 @@ products:
       folate: 11
       vitB12: 0
       pantothenic: 0.19
+      choline: 5.1
+      betaCarotene: 3
+      alphaCarotene: 1
+      betaCryptoxanthin: 20
+      lycopene: 0
+      luteinZeaxanthin: 11
       water: 88.98
   cocoa:
     name: какао-порошок несладкий
@@ -2177,6 +2723,10 @@ products:
       monoFat: 4.57
       polyFat: 0.44
       cholesterol: 0
+      linoleic: 0.44
+      ala: 0
+      epa: 0
+      dha: 0
       calcium: 128
       iron: 13.86
       magnesium: 499
@@ -2188,6 +2738,7 @@ products:
       manganese: 3.837
       selenium: 14.3
       vitA: 0
+      retinol: 0
       vitC: 0
       vitD: 0
       vitE: 0.1
@@ -2199,6 +2750,12 @@ products:
       folate: 32
       vitB12: 0
       pantothenic: 0.254
+      choline: 12
+      betaCarotene: 0
+      alphaCarotene: 0
+      betaCryptoxanthin: 0
+      lycopene: 0
+      luteinZeaxanthin: 38
       water: 3
   cinnamon:
     name: корица молотая
@@ -2217,6 +2774,10 @@ products:
       monoFat: 0.246
       polyFat: 0.068
       cholesterol: 0
+      linoleic: 0.044
+      ala: 0.011
+      epa: 0
+      dha: 0
       calcium: 1002
       iron: 8.32
       magnesium: 60
@@ -2228,6 +2789,7 @@ products:
       manganese: 17.466
       selenium: 3.1
       vitA: 15
+      retinol: 0
       vitC: 3.8
       vitD: 0
       vitE: 2.32
@@ -2239,4 +2801,10 @@ products:
       folate: 6
       vitB12: 0
       pantothenic: 0.358
+      choline: 11
+      betaCarotene: 112
+      alphaCarotene: 1
+      betaCryptoxanthin: 129
+      lycopene: 15
+      luteinZeaxanthin: 222
       water: 10.58

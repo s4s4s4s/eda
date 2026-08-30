@@ -75,7 +75,7 @@ export function nutrientLine(key: NutrientKey, total: NutrientTotal): string {
   return `${title}: ${amount}`
 }
 
-/** Блок нутриентов для буфера обмена — все 29 ключей в порядке NUTRIENT_KEYS.
+/** Блок нутриентов для буфера обмена — все ключи NUTRIENT_KEYS в их порядке.
     Скрывать неизвестные нельзя: пропавшая строка читается как «этого в еде нет»,
     а на деле это «мы не знаем». */
 export function nutrientLines(totals: NutrientTotals): string[] {
@@ -162,7 +162,7 @@ function csvNutrientCell(total: NutrientTotal): string {
 
 /** CSV за день: заголовок + строка на каждую запись дневника (в порядке SLOTS),
     десятичные через точку, CRLF, BOM для Excel/кириллицы. Колонки: макросы
-    (1 знак), затем по колонке на каждый из 29 нутриентов и перечень неполных. */
+    (1 знак), затем по колонке на каждый ключ NUTRIENT_KEYS и перечень неполных. */
 export function buildDayCsv(payload: DayPayload): string {
   const rows: string[] = []
   for (const slot of SLOTS) {
