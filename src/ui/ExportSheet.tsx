@@ -8,7 +8,6 @@ import { NUTRIENT_KEYS, NUTRIENT_TITLE, NUTRIENT_UNIT, SLOT_TITLE } from '../cor
 import { buildDayCsv, CSV_FALLBACK_NOTE, dayClipboardText, eatenNutrientsOf, eatenOf, formatDateShort, formatNutrientAmount, mealClipboardText, NO_DATA_TEXT, readCallback, sendViaChannel } from '../core/export/index.ts'
 import type { ExportChannel, ExportPayload } from '../core/export/index.ts'
 import type { Kbju, NutrientTotals } from '../core/types.ts'
-import './export.css'
 
 interface ExportSheetProps {
   payload: ExportPayload

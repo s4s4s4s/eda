@@ -52,6 +52,7 @@ export default function SettingsSheet({ settings, cycleDays, log, onChange, onCl
     <div className="sheet">
       <div className="sheet__backdrop" onClick={onClose} />
       <div className="sheet__panel">
+        <span className="sheet__grabber" aria-hidden="true" />
         <header className="sheet__header">
           <h1 className="sheet__title">Настройки</h1>
           <button type="button" className="sheet__close" onClick={onClose} aria-label="Закрыть">✕</button>

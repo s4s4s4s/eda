@@ -1,0 +1,323 @@
+/* Токены, сброс и примитивы. Источник правды по значениям — DESIGN.md;
+   числа живут только здесь, по месту цвета и размеры не задаются.
+   Обычный CSS, без препроцессоров и веб-шрифтов: приложение работает офлайн. */
+
+:root {
+  color-scheme: dark;
+
+  /* — цвет: тёмная тема по умолчанию, экран открывают вечером у стола — */
+  --bg: #12100E;
+  --surface: #1B1815;
+  --surface-2: #232019;
+  --fg: #F6F2E9;
+  --fg-dim: #ACA396;
+  --fg-faint: #7C7367;
+  --accent: #E8B45C;
+  --accent-fg: #12100E;
+  --ok: #86C98F;
+  --danger: #E8806E;
+  --border: rgba(246, 242, 233, .10);
+
+  /* Подложка шторки и тень поднятого слоя — тоже цвет, тоже через токен. */
+  --scrim: rgba(0, 0, 0, .55);
+  --shadow-lift: 0 -8px 28px rgba(0, 0, 0, .45);
+
+  /* — типографика — */
+  --font-sys: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --text-44: 44px;
+  --text-32: 32px;
+  --text-24: 24px;
+  --text-20: 20px;
+  --text-17: 17px;
+  --text-15: 15px;
+  --text-13: 13px;
+  --lh-tight: 1.15;
+  --lh-text: 1.4;
+
+  /* — форма — */
+  --r-8: 8px;
+  --r-14: 14px;
+  --r-22: 22px;
+
+  /* — плотность: шаг сетки 4px, отступ экрана 16px — */
+  --grid: 4px;
+  --space-1: var(--grid);
+  --space-2: calc(var(--grid) * 2);
+  --space-3: calc(var(--grid) * 3);
+  --space-4: calc(var(--grid) * 4);
+  --space-5: calc(var(--grid) * 5);
+  --space-6: calc(var(--grid) * 6);
+  --space-8: calc(var(--grid) * 8);
+  --screen-pad: 16px;
+
+  /* — движение — */
+  --dur-tap: 180ms;
+  --dur-sheet: 280ms;
+  --ease: cubic-bezier(.2, .9, .3, 1);
+
+  /* — зона нажатия — */
+  --tap-min: 44px;
+}
+
+/* Светлая тема — первого класса, а не «инверсия». color-scheme переключается
+   вместе с ней: иначе системные контролы (input[type=date], скроллбары)
+   остаются тёмными посреди светлого экрана. */
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+
+    --bg: #FBF7F0;
+    --surface: #FFFFFF;
+    --surface-2: #F3EDE2;
+    --fg: #1A1712;
+    --fg-dim: #6B6357;
+    --fg-faint: #948B7D;
+    --accent: #B47A18;
+    --accent-fg: #FFFFFF;
+    --ok: #2F7D45;
+    --danger: #B4402C;
+    --border: rgba(26, 23, 18, .10);
+
+    --scrim: rgba(26, 23, 18, .35);
+    --shadow-lift: 0 -8px 28px rgba(26, 23, 18, .16);
+  }
+}
+
+/* ---- сброс и база ---- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+body {
+  font-family: var(--font-sys);
+  font-size: var(--text-17);
+  line-height: var(--lh-text);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#root {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-weight: 700;
+  line-height: var(--lh-tight);
+}
+
+/* ---- утилиты ---- */
+
+/* Все меняющиеся числа: без этого счётчик калорий дёргается по горизонтали
+   при каждом обновлении, и это видно. */
+.nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- отклик на палец ---- */
+
+/* Нажимаемое отвечает уменьшением, а не подсветкой: тише и заметнее рукой. */
+button,
+.btn,
+.chip--tap,
+[role='button'] {
+  transition: transform var(--dur-tap) var(--ease),
+    background-color var(--dur-tap) var(--ease),
+    border-color var(--dur-tap) var(--ease),
+    color var(--dur-tap) var(--ease);
+}
+
+button:active,
+.btn:active,
+.chip--tap:active,
+[role='button']:active {
+  transform: scale(.97);
+}
+
+button:disabled:active,
+.btn:disabled:active {
+  transform: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---- примитив: кнопка ---- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: var(--tap-min);
+  min-width: var(--tap-min);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid transparent;
+  border-radius: var(--r-8);
+  background: none;
+  font-size: var(--text-17);
+  font-weight: 600;
+  line-height: var(--lh-tight);
+  text-align: center;
+}
+
+.btn:disabled {
+  opacity: .6;
+  cursor: not-allowed;
+}
+
+.btn--primary {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-color: var(--accent);
+}
+
+.btn--secondary {
+  background: var(--surface);
+  color: var(--fg);
+  border-color: var(--border);
+}
+
+.btn--ghost {
+  background: transparent;
+  color: var(--fg-dim);
+  border-color: var(--border);
+}
+
+/* Необратимое действие (стереть дневник) выглядит необратимым. */
+.btn--danger {
+  background: var(--danger);
+  color: var(--accent-fg);
+  border-color: var(--danger);
+}
+
+/* ---- примитив: поле ---- */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.field__label {
+  font-size: var(--text-15);
+  font-weight: 600;
+  color: var(--fg-dim);
+}
+
+.field__input {
+  width: 100%;
+  min-height: var(--tap-min);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-8);
+  background: var(--surface);
+  color: var(--fg);
+  font-size: var(--text-17);
+}
+
+.field__input:focus-visible {
+  border-color: var(--accent);
+}
+
+.field__hint {
+  font-size: var(--text-13);
+  line-height: var(--lh-text);
+  color: var(--fg-faint);
+}
+
+/* ---- примитив: карточка ---- */
+
+/* Глубина слоями: --bg → --surface → волосяная граница. Внутри потока теней нет,
+   тень только у поднятого над экраном (шторка, липкая панель). */
+.card {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-14);
+  background: var(--surface);
+}
+
+.card--nested {
+  background: var(--surface-2);
+}
+
+/* ---- примитив: чип ---- */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-8);
+  background: var(--surface-2);
+  color: var(--fg-dim);
+  font-size: var(--text-13);
+  line-height: var(--lh-tight);
+  white-space: nowrap;
+}
+
+/* Нажимаемый чип обязан держать зону пальца — обычный чип ничего не ловит. */
+.chip--tap {
+  min-height: var(--tap-min);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-15);
+  cursor: pointer;
+}
+
+.chip--selected {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 600;
+}
+
+/* ---- движение выключается, а не ускоряется ---- */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transform: none !important;
+    transition: none !important;
+    animation: none !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -8,10 +8,12 @@ import { buildChannels } from '../core/export/index.ts'
 import type { ExportPayload } from '../core/export/index.ts'
 import { clearLog, dayNutrientTotals, dayTotal, logMeal, unlogMeal } from '../core/log.ts'
 import { emptyNutrientTotals, mealKbju, mealNutrients } from '../core/nutrition.ts'
+import { SLOTS } from '../core/types.ts'
 import type { AppState, Kbju, Meal, MealStatus, NutrientTotals, Settings, Slot } from '../core/types.ts'
 import { loadData } from '../data/load.ts'
 import { defaultState, loadState, saveState } from '../state/storage.ts'
 import MealScreen from './MealScreen.tsx'
+import type { DaySlotProgress } from './MealScreen.tsx'
 import SettingsSheet from './SettingsSheet.tsx'
 import ExportSheet from './ExportSheet.tsx'
 
@@ -22,6 +24,23 @@ const NO_NUTRIENTS: NutrientTotals = emptyNutrientTotals()
 
 function minutesOfDay(now: Date): number {
   return now.getHours() * 60 + now.getMinutes()
+}
+
+/** Дата и приём на один момент времени — оба пересчитываются одним таймером. */
+interface Clock {
+  today: string
+  slot: Slot
+}
+
+function readClock(now: Date): Clock {
+  return { today: todayLocal(now), slot: currentSlot(minutesOfDay(now)) }
+}
+
+/** Ручной выбор приёма вместе с тем приёмом, который был текущим в момент
+    выбора: сравнение с ним и отпускает выбор, когда время идёт дальше. */
+interface ManualSlot {
+  slot: Slot
+  pinnedTo: Slot
 }
 
 /** appUrl для x-callback-url Shortcuts: адрес приложения без query-параметров. */
@@ -38,7 +57,7 @@ export default function App() {
       return defaultState()
     }
   })
-  const [manualSlot, setManualSlot] = useState<Slot | null>(null)
+  const [manualSlot, setManualSlot] = useState<ManualSlot | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [exportPayload, setExportPayload] = useState<ExportPayload | null>(null)
 
@@ -67,22 +86,39 @@ export default function App() {
 
   const { menu, products } = useMemo(() => loadData(), [])
 
-  const today = useMemo(() => todayLocal(new Date()), [])
+  /* Дата и текущий приём идут от ОДНОГО минутного таймера. Считать дату один
+     раз при монтировании нельзя: приложение, открытое до полуночи и оставленное
+     открытым, продолжало бы писать записи во вчерашний день. */
+  const [clock, setClock] = useState<Clock>(() => readClock(new Date()))
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      const next = readClock(new Date())
+      // прежний объект возвращается намеренно: React пропускает перерисовку,
+      // когда за минуту ни дата, ни приём не изменились
+      setClock(prev => (prev.today === next.today && prev.slot === next.slot ? prev : next))
+    }, 60_000)
+    return () => window.clearInterval(id)
+  }, [])
+  const today = clock.today
+  const autoSlot = clock.slot
+
   const cycleDayNum = useMemo(
     () => cycleDay(state.settings.cycleStartDate, today, state.settings.cycleShift, menu.cycleDays),
     [state.settings.cycleStartDate, state.settings.cycleShift, today, menu.cycleDays]
   )
   const batchDayNum = batchDay(cycleDayNum)
 
-  const [autoSlot, setAutoSlot] = useState<Slot>(() => currentSlot(minutesOfDay(new Date())))
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      setAutoSlot(currentSlot(minutesOfDay(new Date())))
-    }, 60_000)
-    return () => window.clearInterval(id)
-  }, [])
+  /* Ручной выбор приёма живёт до следующего приёма по времени, а не вечно:
+     он запомнил, какой приём был текущим в момент выбора, и когда время
+     переводит стрелку на следующий, выбор отпускается сам. Без этого вернуться
+     к «сейчас» можно было только перезагрузкой страницы. */
+  const slot = manualSlot && manualSlot.pinnedTo === autoSlot ? manualSlot.slot : autoSlot
 
-  const slot = manualSlot ?? autoSlot
+  const handleSelectSlot = useCallback((next: Slot) => {
+    // привязка к текущему значению autoSlot, а не к свежему времени: иначе в
+    // минуту перехода выбор оказался бы просроченным ещё до отрисовки
+    setManualSlot({ slot: next, pinnedTo: autoSlot })
+  }, [autoSlot])
 
   const menuDay = useMemo(() => menu.days.find(d => d.day === cycleDayNum), [menu, cycleDayNum])
   const meal: Meal | undefined = useMemo(() => menuDay?.meals.find(m => m.slot === slot), [menuDay, slot])
@@ -95,6 +131,24 @@ export default function App() {
   const dayLog = state.log[today]
   const entry = dayLog?.meals[slot]
   const dayEatenKcal = useMemo(() => (dayLog ? dayTotal(dayLog).kcal : 0), [dayLog])
+
+  /* Прогресс дня рисуется сегментами по всем четырём приёмам, поэтому экрану
+     нужен весь день, а не только текущий приём. План берётся из меню; если
+     меню на приём нет, а запись есть — планом считается снапшот записи, иначе
+     съеденное некуда было бы вписать. */
+  const daySlots: DaySlotProgress[] = useMemo(() => SLOTS.map(s => {
+    const slotMeal = menuDay?.meals.find(m => m.slot === s)
+    const slotEntry = dayLog?.meals[s]
+    const plannedKcal = slotMeal
+      ? mealKbju(slotMeal, products).kcal
+      : (slotEntry?.kbju.kcal ?? 0)
+    return {
+      slot: s,
+      plannedKcal,
+      eatenKcal: slotEntry ? slotEntry.kbju.kcal * slotEntry.fraction : 0,
+      status: slotEntry?.status
+    }
+  }), [menuDay, dayLog, products])
 
   const updateSettings = useCallback((settings: Settings) => {
     setState(prev => ({ ...prev, settings }))
@@ -160,13 +214,14 @@ export default function App() {
         cycleDays={menu.cycleDays}
         batchDayNum={batchDayNum}
         slot={slot}
-        isCurrentSlot={slot === autoSlot}
-        onSelectSlot={setManualSlot}
+        currentSlot={autoSlot}
+        onSelectSlot={handleSelectSlot}
         meal={meal}
         mealKbju={currentMealKbju}
         mealNutrients={currentMealNutrients}
         products={products}
         entry={entry}
+        daySlots={daySlots}
         dayEatenKcal={dayEatenKcal}
         targetKcal={state.settings.targetKcal}
         hasDayLog={Boolean(dayLog && Object.keys(dayLog.meals).length > 0)}
@@ -192,6 +247,7 @@ export default function App() {
         <div className="sheet">
           <div className="sheet__backdrop" onClick={() => setExportPayload(null)} />
           <div className="sheet__panel">
+            <span className="sheet__grabber" aria-hidden="true" />
             <header className="sheet__header">
               <h1 className="sheet__title">Выгрузить</h1>
               <button type="button" className="sheet__close" onClick={() => setExportPayload(null)} aria-label="Закрыть">✕</button>

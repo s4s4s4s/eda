@@ -1,6 +1,8 @@
-/* Главный экран: «открыть телефон, за пять секунд увидеть приём». Всё важное —
-   день цикла, день партии, приём, его КБЖУ, итог дня, состав двумя списками,
-   порядок сборки — помещается на экран без прокрутки на телефоне одной рукой. */
+/* Главный экран. Порядок блоков сверху вниз — контракт из DESIGN.md, раздел
+   «Иерархия главного экрана»: шапка → переключатель приёмов → название приёма →
+   состав двумя раздельными списками → сборка → КБЖУ → день → микронутриенты →
+   липкая панель действий. Правило иерархии: сначала еда, потом числа — человек
+   открывает экран, чтобы узнать, что положить в тарелку. */
 
 import { useState } from 'react'
 import {
@@ -11,12 +13,24 @@ import { formatNutrientAmount, NO_DATA_TEXT } from '../core/export/format.ts'
 import { NUTRIENT_KEYS, NUTRIENT_TITLE, NUTRIENT_UNIT, SLOT_TITLE, SLOTS } from '../core/types.ts'
 import type { Item, Kbju, Meal, MealLogEntry, MealStatus, NutrientTotals, ProductIndex, Slot } from '../core/types.ts'
 
+/** Состояние одного приёма в прогрессе дня. Запланированное берётся из меню,
+    съеденное — из дневника с уже применённой долей. `status === undefined`
+    означает «ещё не записан», и это не то же самое, что «пропущен». */
+export interface DaySlotProgress {
+  slot: Slot
+  plannedKcal: number
+  eatenKcal: number
+  status: MealStatus | undefined
+}
+
 interface MealScreenProps {
   cycleDayNum: number
   cycleDays: number
   batchDayNum: number
   slot: Slot
-  isCurrentSlot: boolean
+  /** Приём, который идёт сейчас по времени суток. Отмечается точкой в
+      переключателе — это отдельный признак от выбранного вручную. */
+  currentSlot: Slot
   onSelectSlot: (slot: Slot) => void
   meal: Meal | undefined
   mealKbju: Kbju
@@ -24,6 +38,8 @@ interface MealScreenProps {
   mealNutrients: NutrientTotals
   products: ProductIndex
   entry: MealLogEntry | undefined
+  /** Все четыре приёма дня — прогресс дня рисуется сегментами, а не строкой. */
+  daySlots: DaySlotProgress[]
   dayEatenKcal: number
   targetKcal: number
   /** Есть ли в дневнике хоть одна запись за сегодня. Пока её нет, выгружать
@@ -66,6 +82,33 @@ const SLOT_TIME_RANGE: Record<Slot, string> = {
   snack: `${minutesToClock(SNACK_START_MIN)}–${minutesToClock(BREAKFAST_START_MIN)}`
 }
 
+/* Иконки — inline SVG в currentColor, размер в em: эмодзи-глифы (⚙, ▸) каждая
+   система рисует по-своему, часть шрифтов подставляет цветную картинку, и в
+   интерфейсе это читается как заглушка. */
+
+function SettingsIcon() {
+  return (
+    <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"
+      strokeLinecap="round" aria-hidden="true" focusable="false">
+      <path d="M4 7h9M17 7h3M4 17h3M11 17h9" />
+      <circle cx="15" cy="7" r="2.2" />
+      <circle cx="9" cy="17" r="2.2" />
+    </svg>
+  )
+}
+
+/** Шеврон свёрнутого/раскрытого списка. Направление задаётся разной геометрией,
+    а не поворотом: `prefers-reduced-motion` выключает transform целиком, и
+    повёрнутая иконка перестала бы отличать раскрытое от свёрнутого. */
+function ChevronIcon({ open }: { open: boolean }) {
+  return (
+    <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+      <path d={open ? 'M6 9.5 12 15.5 18 9.5' : 'M9.5 6 15.5 12 9.5 18'} />
+    </svg>
+  )
+}
+
 /** Количество позиции ровно в том виде, в каком оно задано в меню: граммы,
     штуки или ложки — не переводим штуки/ложки в граммы в основной строке. */
 function quantityLabel(item: Item): string {
@@ -90,7 +133,7 @@ function ItemRow({ item, products }: { item: Item; products: ProductIndex }) {
   return (
     <li className="meal-item">
       <span className="meal-item__name">{name}</span>
-      <span className="meal-item__qty">
+      <span className="meal-item__qty nums">
         {quantityLabel(item)}
         {gramHint && <span className="meal-item__qty-hint">{gramHint}</span>}
       </span>
@@ -98,10 +141,45 @@ function ItemRow({ item, products }: { item: Item; products: ProductIndex }) {
   )
 }
 
+/** Прогресс дня сегментами по четырём приёмам. Ширина сегмента — доля приёма в
+    плане дня, заливка — съеденное. Записанный приём отличается от просто
+    запланированного рамкой: пропущенный записан честно, а не «ещё не ел». */
+function DayProgress({ slots }: { slots: DaySlotProgress[] }) {
+  return (
+    <div className="day-progress__bar">
+      {slots.map(s => {
+        const ratio = s.plannedKcal > 0
+          ? Math.min(1, s.eatenKcal / s.plannedKcal)
+          : (s.eatenKcal > 0 ? 1 : 0)
+        const status = s.status
+        const label = status !== undefined
+          ? `${SLOT_TITLE[s.slot]}: ${STATUS_LABEL[status]}, ${round(s.eatenKcal)} из ${round(s.plannedKcal)} ккал`
+          : `${SLOT_TITLE[s.slot]}: не записан, в плане ${round(s.plannedKcal)} ккал`
+        return (
+          <div
+            key={s.slot}
+            className={`day-progress__seg${status !== undefined ? ' day-progress__seg--logged' : ''}`}
+            style={{ flexGrow: s.plannedKcal > 0 ? s.plannedKcal : 1 }}
+            role="img"
+            aria-label={label}
+            title={label}
+          >
+            <span className="day-progress__fill" style={{ width: `${ratio * 100}%` }} />
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 /** Микронутриенты приёма: свёрнуты по умолчанию — за сгиб не должны уходить ни
     приём, ни КБЖУ. Строка неизвестного нутриента остаётся в списке со словами
     «нет данных»: спрятать её значило бы сказать «этого в еде нет». */
 function NutrientsBlock({ totals }: { totals: NutrientTotals }) {
+  /* Раскрытие держим в состоянии, а не отдаём браузеру: иконка рисуется двумя
+     разными путями, и React должен знать, какой из них показывать. */
+  const [open, setOpen] = useState(false)
+
   const unknown = NUTRIENT_KEYS.filter(key => totals[key].known === 0).length
   const partial = NUTRIENT_KEYS.filter(key => {
     const t = totals[key]
@@ -113,11 +191,16 @@ function NutrientsBlock({ totals }: { totals: NutrientTotals }) {
   if (unknown > 0) summaryHints.push(`без данных ${unknown}`)
 
   return (
-    <details className="meal-nutrients">
+    <details
+      className="meal-nutrients"
+      open={open}
+      onToggle={event => setOpen((event.currentTarget as HTMLDetailsElement).open)}
+    >
       <summary className="meal-nutrients__summary">
+        <ChevronIcon open={open} />
         Микронутриенты
         {summaryHints.length > 0 && (
-          <span className="meal-nutrients__summary-hint">{summaryHints.join(' · ')}</span>
+          <span className="meal-nutrients__summary-hint nums">{summaryHints.join(' · ')}</span>
         )}
       </summary>
       <ul className="meal-nutrients__list">
@@ -128,7 +211,7 @@ function NutrientsBlock({ totals }: { totals: NutrientTotals }) {
           return (
             <li key={key} className={`meal-nutrient${known ? '' : ' meal-nutrient--unknown'}`}>
               <span className="meal-nutrient__name">{NUTRIENT_TITLE[key]}</span>
-              <span className="meal-nutrient__value">
+              <span className="meal-nutrient__value nums">
                 {known ? `${formatNutrientAmount(total.value)} ${NUTRIENT_UNIT[key]}` : NO_DATA_TEXT}
                 {known && !complete && (
                   <span className="meal-nutrient__hint">по {total.known} из {total.total} позиций</span>
@@ -143,14 +226,15 @@ function NutrientsBlock({ totals }: { totals: NutrientTotals }) {
 }
 
 export default function MealScreen({
-  cycleDayNum, cycleDays, batchDayNum, slot, isCurrentSlot, onSelectSlot,
-  meal, mealKbju, mealNutrients, products, entry, dayEatenKcal, targetKcal, hasDayLog,
+  cycleDayNum, cycleDays, batchDayNum, slot, currentSlot, onSelectSlot,
+  meal, mealKbju, mealNutrients, products, entry, daySlots, dayEatenKcal, targetKcal, hasDayLog,
   onLog, onUnlog, onOpenSettings, onOpenExport, onOpenDayExport
 }: MealScreenProps) {
   const [pickingFraction, setPickingFraction] = useState(false)
 
   const containerItems = meal ? meal.items.filter(i => i.where === 'container') : []
   const packetItems = meal ? meal.items.filter(i => i.where === 'packet') : []
+  const isCurrentSlot = slot === currentSlot
 
   function handlePartial(fraction: number): void {
     setPickingFraction(false)
@@ -160,13 +244,13 @@ export default function MealScreen({
   return (
     <div className="screen">
       <header className="screen__header">
-        <div className="screen__day-line">
+        <div className="screen__day-line nums">
           <span>День {cycleDayNum} из {cycleDays}</span>
           <span className="screen__day-line-sep">·</span>
           <span>партия: день {batchDayNum} из 4</span>
         </div>
         <button type="button" className="screen__settings-btn" onClick={onOpenSettings} aria-label="Настройки">
-          ⚙
+          <SettingsIcon />
         </button>
       </header>
 
@@ -176,37 +260,32 @@ export default function MealScreen({
             key={s}
             type="button"
             className={`slot-switch__btn${s === slot ? ' slot-switch__btn--active' : ''}`}
+            aria-pressed={s === slot}
             onClick={() => onSelectSlot(s)}
           >
             {SLOT_TITLE[s]}
+            {/* Точка — «этот приём идёт сейчас». Заливка — «этот выбран».
+                Два разных признака: они могут стоять на разных кнопках. */}
+            {s === currentSlot && <span className="slot-switch__now-dot" aria-label="сейчас" />}
           </button>
         ))}
       </nav>
 
       <div className="meal-title">
-        <span className="meal-title__name">{meal ? meal.title : SLOT_TITLE[slot]}</span>
-        <span className="meal-title__time">
-          {SLOT_TIME_RANGE[slot]}{isCurrentSlot ? ' · сейчас' : ''}
-        </span>
-      </div>
-
-      <div className="meal-kbju">
-        <div className="meal-kbju__kcal">{round(mealKbju.kcal)} ккал</div>
-        <div className="meal-kbju__bju">
-          Б {round(mealKbju.p)} · Ж {round(mealKbju.f)} · У {round(mealKbju.c)}
+        <h1 className="meal-title__name">{meal ? meal.title : SLOT_TITLE[slot]}</h1>
+        <div className="meal-title__meta">
+          <span className="meal-title__time nums">{SLOT_TIME_RANGE[slot]}</span>
+          {isCurrentSlot
+            ? <span className="meal-title__now">сейчас</span>
+            : (
+              /* Ручной выбор виден и отпускается вручную; сам он отпускается,
+                 когда по времени наступает следующий приём (см. App.tsx). */
+              <button type="button" className="meal-title__back" onClick={() => onSelectSlot(currentSlot)}>
+                вернуться к текущему
+              </button>
+            )}
         </div>
       </div>
-
-      <div className="day-total">
-        <span>{round(dayEatenKcal)} из {targetKcal} ккал за день</span>
-        {hasDayLog && (
-          <button type="button" className="day-total__export" onClick={onOpenDayExport}>
-            выгрузить день
-          </button>
-        )}
-      </div>
-
-      {meal && <NutrientsBlock totals={mealNutrients} />}
 
       {!meal && (
         <div className="meal-missing">Меню на этот приём не найдено</div>
@@ -243,39 +322,66 @@ export default function MealScreen({
         </>
       )}
 
-      <div className="meal-actions">
-        {entry
-          ? (
-            <div className="meal-actions__recorded">
-              <span className="meal-actions__recorded-label">
-                {STATUS_LABEL[entry.status]}{entry.status === 'partial' ? ` (${FRACTIONS.find(f => f.value === entry.fraction)?.label ?? entry.fraction})` : ''}
-              </span>
-              <button type="button" className="btn btn--ghost" onClick={onUnlog}>Отменить запись</button>
-              <button type="button" className="btn btn--secondary" onClick={onOpenExport}>Выгрузить</button>
-            </div>
-          )
-          : (
-            <>
-              {!pickingFraction && meal && (
-                <div className="meal-actions__main">
-                  <button type="button" className="btn btn--primary" onClick={() => onLog('eaten', 1)}>Съел</button>
-                  <button type="button" className="btn btn--secondary" onClick={() => setPickingFraction(true)}>Съел часть</button>
-                  <button type="button" className="btn btn--ghost" onClick={() => onLog('skipped', 0)}>Пропустил</button>
-                </div>
-              )}
-              {pickingFraction && (
-                <div className="meal-actions__fractions">
-                  {FRACTIONS.map(f => (
-                    <button key={f.value} type="button" className="btn btn--secondary" onClick={() => handlePartial(f.value)}>
-                      {f.label}
-                    </button>
-                  ))}
-                  <button type="button" className="btn btn--ghost" onClick={() => setPickingFraction(false)}>Отмена</button>
-                </div>
-              )}
-            </>
-          )}
+      <div className="meal-kbju card">
+        <div className="meal-kbju__kcal nums">{round(mealKbju.kcal)} ккал</div>
+        <div className="meal-kbju__bju nums">
+          Б {round(mealKbju.p)} · Ж {round(mealKbju.f)} · У {round(mealKbju.c)}
+        </div>
       </div>
+
+      <section className="day-progress">
+        <div className="day-progress__head">
+          <span className="day-progress__value nums">
+            {round(dayEatenKcal)} из {targetKcal} ккал за день
+          </span>
+          {hasDayLog && (
+            <button type="button" className="day-progress__export" onClick={onOpenDayExport}>
+              выгрузить день
+            </button>
+          )}
+        </div>
+        <DayProgress slots={daySlots} />
+      </section>
+
+      {meal && <NutrientsBlock totals={mealNutrients} />}
+
+      {(meal || entry) && (
+        <div className="meal-actions">
+          {entry
+            ? (
+              <div className="meal-actions__recorded">
+                <span className="meal-actions__recorded-label">
+                  {STATUS_LABEL[entry.status]}{entry.status === 'partial' ? ` (${FRACTIONS.find(f => f.value === entry.fraction)?.label ?? entry.fraction})` : ''}
+                </span>
+                <div className="meal-actions__main">
+                  <button type="button" className="btn btn--ghost" onClick={onUnlog}>Отменить запись</button>
+                  <button type="button" className="btn btn--secondary" onClick={onOpenExport}>Выгрузить</button>
+                </div>
+              </div>
+            )
+            : (
+              <>
+                {!pickingFraction && meal && (
+                  <div className="meal-actions__main">
+                    <button type="button" className="btn btn--primary" onClick={() => onLog('eaten', 1)}>Съел</button>
+                    <button type="button" className="btn btn--secondary" onClick={() => setPickingFraction(true)}>Съел часть</button>
+                    <button type="button" className="btn btn--ghost" onClick={() => onLog('skipped', 0)}>Пропустил</button>
+                  </div>
+                )}
+                {pickingFraction && (
+                  <div className="meal-actions__fractions">
+                    {FRACTIONS.map(f => (
+                      <button key={f.value} type="button" className="btn btn--secondary nums" onClick={() => handlePartial(f.value)}>
+                        {f.label}
+                      </button>
+                    ))}
+                    <button type="button" className="btn btn--ghost" onClick={() => setPickingFraction(false)}>Отмена</button>
+                  </div>
+                )}
+              </>
+            )}
+        </div>
+      )}
     </div>
   )
 }

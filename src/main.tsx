@@ -1,7 +1,9 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { registerSW } from 'virtual:pwa-register'
-import './ui/ui.css'
+import './ui/theme.css'
+import './ui/screen.css'
+import './ui/sheets.css'
 import App from './ui/App.tsx'
 
 // Меню и продукты вкомпилированы в бандл (src/data/load.ts), сеть приложению

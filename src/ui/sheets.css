@@ -1,0 +1,318 @@
+/* Шторки: настройки и выгрузка. Обе живут в общей теме — отдельной светлой
+   панели посреди тёмного приложения больше нет. Значения только из токенов
+   theme.css, по месту цвета не задаются. */
+
+/* ---- каркас шторки ---- */
+
+.sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: flex-end;
+}
+
+.sheet__backdrop {
+  position: absolute;
+  inset: 0;
+  background: var(--scrim);
+  animation: sheet-fade var(--dur-sheet) var(--ease);
+}
+
+/* Шторка выезжает снизу — оттуда же, откуда её открыли пальцем. */
+.sheet__panel {
+  position: relative;
+  width: 100%;
+  max-width: 32rem;
+  margin: 0 auto;
+  max-height: 88vh;
+  max-height: 88dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  border-radius: var(--r-22) var(--r-22) 0 0;
+  box-shadow: var(--shadow-lift);
+  padding-bottom: env(safe-area-inset-bottom);
+  animation: sheet-rise var(--dur-sheet) var(--ease);
+}
+
+@keyframes sheet-fade {
+  from { opacity: 0; }
+}
+
+@keyframes sheet-rise {
+  from { transform: translateY(2rem); }
+}
+
+/* Полоска-хват: говорит рукой, что панель тянется снизу, до всякого текста. */
+.sheet__grabber {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: block;
+  width: 2.25rem;
+  height: 4px;
+  margin: var(--space-2) auto 0;
+  border-radius: 2px;
+  background: var(--border);
+}
+
+.sheet__header {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--screen-pad) var(--space-2);
+  background: var(--bg);
+}
+
+.sheet__title {
+  font-size: var(--text-20);
+}
+
+.sheet__close {
+  flex: none;
+  min-width: var(--tap-min);
+  min-height: var(--tap-min);
+  border: 1px solid var(--border);
+  border-radius: var(--r-8);
+  background: var(--surface);
+  color: var(--fg-dim);
+  font-size: var(--text-15);
+}
+
+.sheet__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: 0 var(--screen-pad) var(--space-6);
+}
+
+/* ---- настройки ---- */
+
+.cycle-shift {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.cycle-shift .btn {
+  flex: none;
+}
+
+.cycle-shift__today {
+  flex: 1;
+  min-width: 8rem;
+  font-size: var(--text-15);
+  color: var(--fg-dim);
+  text-align: center;
+}
+
+/* Необратимое подтверждается вторым нажатием и объясняет, что именно пропадёт. */
+.clear-log {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.clear-log__warning {
+  font-size: var(--text-13);
+  line-height: var(--lh-text);
+  color: var(--danger);
+}
+
+.clear-log__actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.clear-log__actions .btn {
+  flex: 1;
+}
+
+.storage-note {
+  margin: 0;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+  font-size: var(--text-13);
+  line-height: var(--lh-text);
+  color: var(--fg-faint);
+}
+
+/* ---- выгрузка ---- */
+
+.export-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* Числа наверху, кнопки внизу: под большой палец, одной рукой. */
+.export-sheet__numbers {
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border);
+  text-align: center;
+}
+
+.export-sheet__headline {
+  margin-bottom: var(--space-1);
+  font-size: var(--text-15);
+  color: var(--fg-dim);
+}
+
+.export-sheet__kcal {
+  font-size: var(--text-44);
+  font-weight: 700;
+  line-height: var(--lh-tight);
+  font-variant-numeric: tabular-nums;
+}
+
+.export-sheet__bju {
+  margin-top: var(--space-1);
+  font-size: var(--text-17);
+  color: var(--fg-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.export-sheet__channels {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.export-channel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.export-channel__button {
+  width: 100%;
+  min-height: var(--tap-min);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-8);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: var(--text-17);
+  font-weight: 600;
+}
+
+.export-channel__button:disabled {
+  opacity: .6;
+  cursor: not-allowed;
+}
+
+/* Недоступный канал остаётся на экране неяркой строкой с причиной: исчезнуть
+   значило бы соврать, что его нет. Кнопкой он при этом не притворяется. */
+.export-channel--disabled {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-8);
+  background: var(--surface-2);
+  color: var(--fg-faint);
+}
+
+.export-channel__title {
+  display: block;
+  font-weight: 600;
+}
+
+.export-channel__reason {
+  display: block;
+  font-size: var(--text-13);
+  line-height: var(--lh-text);
+}
+
+.export-channel__status {
+  font-size: var(--text-15);
+}
+
+.export-channel__status--ok {
+  color: var(--ok);
+}
+
+/* «Отправлено, но подтверждения ещё нет» — своё состояние, не успех. */
+.export-channel__status--pending {
+  color: var(--accent);
+}
+
+.export-channel__status--error {
+  color: var(--danger);
+}
+
+.export-channel__csv-text {
+  width: 100%;
+  min-height: 8rem;
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-8);
+  background: var(--surface);
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: var(--text-13);
+  line-height: var(--lh-text);
+  resize: vertical;
+}
+
+.export-sheet__preview {
+  font-size: var(--text-13);
+  color: var(--fg-dim);
+}
+
+.export-sheet__preview pre {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-2);
+  border-radius: var(--r-8);
+  background: var(--surface-2);
+  font-family: var(--font-mono);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Нутриенты дополняют крупные числа, а не спорят с ними. */
+.export-sheet__nutrients {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 40vh;
+  padding-right: var(--space-2);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  font-size: var(--text-13);
+}
+
+.export-nutrient {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-1) 0;
+}
+
+.export-nutrient__name {
+  color: var(--fg-dim);
+}
+
+.export-nutrient__value {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.export-nutrient__hint {
+  font-size: var(--text-13);
+  color: var(--fg-faint);
+}
+
+/* «Нет данных» приглушено, но показано: спрятать строку значило бы сказать,
+   что этого в еде нет. */
+.export-nutrient--unknown .export-nutrient__value {
+  color: var(--fg-faint);
+  font-style: italic;
+}
