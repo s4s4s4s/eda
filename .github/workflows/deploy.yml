@@ -1,0 +1,53 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      # Проверка меню и тесты ядра идут ДО сборки: красная проверка оставляет
+      # на телефоне прошлую рабочую версию.
+      #
+      # Флаг --warn-only различает два разных класса беды. Сломанный файл меню
+      # (ссылка на несуществующий продукт, кривой YAML, отсутствующая мера)
+      # валит выкатку всегда — такое меню нельзя показывать. А нарушение правил
+      # питания (день вне коридора 3050-3350, приём легче минимума, пропал лён)
+      # печатается в лог, но выкатку не снимает: меню на восемьдесят калорий
+      # легче нормы не повод оставлять человека без приложения. Гейт для меню —
+      # это `npm run check-menu` без флага, локально, до закупки поваром.
+      - run: npm run check-menu -- --warn-only
+      - run: npm test
+
+      - run: npm run icons
+      - run: npm run build
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+      - id: deployment
+        uses: actions/deploy-pages@v4

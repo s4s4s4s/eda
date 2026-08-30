@@ -1,0 +1,38 @@
+{
+  "name": "eda",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "check-menu": "esbuild scripts/check-menu.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/eda/check-menu.mjs && node node_modules/.cache/eda/check-menu.mjs",
+    "products": "node scripts/build-products.mjs",
+    "icons": "node scripts/make-icons.mjs",
+    "test": "npm run test:data && npm run test:cycle && npm run test:nutrition && npm run test:rules && npm run test:log && npm run test:storage && npm run test:export",
+    "test:cycle": "esbuild test/cycle.test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/eda/cycle.mjs && node node_modules/.cache/eda/cycle.mjs",
+    "test:nutrition": "esbuild test/nutrition.test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/eda/nutrition.mjs && node node_modules/.cache/eda/nutrition.mjs",
+    "test:rules": "esbuild test/rules.test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/eda/rules.mjs && node node_modules/.cache/eda/rules.mjs",
+    "test:log": "esbuild test/log.test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/eda/log.mjs && node node_modules/.cache/eda/log.mjs",
+    "test:export": "esbuild test/export.test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/eda/export.mjs && node node_modules/.cache/eda/export.mjs",
+    "test:data": "esbuild test/data.test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/eda/data.mjs && node node_modules/.cache/eda/data.mjs",
+    "test:storage": "esbuild test/storage.test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/eda/storage.mjs && node node_modules/.cache/eda/storage.mjs"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "esbuild": "^0.25.0",
+    "sharp": "^0.34.2",
+    "typescript": "^5.8.3",
+    "vite": "^7.0.0",
+    "vite-plugin-pwa": "^1.0.1"
+  }
+}

@@ -1,0 +1,2242 @@
+# Источник всех чисел: USDA FoodData Central, набор SR Legacy, релиз 2018-04.
+# Числа на 100 г съедобной части в сыром виде, если в описании не сказано иное.
+# Файл собирается скриптом scripts/build-products.mjs, руками не правится.
+#
+# pieceG/pieceSource и tbspG/tbspSource — граммы одной штуки/столовой ложки.
+# source: fdc — взято из food_portion.csv датасета (см. fdcId и описание продукта),
+# source: common — общепринятая мера, не из датасета.
+#
+# per100g: kcal — ккал, protein/fat/carbs — граммы.
+# micro100g: те же 100 г сырого веса, тот же fdcId. Единицы измерения ниже.
+# ВАЖНО: отсутствие поля в micro100g означает "в датасете нет строки для этого
+# нутриента у этого продукта" — это НЕ ноль. Ноль пишется только если в
+# food_nutrient.csv реально записан 0. Складывать отсутствующее поле как 0 нельзя.
+# Единицы измерения (взяты из nutrient.csv, unit_name):
+#   fiber: G (id 1079, "Fiber, total dietary")
+#   sugar: G (id 2000, "Sugars, Total")
+#   satFat: G (id 1258, "Fatty acids, total saturated")
+#   monoFat: G (id 1292, "Fatty acids, total monounsaturated")
+#   polyFat: G (id 1293, "Fatty acids, total polyunsaturated")
+#   cholesterol: MG (id 1253, "Cholesterol")
+#   calcium: MG (id 1087, "Calcium, Ca")
+#   iron: MG (id 1089, "Iron, Fe")
+#   magnesium: MG (id 1090, "Magnesium, Mg")
+#   phosphorus: MG (id 1091, "Phosphorus, P")
+#   potassium: MG (id 1092, "Potassium, K")
+#   sodium: MG (id 1093, "Sodium, Na")
+#   zinc: MG (id 1095, "Zinc, Zn")
+#   copper: MG (id 1098, "Copper, Cu")
+#   manganese: MG (id 1101, "Manganese, Mn")
+#   selenium: UG (id 1103, "Selenium, Se")
+#   vitA: UG (id 1106, "Vitamin A, RAE")
+#   vitC: MG (id 1162, "Vitamin C, total ascorbic acid")
+#   vitD: UG (id 1114, "Vitamin D (D2 + D3)")
+#   vitE: MG (id 1109, "Vitamin E (alpha-tocopherol)")
+#   vitK: UG (id 1185, "Vitamin K (phylloquinone)")
+#   thiamin: MG (id 1165, "Thiamin")
+#   riboflavin: MG (id 1166, "Riboflavin")
+#   niacin: MG (id 1167, "Niacin")
+#   vitB6: MG (id 1175, "Vitamin B-6")
+#   folate: UG (id 1177, "Folate, total")
+#   vitB12: UG (id 1178, "Vitamin B-12")
+#   pantothenic: MG (id 1170, "Pantothenic acid")
+#   water: G (id 1051, "Water")
+products:
+  salmon:
+    name: лосось атлантический
+    fdcId: 175167
+    fdcDescription: Fish, salmon, Atlantic, farmed, raw
+    per100g:
+      kcal: 208
+      protein: 20.42
+      fat: 13.42
+      carbs: 0
+    tags:
+      - fish
+    micro100g:
+      fiber: 0
+      sugar: 0
+      satFat: 3.05
+      monoFat: 3.77
+      polyFat: 3.886
+      cholesterol: 55
+      calcium: 9
+      iron: 0.34
+      magnesium: 27
+      phosphorus: 240
+      potassium: 363
+      sodium: 59
+      zinc: 0.36
+      copper: 0.045
+      manganese: 0.011
+      selenium: 24
+      vitA: 58
+      vitC: 3.9
+      vitD: 11
+      vitE: 3.55
+      vitK: 0.5
+      thiamin: 0.207
+      riboflavin: 0.155
+      niacin: 8.672
+      vitB6: 0.636
+      folate: 26
+      vitB12: 3.23
+      pantothenic: 1.547
+      water: 64.89
+  trout:
+    name: форель радужная
+    fdcId: 173717
+    fdcDescription: Fish, trout, rainbow, farmed, raw
+    per100g:
+      kcal: 141
+      protein: 19.94
+      fat: 6.18
+      carbs: 0
+    tags:
+      - fish
+    micro100g:
+      fiber: 0
+      sugar: 0
+      satFat: 1.383
+      monoFat: 1.979
+      polyFat: 1.507
+      cholesterol: 59
+      calcium: 25
+      iron: 0.31
+      magnesium: 25
+      phosphorus: 226
+      potassium: 377
+      sodium: 51
+      zinc: 0.45
+      copper: 0.046
+      manganese: 0.011
+      selenium: 23.6
+      vitA: 84
+      vitC: 2.9
+      vitD: 15.9
+      vitE: 2.34
+      vitK: 0.1
+      thiamin: 0.12
+      riboflavin: 0.09
+      niacin: 5.567
+      vitB6: 0.34
+      folate: 11
+      vitB12: 4.3
+      pantothenic: 1.667
+      water: 73.8
+  mackerel:
+    name: скумбрия атлантическая
+    fdcId: 175119
+    fdcDescription: Fish, mackerel, Atlantic, raw
+    per100g:
+      kcal: 205
+      protein: 18.6
+      fat: 13.89
+      carbs: 0
+    tags:
+      - fish
+    micro100g:
+      fiber: 0
+      sugar: 0
+      satFat: 3.257
+      monoFat: 5.456
+      polyFat: 3.35
+      cholesterol: 70
+      calcium: 12
+      iron: 1.63
+      magnesium: 76
+      phosphorus: 217
+      potassium: 314
+      sodium: 90
+      zinc: 0.63
+      copper: 0.073
+      manganese: 0.015
+      selenium: 44.1
+      vitA: 50
+      vitC: 0.4
+      vitD: 16.1
+      vitE: 1.52
+      vitK: 5
+      thiamin: 0.176
+      riboflavin: 0.312
+      niacin: 9.08
+      vitB6: 0.399
+      folate: 1
+      vitB12: 8.71
+      pantothenic: 0.856
+      water: 63.55
+  turkey-thigh:
+    name: филе бедра индейки (без кожи)
+    fdcId: 171531
+    fdcDescription: Turkey, thigh, from whole bird, meat only, raw
+    per100g:
+      kcal: 108
+      protein: 21.28
+      fat: 2.5
+      carbs: 0.15
+    tags:
+      - turkey
+    micro100g:
+      fiber: 0
+      sugar: 0.1
+      satFat: 0.683
+      monoFat: 0.756
+      polyFat: 0.613
+      cholesterol: 79
+      calcium: 11
+      iron: 1.04
+      magnesium: 25
+      phosphorus: 176
+      potassium: 226
+      sodium: 124
+      zinc: 2.59
+      copper: 0.092
+      manganese: 0.014
+      selenium: 22.4
+      vitA: 13
+      vitC: 0
+      vitD: 0.3
+      vitE: 0.12
+      vitK: 0
+      thiamin: 0.062
+      riboflavin: 0.255
+      niacin: 5.696
+      vitB6: 0.44
+      vitB12: 2.05
+      pantothenic: 0.935
+      water: 76.01
+  chicken-breast:
+    name: куриная грудка (без кожи)
+    fdcId: 171077
+    fdcDescription: Chicken, broiler or fryers, breast, skinless, boneless, meat only, raw
+    per100g:
+      kcal: 120
+      protein: 22.5
+      fat: 2.62
+      carbs: 0
+    tags:
+      - chicken
+    micro100g:
+      fiber: 0
+      sugar: 0
+      satFat: 0.563
+      monoFat: 0.689
+      polyFat: 0.424
+      cholesterol: 73
+      calcium: 5
+      iron: 0.37
+      magnesium: 28
+      phosphorus: 213
+      potassium: 334
+      sodium: 45
+      zinc: 0.68
+      copper: 0.037
+      manganese: 0.011
+      selenium: 22.8
+      vitA: 9
+      vitC: 0
+      vitD: 0
+      vitE: 0.56
+      vitK: 0
+      thiamin: 0.094
+      riboflavin: 0.177
+      niacin: 9.6
+      vitB6: 0.811
+      folate: 9
+      vitB12: 0.21
+      pantothenic: 1.495
+      water: 73.9
+  chicken-hearts:
+    name: куриные сердечки
+    fdcId: 171458
+    fdcDescription: Chicken, heart, all classes, raw
+    per100g:
+      kcal: 153
+      protein: 15.55
+      fat: 9.33
+      carbs: 0.71
+    tags:
+      - chicken
+    micro100g:
+      fiber: 0
+      satFat: 2.66
+      monoFat: 2.37
+      polyFat: 2.71
+      cholesterol: 136
+      calcium: 12
+      iron: 5.96
+      magnesium: 15
+      phosphorus: 177
+      potassium: 176
+      sodium: 74
+      zinc: 6.59
+      copper: 0.346
+      manganese: 0.089
+      selenium: 4.3
+      vitA: 9
+      vitC: 3.2
+      thiamin: 0.152
+      riboflavin: 0.728
+      niacin: 4.883
+      vitB6: 0.36
+      folate: 72
+      vitB12: 7.29
+      pantothenic: 2.559
+      water: 73.56
+  beef:
+    name: говядина для тушения (постная часть, сырая)
+    fdcId: 174051
+    fdcDescription: Beef, chuck, arm pot roast, separable lean only, trimmed to 1/8" fat, all grades, raw
+    per100g:
+      kcal: 132
+      protein: 22.11
+      fat: 4.19
+      carbs: 0
+    tags:
+      - beef
+    micro100g:
+      fiber: 0
+      sugar: 0
+      satFat: 1.553
+      monoFat: 1.756
+      polyFat: 0.181
+      cholesterol: 65
+      calcium: 16
+      iron: 1.93
+      magnesium: 23
+      phosphorus: 203
+      potassium: 337
+      sodium: 74
+      zinc: 5.55
+      copper: 0.093
+      manganese: 0.014
+      selenium: 25.2
+      vitA: 0
+      vitC: 0
+      vitE: 0.28
+      vitK: 1.1
+      thiamin: 0.081
+      riboflavin: 0.16
+      niacin: 5.069
+      vitB6: 0.532
+      folate: 13
+      vitB12: 1.88
+      pantothenic: 0.654
+      water: 73.32
+  egg:
+    name: яйцо куриное целое
+    fdcId: 171287
+    fdcDescription: Egg, whole, raw, fresh
+    per100g:
+      kcal: 143
+      protein: 12.56
+      fat: 9.51
+      carbs: 0.72
+    tags:
+      - egg
+    micro100g:
+      fiber: 0
+      sugar: 0.37
+      satFat: 3.126
+      monoFat: 3.658
+      polyFat: 1.911
+      cholesterol: 372
+      calcium: 56
+      iron: 1.75
+      magnesium: 12
+      phosphorus: 198
+      potassium: 138
+      sodium: 142
+      zinc: 1.29
+      copper: 0.072
+      manganese: 0.028
+      selenium: 30.7
+      vitA: 160
+      vitC: 0
+      vitD: 2
+      vitE: 1.05
+      vitK: 0.3
+      thiamin: 0.04
+      riboflavin: 0.457
+      niacin: 0.075
+      vitB6: 0.17
+      folate: 47
+      vitB12: 0.89
+      pantothenic: 1.533
+      water: 76.15
+    pieceG: 50
+    pieceSource: fdc
+  milk:
+    name: молоко коровье питьевое
+    fdcId: 171265
+    fdcDescription: Milk, whole, 3.25% milkfat, with added vitamin D
+    per100g:
+      kcal: 61
+      protein: 3.15
+      fat: 3.25
+      carbs: 4.8
+    tags:
+      - dairy
+    micro100g:
+      fiber: 0
+      sugar: 5.05
+      satFat: 1.865
+      monoFat: 0.812
+      polyFat: 0.195
+      cholesterol: 10
+      calcium: 113
+      iron: 0.03
+      magnesium: 10
+      phosphorus: 84
+      potassium: 132
+      sodium: 43
+      zinc: 0.37
+      copper: 0.025
+      manganese: 0.004
+      selenium: 3.7
+      vitA: 46
+      vitC: 0
+      vitD: 1.3
+      vitE: 0.07
+      vitK: 0.3
+      thiamin: 0.046
+      riboflavin: 0.169
+      niacin: 0.089
+      vitB6: 0.036
+      folate: 5
+      vitB12: 0.45
+      pantothenic: 0.373
+      water: 88.13
+  tvorog:
+    name: творог
+    fdcId: 172182
+    fdcDescription: Cheese, cottage, lowfat, 2% milkfat
+    per100g:
+      kcal: 81
+      protein: 10.45
+      fat: 2.27
+      carbs: 4.76
+    tags:
+      - dairy
+      - tvorog
+    substitute: русского творога в SR Legacy нет; заменён американским cottage cheese, 2% жирности (lowfat) — ближайший аналог по жирности, но текстура иная (влажный зернёный творог, а не сухой)
+    micro100g:
+      fiber: 0
+      sugar: 4
+      satFat: 1.235
+      monoFat: 0.516
+      polyFat: 0.083
+      cholesterol: 12
+      calcium: 111
+      iron: 0.13
+      magnesium: 9
+      phosphorus: 150
+      potassium: 125
+      sodium: 308
+      zinc: 0.51
+      copper: 0.033
+      manganese: 0.015
+      selenium: 11.9
+      vitA: 68
+      vitC: 0
+      vitD: 0
+      vitE: 0.08
+      vitK: 0
+      thiamin: 0.02
+      riboflavin: 0.251
+      niacin: 0.103
+      vitB6: 0.057
+      folate: 8
+      vitB12: 0.47
+      pantothenic: 0.524
+      water: 81.24
+  greek-yogurt:
+    name: греческий йогурт натуральный
+    fdcId: 170903
+    fdcDescription: Yogurt, Greek, plain, lowfat
+    per100g:
+      kcal: 73
+      protein: 9.95
+      fat: 1.92
+      carbs: 3.94
+    tags:
+      - dairy
+      - greek-yogurt
+    micro100g:
+      fiber: 0
+      sugar: 3.56
+      satFat: 1.23
+      monoFat: 0.486
+      polyFat: 0.076
+      cholesterol: 10
+      calcium: 115
+      iron: 0.04
+      magnesium: 11
+      phosphorus: 137
+      potassium: 141
+      sodium: 34
+      zinc: 0.6
+      copper: 0.021
+      manganese: 0.007
+      selenium: 12.4
+      vitA: 90
+      vitC: 0.8
+      vitD: 0
+      vitE: 0.04
+      vitK: 0.2
+      thiamin: 0.044
+      riboflavin: 0.233
+      niacin: 0.197
+      vitB6: 0.055
+      folate: 12
+      vitB12: 0.52
+      pantothenic: 0.47
+      water: 83.56
+  oats:
+    name: овсяные хлопья
+    fdcId: 173904
+    fdcDescription: Cereals, oats, regular and quick, not fortified, dry
+    per100g:
+      kcal: 379
+      protein: 13.15
+      fat: 6.52
+      carbs: 67.7
+    tags:
+      - grain
+    micro100g:
+      fiber: 10.1
+      sugar: 0.99
+      satFat: 1.11
+      monoFat: 1.98
+      polyFat: 2.3
+      cholesterol: 0
+      calcium: 52
+      iron: 4.25
+      magnesium: 138
+      phosphorus: 410
+      potassium: 362
+      sodium: 6
+      zinc: 3.64
+      copper: 0.391
+      manganese: 3.63
+      selenium: 28.9
+      vitA: 0
+      vitC: 0
+      vitD: 0
+      vitE: 0.42
+      vitK: 2
+      thiamin: 0.46
+      riboflavin: 0.155
+      niacin: 1.125
+      vitB6: 0.1
+      folate: 32
+      vitB12: 0
+      pantothenic: 1.12
+      water: 10.84
+  quinoa:
+    name: киноа
+    fdcId: 168874
+    fdcDescription: Quinoa, uncooked
+    per100g:
+      kcal: 368
+      protein: 14.12
+      fat: 6.07
+      carbs: 64.16
+    tags:
+      - grain
+    micro100g:
+      fiber: 7
+      satFat: 0.706
+      monoFat: 1.613
+      polyFat: 3.292
+      cholesterol: 0
+      calcium: 47
+      iron: 4.57
+      magnesium: 197
+      phosphorus: 457
+      potassium: 563
+      sodium: 5
+      zinc: 3.1
+      copper: 0.59
+      manganese: 2.033
+      selenium: 8.5
+      vitA: 1
+      vitD: 0
+      vitE: 2.44
+      vitK: 0
+      thiamin: 0.36
+      riboflavin: 0.318
+      niacin: 1.52
+      vitB6: 0.487
+      folate: 184
+      vitB12: 0
+      pantothenic: 0.772
+      water: 13.28
+  bulgur:
+    name: булгур
+    fdcId: 170688
+    fdcDescription: Bulgur, dry
+    per100g:
+      kcal: 342
+      protein: 12.29
+      fat: 1.33
+      carbs: 75.87
+    tags:
+      - grain
+    micro100g:
+      fiber: 12.5
+      sugar: 0.41
+      satFat: 0.232
+      monoFat: 0.173
+      polyFat: 0.541
+      cholesterol: 0
+      calcium: 35
+      iron: 2.46
+      magnesium: 164
+      phosphorus: 300
+      potassium: 410
+      sodium: 17
+      zinc: 1.93
+      copper: 0.335
+      manganese: 3.048
+      selenium: 2.3
+      vitA: 0
+      vitC: 0
+      vitD: 0
+      vitE: 0.06
+      vitK: 1.9
+      thiamin: 0.232
+      riboflavin: 0.115
+      niacin: 5.114
+      vitB6: 0.342
+      folate: 27
+      vitB12: 0
+      pantothenic: 1.045
+      water: 9
+  buckwheat:
+    name: гречневая крупа
+    fdcId: 170685
+    fdcDescription: Buckwheat groats, roasted, dry
+    per100g:
+      kcal: 346
+      protein: 11.73
+      fat: 2.71
+      carbs: 74.95
+    tags:
+      - grain
+    micro100g:
+      fiber: 10.3
+      satFat: 0.591
+      monoFat: 0.828
+      polyFat: 0.828
+      cholesterol: 0
+      calcium: 17
+      iron: 2.47
+      magnesium: 221
+      phosphorus: 319
+      potassium: 320
+      sodium: 11
+      zinc: 2.42
+      copper: 0.624
+      manganese: 1.618
+      selenium: 8.4
+      vitA: 0
+      vitC: 0
+      vitD: 0
+      thiamin: 0.224
+      riboflavin: 0.271
+      niacin: 5.135
+      vitB6: 0.353
+      folate: 42
+      vitB12: 0
+      pantothenic: 1.233
+      water: 8.41
+  pearl-barley:
+    name: перловая крупа
+    fdcId: 170284
+    fdcDescription: Barley, pearled, raw
+    per100g:
+      kcal: 352
+      protein: 9.91
+      fat: 1.16
+      carbs: 77.72
+    tags:
+      - grain
+    micro100g:
+      fiber: 15.6
+      sugar: 0.8
+      satFat: 0.244
+      monoFat: 0.149
+      polyFat: 0.56
+      cholesterol: 0
+      calcium: 29
+      iron: 2.5
+      magnesium: 79
+      phosphorus: 221
+      potassium: 280
+      sodium: 9
+      zinc: 2.13
+      copper: 0.42
+      manganese: 1.322
+      selenium: 37.7
+      vitA: 1
+      vitC: 0
+      vitD: 0
+      vitE: 0.02
+      vitK: 2.2
+      thiamin: 0.191
+      riboflavin: 0.114
+      niacin: 4.604
+      vitB6: 0.26
+      folate: 23
+      vitB12: 0
+      pantothenic: 0.282
+      water: 10.09
+  lentils:
+    name: чечевица
+    fdcId: 172420
+    fdcDescription: Lentils, raw
+    per100g:
+      kcal: 352
+      protein: 24.63
+      fat: 1.06
+      carbs: 63.35
+    tags:
+      - legumes
+    micro100g:
+      fiber: 10.7
+      sugar: 2.03
+      satFat: 0.154
+      monoFat: 0.193
+      polyFat: 0.526
+      cholesterol: 0
+      calcium: 35
+      iron: 6.51
+      magnesium: 47
+      phosphorus: 281
+      potassium: 677
+      sodium: 6
+      zinc: 3.27
+      copper: 0.754
+      manganese: 1.393
+      selenium: 0.1
+      vitA: 2
+      vitC: 4.5
+      vitD: 0
+      vitE: 0.49
+      vitK: 5
+      thiamin: 0.873
+      riboflavin: 0.211
+      niacin: 2.605
+      vitB6: 0.54
+      folate: 479
+      vitB12: 0
+      pantothenic: 2.14
+      water: 8.26
+  chickpeas:
+    name: нут
+    fdcId: 173756
+    fdcDescription: Chickpeas (garbanzo beans, bengal gram), mature seeds, raw
+    per100g:
+      kcal: 378
+      protein: 20.47
+      fat: 6.04
+      carbs: 62.95
+    tags:
+      - legumes
+    micro100g:
+      fiber: 12.2
+      sugar: 10.7
+      satFat: 0.603
+      monoFat: 1.377
+      polyFat: 2.731
+      cholesterol: 0
+      calcium: 57
+      iron: 4.31
+      magnesium: 79
+      phosphorus: 252
+      potassium: 718
+      sodium: 24
+      zinc: 2.76
+      copper: 0.656
+      manganese: 4.15
+      selenium: 0
+      vitA: 3
+      vitC: 4
+      vitD: 0
+      vitE: 0.82
+      vitK: 9
+      thiamin: 0.477
+      riboflavin: 0.212
+      niacin: 1.541
+      vitB6: 0.535
+      folate: 557
+      vitB12: 0
+      pantothenic: 1.588
+      water: 7.68
+  white-beans:
+    name: фасоль белая
+    fdcId: 175202
+    fdcDescription: Beans, white, mature seeds, raw
+    per100g:
+      kcal: 333
+      protein: 23.36
+      fat: 0.85
+      carbs: 60.27
+    tags:
+      - legumes
+    micro100g:
+      fiber: 15.2
+      sugar: 2.11
+      satFat: 0.219
+      monoFat: 0.074
+      polyFat: 0.364
+      cholesterol: 0
+      calcium: 240
+      iron: 10.44
+      magnesium: 190
+      phosphorus: 301
+      potassium: 1795
+      sodium: 16
+      zinc: 3.67
+      copper: 0.984
+      manganese: 1.796
+      selenium: 12.8
+      vitA: 0
+      vitC: 0
+      vitD: 0
+      vitE: 0.21
+      vitK: 5.6
+      thiamin: 0.437
+      riboflavin: 0.146
+      niacin: 0.479
+      vitB6: 0.318
+      folate: 388
+      vitB12: 0
+      pantothenic: 0.732
+      water: 11.32
+  red-beans:
+    name: фасоль красная
+    fdcId: 175193
+    fdcDescription: Beans, kidney, all types, mature seeds, raw
+    per100g:
+      kcal: 333
+      protein: 23.58
+      fat: 0.83
+      carbs: 60.01
+    tags:
+      - legumes
+    micro100g:
+      fiber: 24.9
+      sugar: 2.23
+      satFat: 0.12
+      monoFat: 0.064
+      polyFat: 0.457
+      cholesterol: 0
+      calcium: 143
+      iron: 8.2
+      magnesium: 140
+      phosphorus: 407
+      potassium: 1406
+      sodium: 24
+      zinc: 2.79
+      copper: 0.958
+      manganese: 1.021
+      selenium: 3.2
+      vitA: 0
+      vitC: 4.5
+      vitD: 0
+      vitE: 0.22
+      vitK: 19
+      thiamin: 0.529
+      riboflavin: 0.219
+      niacin: 2.06
+      vitB6: 0.397
+      folate: 394
+      vitB12: 0
+      pantothenic: 0.78
+      water: 11.75
+  cashew:
+    name: кешью обжаренный
+    fdcId: 170571
+    fdcDescription: Nuts, cashew nuts, dry roasted, without salt added
+    per100g:
+      kcal: 574
+      protein: 15.31
+      fat: 46.35
+      carbs: 32.69
+    tags:
+      - nuts
+    micro100g:
+      fiber: 3
+      sugar: 5.01
+      satFat: 9.157
+      monoFat: 27.317
+      polyFat: 7.836
+      cholesterol: 0
+      calcium: 45
+      iron: 6
+      magnesium: 260
+      phosphorus: 490
+      potassium: 565
+      sodium: 16
+      zinc: 5.6
+      copper: 2.22
+      manganese: 0.826
+      selenium: 11.7
+      vitA: 0
+      vitC: 0
+      vitD: 0
+      vitE: 0.92
+      vitK: 34.7
+      thiamin: 0.2
+      riboflavin: 0.2
+      niacin: 1.4
+      vitB6: 0.256
+      folate: 69
+      vitB12: 0
+      pantothenic: 1.217
+      water: 1.7
+  hazelnut:
+    name: фундук обжаренный
+    fdcId: 170583
+    fdcDescription: Nuts, hazelnuts or filberts, dry roasted, without salt added
+    per100g:
+      kcal: 646
+      protein: 15.03
+      fat: 62.4
+      carbs: 17.6
+    tags:
+      - nuts
+    micro100g:
+      fiber: 9.4
+      sugar: 4.89
+      satFat: 4.511
+      monoFat: 46.608
+      polyFat: 8.463
+      cholesterol: 0
+      calcium: 123
+      iron: 4.38
+      magnesium: 173
+      phosphorus: 310
+      potassium: 755
+      sodium: 0
+      zinc: 2.5
+      copper: 1.75
+      manganese: 5.55
+      selenium: 4.1
+      vitA: 3
+      vitC: 3.8
+      vitD: 0
+      vitE: 15.28
+      thiamin: 0.338
+      riboflavin: 0.123
+      niacin: 2.05
+      vitB6: 0.62
+      folate: 88
+      vitB12: 0
+      pantothenic: 0.923
+      water: 2.52
+  almond:
+    name: миндаль обжаренный
+    fdcId: 170158
+    fdcDescription: Nuts, almonds, dry roasted, without salt added
+    per100g:
+      kcal: 598
+      protein: 20.96
+      fat: 52.54
+      carbs: 21.01
+    tags:
+      - nuts
+    micro100g:
+      fiber: 10.9
+      sugar: 4.86
+      satFat: 4.092
+      monoFat: 33.076
+      polyFat: 12.955
+      cholesterol: 0
+      calcium: 268
+      iron: 3.73
+      magnesium: 279
+      phosphorus: 471
+      potassium: 713
+      sodium: 3
+      zinc: 3.31
+      copper: 1.099
+      manganese: 2.232
+      selenium: 2
+      vitA: 0
+      vitC: 0
+      vitD: 0
+      vitE: 23.9
+      vitK: 0
+      thiamin: 0.077
+      riboflavin: 1.197
+      niacin: 3.637
+      vitB6: 0.136
+      folate: 55
+      vitB12: 0
+      pantothenic: 0.321
+      water: 2.41
+  brazil-nut:
+    name: бразильский орех
+    fdcId: 170569
+    fdcDescription: Nuts, brazilnuts, dried, unblanched
+    per100g:
+      kcal: 659
+      protein: 14.32
+      fat: 67.1
+      carbs: 11.74
+    tags:
+      - nuts
+      - brazil
+    micro100g:
+      fiber: 7.5
+      sugar: 2.33
+      satFat: 16.134
+      monoFat: 23.879
+      polyFat: 24.399
+      cholesterol: 0
+      calcium: 160
+      iron: 2.43
+      magnesium: 376
+      phosphorus: 725
+      potassium: 659
+      sodium: 3
+      zinc: 4.06
+      copper: 1.743
+      manganese: 1.223
+      selenium: 1917
+      vitA: 0
+      vitC: 0.7
+      vitD: 0
+      vitE: 5.65
+      vitK: 0
+      thiamin: 0.617
+      riboflavin: 0.035
+      niacin: 0.295
+      vitB6: 0.101
+      folate: 22
+      vitB12: 0
+      pantothenic: 0.184
+      water: 3.42
+    pieceG: 5
+    pieceSource: fdc
+  flaxseed:
+    name: семена льна
+    fdcId: 169414
+    fdcDescription: Seeds, flaxseed
+    per100g:
+      kcal: 534
+      protein: 18.29
+      fat: 42.16
+      carbs: 28.88
+    tags:
+      - flax
+    micro100g:
+      fiber: 27.3
+      sugar: 1.55
+      satFat: 3.663
+      monoFat: 7.527
+      polyFat: 28.73
+      cholesterol: 0
+      calcium: 255
+      iron: 5.73
+      magnesium: 392
+      phosphorus: 642
+      potassium: 813
+      sodium: 30
+      zinc: 4.34
+      copper: 1.22
+      manganese: 2.482
+      selenium: 25.4
+      vitA: 0
+      vitC: 0.6
+      vitD: 0
+      vitE: 0.31
+      vitK: 4.3
+      thiamin: 1.644
+      riboflavin: 0.161
+      niacin: 3.08
+      vitB6: 0.473
+      folate: 87
+      vitB12: 0
+      pantothenic: 0.985
+      water: 6.96
+    tbspG: 7
+    tbspSource: fdc
+  chia:
+    name: семена чиа
+    fdcId: 170554
+    fdcDescription: Seeds, chia seeds, dried
+    per100g:
+      kcal: 486
+      protein: 16.54
+      fat: 30.74
+      carbs: 42.12
+    tags:
+      - chia
+    micro100g:
+      fiber: 34.4
+      satFat: 3.33
+      monoFat: 2.309
+      polyFat: 23.665
+      cholesterol: 0
+      calcium: 631
+      iron: 7.72
+      magnesium: 335
+      phosphorus: 860
+      potassium: 407
+      sodium: 16
+      zinc: 4.58
+      copper: 0.924
+      manganese: 2.723
+      selenium: 55.2
+      vitC: 1.6
+      vitE: 0.5
+      thiamin: 0.62
+      riboflavin: 0.17
+      niacin: 8.83
+      folate: 49
+      vitB12: 0
+      water: 5.8
+    tbspG: 12
+    tbspSource: common
+  olive-oil:
+    name: оливковое масло
+    fdcId: 171413
+    fdcDescription: Oil, olive, salad or cooking
+    per100g:
+      kcal: 884
+      protein: 0
+      fat: 100
+      carbs: 0
+    tags:
+      - oil
+    micro100g:
+      fiber: 0
+      sugar: 0
+      satFat: 13.808
+      monoFat: 72.961
+      polyFat: 10.523
+      cholesterol: 0
+      calcium: 1
+      iron: 0.56
+      magnesium: 0
+      phosphorus: 0
+      potassium: 1
+      sodium: 2
+      zinc: 0
+      copper: 0
+      manganese: 0
+      selenium: 0
+      vitA: 0
+      vitC: 0
+      vitD: 0
+      vitE: 14.35
+      vitK: 60.2
+      thiamin: 0
+      riboflavin: 0
+      niacin: 0
+      vitB6: 0
+      folate: 0
+      vitB12: 0
+      pantothenic: 0
+      water: 0
+    tbspG: 13.5
+    tbspSource: fdc
+  broccoli:
+    name: брокколи
+    fdcId: 170379
+    fdcDescription: Broccoli, raw
+    per100g:
+      kcal: 34
+      protein: 2.82
+      fat: 0.37
+      carbs: 6.64
+    tags:
+      - vegetable
+    micro100g:
+      fiber: 2.6
+      sugar: 1.7
+      satFat: 0.114
+      monoFat: 0.031
+      polyFat: 0.112
+      cholesterol: 0
+      calcium: 47
+      iron: 0.73
+      magnesium: 21
+      phosphorus: 66
+      potassium: 316
+      sodium: 33
+      zinc: 0.41
+      copper: 0.049
+      manganese: 0.21
+      selenium: 2.5
+      vitA: 31
+      vitC: 89.2
+      vitD: 0
+      vitE: 0.78
+      vitK: 101.6
+      thiamin: 0.071
+      riboflavin: 0.117
+      niacin: 0.639
+      vitB6: 0.175
+      folate: 63
+      vitB12: 0
+      pantothenic: 0.573
+      water: 89.3
+  bell-pepper:
+    name: перец сладкий
+    fdcId: 170108
+    fdcDescription: Peppers, sweet, red, raw
+    per100g:
+      kcal: 26
+      protein: 0.99
+      fat: 0.3
+      carbs: 6.03
+    tags:
+      - vegetable
+    micro100g:
+      fiber: 2.1
+      sugar: 4.2
+      satFat: 0.059
+      monoFat: 0.007
+      polyFat: 0.156
+      cholesterol: 0
+      calcium: 7
+      iron: 0.43
+      magnesium: 12
+      phosphorus: 26
+      potassium: 211
+      sodium: 4
+      zinc: 0.25
+      copper: 0.017
+      manganese: 0.112
+      selenium: 0.1
+      vitA: 157
+      vitC: 127.7
+      vitD: 0
+      vitE: 1.58
+      vitK: 4.9
+      thiamin: 0.054
+      riboflavin: 0.085
+      niacin: 0.979
+      vitB6: 0.291
+      folate: 46
+      vitB12: 0
+      pantothenic: 0.317
+      water: 92.21
+  zucchini:
+    name: цукини (кабачок)
+    fdcId: 169291
+    fdcDescription: Squash, summer, zucchini, includes skin, raw
+    per100g:
+      kcal: 17
+      protein: 1.21
+      fat: 0.32
+      carbs: 3.11
+    tags:
+      - vegetable
+    micro100g:
+      fiber: 1
+      sugar: 2.5
+      satFat: 0.084
+      monoFat: 0.011
+      polyFat: 0.091
+      cholesterol: 0
+      calcium: 16
+      iron: 0.37
+      magnesium: 18
+      phosphorus: 38
+      potassium: 261
+      sodium: 8
+      zinc: 0.32
+      copper: 0.053
+      manganese: 0.177
+      selenium: 0.2
+      vitA: 10
+      vitC: 17.9
+      vitD: 0
+      vitE: 0.12
+      vitK: 4.3
+      thiamin: 0.045
+      riboflavin: 0.094
+      niacin: 0.451
+      vitB6: 0.163
+      folate: 24
+      vitB12: 0
+      pantothenic: 0.204
+      water: 94.79
+  carrot:
+    name: морковь
+    fdcId: 170393
+    fdcDescription: Carrots, raw
+    per100g:
+      kcal: 41
+      protein: 0.93
+      fat: 0.24
+      carbs: 9.58
+    tags:
+      - vegetable
+    micro100g:
+      fiber: 2.8
+      sugar: 4.74
+      satFat: 0.032
+      monoFat: 0.012
+      polyFat: 0.102
+      cholesterol: 0
+      calcium: 33
+      iron: 0.3
+      magnesium: 12
+      phosphorus: 35
+      potassium: 320
+      sodium: 69
+      zinc: 0.24
+      copper: 0.045
+      manganese: 0.143
+      selenium: 0.1
+      vitA: 835
+      vitC: 5.9
+      vitD: 0
+      vitE: 0.66
+      vitK: 13.2
+      thiamin: 0.066
+      riboflavin: 0.058
+      niacin: 0.983
+      vitB6: 0.138
+      folate: 19
+      vitB12: 0
+      pantothenic: 0.273
+      water: 88.29
+  spinach:
+    name: шпинат
+    fdcId: 168462
+    fdcDescription: Spinach, raw
+    per100g:
+      kcal: 23
+      protein: 2.86
+      fat: 0.39
+      carbs: 3.63
+    tags:
+      - vegetable
+    micro100g:
+      fiber: 2.2
+      sugar: 0.42
+      satFat: 0.063
+      monoFat: 0.01
+      polyFat: 0.165
+      cholesterol: 0
+      calcium: 99
+      iron: 2.71
+      magnesium: 79
+      phosphorus: 49
+      potassium: 558
+      sodium: 79
+      zinc: 0.53
+      copper: 0.13
+      manganese: 0.897
+      selenium: 1
+      vitA: 469
+      vitC: 28.1
+      vitD: 0
+      vitE: 2.03
+      vitK: 482.9
+      thiamin: 0.078
+      riboflavin: 0.189
+      niacin: 0.724
+      vitB6: 0.195
+      folate: 194
+      vitB12: 0
+      pantothenic: 0.065
+      water: 91.4
+  cabbage:
+    name: капуста белокочанная
+    fdcId: 169975
+    fdcDescription: Cabbage, raw
+    per100g:
+      kcal: 25
+      protein: 1.28
+      fat: 0.1
+      carbs: 5.8
+    tags:
+      - vegetable
+    micro100g:
+      fiber: 2.5
+      sugar: 3.2
+      satFat: 0.034
+      monoFat: 0.017
+      polyFat: 0.017
+      cholesterol: 0
+      calcium: 40
+      iron: 0.47
+      magnesium: 12
+      phosphorus: 26
+      potassium: 170
+      sodium: 18
+      zinc: 0.18
+      copper: 0.019
+      manganese: 0.16
+      selenium: 0.3
+      vitA: 5
+      vitC: 36.6
+      vitD: 0
+      vitE: 0.15
+      vitK: 76
+      thiamin: 0.061
+      riboflavin: 0.04
+      niacin: 0.234
+      vitB6: 0.124
+      folate: 43
+      vitB12: 0
+      pantothenic: 0.212
+      water: 92.18
+  kale:
+    name: кале
+    fdcId: 168421
+    fdcDescription: Kale, raw
+    per100g:
+      kcal: 35
+      protein: 2.92
+      fat: 1.49
+      carbs: 4.42
+    tags:
+      - vegetable
+    micro100g:
+      fiber: 4.1
+      sugar: 0.99
+      satFat: 0.178
+      monoFat: 0.104
+      polyFat: 0.673
+      cholesterol: 0
+      calcium: 254
+      iron: 1.6
+      magnesium: 33
+      phosphorus: 55
+      potassium: 348
+      sodium: 53
+      zinc: 0.39
+      copper: 0.053
+      manganese: 0.92
+      selenium: 0.9
+      vitA: 241
+      vitC: 93.4
+      vitD: 0
+      vitE: 0.66
+      vitK: 389.6
+      thiamin: 0.113
+      riboflavin: 0.347
+      niacin: 1.18
+      vitB6: 0.147
+      folate: 62
+      vitB12: 0
+      pantothenic: 0.37
+      water: 89.63
+  chard:
+    name: мангольд
+    fdcId: 169991
+    fdcDescription: Chard, swiss, raw
+    per100g:
+      kcal: 19
+      protein: 1.8
+      fat: 0.2
+      carbs: 3.74
+    tags:
+      - vegetable
+    micro100g:
+      fiber: 1.6
+      sugar: 1.1
+      satFat: 0.03
+      monoFat: 0.04
+      polyFat: 0.07
+      cholesterol: 0
+      calcium: 51
+      iron: 1.8
+      magnesium: 81
+      phosphorus: 46
+      potassium: 379
+      sodium: 213
+      zinc: 0.36
+      copper: 0.179
+      manganese: 0.366
+      selenium: 0.9
+      vitA: 306
+      vitC: 30
+      vitD: 0
+      vitE: 1.89
+      vitK: 830
+      thiamin: 0.04
+      riboflavin: 0.09
+      niacin: 0.4
+      vitB6: 0.099
+      folate: 14
+      vitB12: 0
+      pantothenic: 0.172
+      water: 92.66
+  sweet-potato:
+    name: батат
+    fdcId: 168482
+    fdcDescription: Sweet potato, raw, unprepared (Includes foods for USDA's Food Distribution Program)
+    per100g:
+      kcal: 86
+      protein: 1.57
+      fat: 0.05
+      carbs: 20.12
+    tags:
+      - vegetable
+    micro100g:
+      fiber: 3
+      sugar: 4.18
+      satFat: 0.018
+      monoFat: 0.001
+      polyFat: 0.014
+      cholesterol: 0
+      calcium: 30
+      iron: 0.61
+      magnesium: 25
+      phosphorus: 47
+      potassium: 337
+      sodium: 55
+      zinc: 0.3
+      copper: 0.151
+      manganese: 0.258
+      selenium: 0.6
+      vitA: 709
+      vitC: 2.4
+      vitD: 0
+      vitE: 0.26
+      vitK: 1.8
+      thiamin: 0.078
+      riboflavin: 0.061
+      niacin: 0.557
+      vitB6: 0.209
+      folate: 11
+      vitB12: 0
+      pantothenic: 0.8
+      water: 77.28
+  pumpkin:
+    name: тыква
+    fdcId: 168448
+    fdcDescription: Pumpkin, raw
+    per100g:
+      kcal: 26
+      protein: 1
+      fat: 0.1
+      carbs: 6.5
+    tags:
+      - vegetable
+    micro100g:
+      fiber: 0.5
+      sugar: 2.76
+      satFat: 0.052
+      monoFat: 0.013
+      polyFat: 0.005
+      cholesterol: 0
+      calcium: 21
+      iron: 0.8
+      magnesium: 12
+      phosphorus: 44
+      potassium: 340
+      sodium: 1
+      zinc: 0.32
+      copper: 0.127
+      manganese: 0.125
+      selenium: 0.3
+      vitA: 426
+      vitC: 9
+      vitD: 0
+      vitE: 1.06
+      vitK: 1.1
+      thiamin: 0.05
+      riboflavin: 0.11
+      niacin: 0.6
+      vitB6: 0.061
+      folate: 16
+      vitB12: 0
+      pantothenic: 0.298
+      water: 91.6
+  eggplant:
+    name: баклажан
+    fdcId: 169228
+    fdcDescription: Eggplant, raw
+    per100g:
+      kcal: 25
+      protein: 0.98
+      fat: 0.18
+      carbs: 5.88
+    tags:
+      - vegetable
+    micro100g:
+      fiber: 3
+      sugar: 3.53
+      satFat: 0.034
+      monoFat: 0.016
+      polyFat: 0.076
+      cholesterol: 0
+      calcium: 9
+      iron: 0.23
+      magnesium: 14
+      phosphorus: 24
+      potassium: 229
+      sodium: 2
+      zinc: 0.16
+      copper: 0.081
+      manganese: 0.232
+      selenium: 0.3
+      vitA: 1
+      vitC: 2.2
+      vitD: 0
+      vitE: 0.3
+      vitK: 3.5
+      thiamin: 0.039
+      riboflavin: 0.037
+      niacin: 0.649
+      vitB6: 0.084
+      folate: 22
+      vitB12: 0
+      pantothenic: 0.281
+      water: 92.3
+  onion:
+    name: лук репчатый
+    fdcId: 170000
+    fdcDescription: Onions, raw
+    per100g:
+      kcal: 40
+      protein: 1.1
+      fat: 0.1
+      carbs: 9.34
+    tags:
+      - vegetable
+    micro100g:
+      fiber: 1.7
+      sugar: 4.24
+      satFat: 0.042
+      monoFat: 0.013
+      polyFat: 0.017
+      cholesterol: 0
+      calcium: 23
+      iron: 0.21
+      magnesium: 10
+      phosphorus: 29
+      potassium: 146
+      sodium: 4
+      zinc: 0.17
+      copper: 0.039
+      manganese: 0.129
+      selenium: 0.5
+      vitA: 0
+      vitC: 7.4
+      vitD: 0
+      vitE: 0.02
+      vitK: 0.4
+      thiamin: 0.046
+      riboflavin: 0.027
+      niacin: 0.116
+      vitB6: 0.12
+      folate: 19
+      vitB12: 0
+      pantothenic: 0.123
+      water: 89.11
+  garlic:
+    name: чеснок
+    fdcId: 169230
+    fdcDescription: Garlic, raw
+    per100g:
+      kcal: 149
+      protein: 6.36
+      fat: 0.5
+      carbs: 33.06
+    tags:
+      - vegetable
+    micro100g:
+      fiber: 2.1
+      sugar: 1
+      satFat: 0.089
+      monoFat: 0.011
+      polyFat: 0.249
+      cholesterol: 0
+      calcium: 181
+      iron: 1.7
+      magnesium: 25
+      phosphorus: 153
+      potassium: 401
+      sodium: 17
+      zinc: 1.16
+      copper: 0.299
+      manganese: 1.672
+      selenium: 14.2
+      vitA: 0
+      vitC: 31.2
+      vitD: 0
+      vitE: 0.08
+      vitK: 1.7
+      thiamin: 0.2
+      riboflavin: 0.11
+      niacin: 0.7
+      vitB6: 1.235
+      folate: 3
+      vitB12: 0
+      pantothenic: 0.596
+      water: 58.58
+  tomato:
+    name: томаты
+    fdcId: 170457
+    fdcDescription: Tomatoes, red, ripe, raw, year round average
+    per100g:
+      kcal: 18
+      protein: 0.88
+      fat: 0.2
+      carbs: 3.89
+    tags:
+      - vegetable
+    micro100g:
+      fiber: 1.2
+      sugar: 2.63
+      satFat: 0.028
+      monoFat: 0.031
+      polyFat: 0.083
+      cholesterol: 0
+      calcium: 10
+      iron: 0.27
+      magnesium: 11
+      phosphorus: 24
+      potassium: 237
+      sodium: 5
+      zinc: 0.17
+      copper: 0.059
+      manganese: 0.114
+      selenium: 0
+      vitA: 42
+      vitC: 13.7
+      vitD: 0
+      vitE: 0.54
+      vitK: 7.9
+      thiamin: 0.037
+      riboflavin: 0.019
+      niacin: 0.594
+      vitB6: 0.08
+      folate: 15
+      vitB12: 0
+      pantothenic: 0.089
+      water: 94.52
+  shiitake:
+    name: шиитаке
+    fdcId: 169242
+    fdcDescription: Mushrooms, shiitake, raw
+    per100g:
+      kcal: 34
+      protein: 2.24
+      fat: 0.49
+      carbs: 6.79
+    tags:
+      - vegetable
+    micro100g:
+      fiber: 2.5
+      sugar: 2.38
+      calcium: 2
+      iron: 0.41
+      magnesium: 20
+      phosphorus: 112
+      potassium: 304
+      sodium: 9
+      zinc: 1.03
+      copper: 0.142
+      manganese: 0.23
+      selenium: 5.7
+      vitD: 0.4
+      thiamin: 0.015
+      riboflavin: 0.217
+      niacin: 3.877
+      vitB6: 0.293
+      folate: 13
+      pantothenic: 1.5
+      water: 89.74
+  oyster-mushroom:
+    name: вешенки
+    fdcId: 168580
+    fdcDescription: Mushrooms, oyster, raw
+    per100g:
+      kcal: 33
+      protein: 3.31
+      fat: 0.41
+      carbs: 6.09
+    tags:
+      - vegetable
+    micro100g:
+      fiber: 2.3
+      sugar: 1.11
+      satFat: 0.062
+      monoFat: 0.031
+      polyFat: 0.123
+      cholesterol: 0
+      calcium: 3
+      iron: 1.33
+      magnesium: 18
+      phosphorus: 120
+      potassium: 420
+      sodium: 18
+      zinc: 0.77
+      copper: 0.244
+      manganese: 0.113
+      selenium: 2.6
+      vitA: 2
+      vitC: 0
+      vitD: 0.7
+      vitE: 0
+      vitK: 0
+      thiamin: 0.125
+      riboflavin: 0.349
+      niacin: 4.956
+      vitB6: 0.11
+      folate: 38
+      vitB12: 0
+      pantothenic: 1.294
+      water: 89.18
+  peach:
+    name: персик
+    fdcId: 169928
+    fdcDescription: Peaches, yellow, raw
+    per100g:
+      kcal: 39
+      protein: 0.91
+      fat: 0.25
+      carbs: 9.54
+    tags:
+      - fruit
+    micro100g:
+      fiber: 1.5
+      sugar: 8.39
+      satFat: 0.019
+      monoFat: 0.067
+      polyFat: 0.086
+      cholesterol: 0
+      calcium: 6
+      iron: 0.25
+      magnesium: 9
+      phosphorus: 20
+      potassium: 190
+      sodium: 0
+      zinc: 0.17
+      copper: 0.068
+      manganese: 0.061
+      selenium: 0.1
+      vitA: 16
+      vitC: 6.6
+      vitD: 0
+      vitE: 0.73
+      vitK: 2.6
+      thiamin: 0.024
+      riboflavin: 0.031
+      niacin: 0.806
+      vitB6: 0.025
+      folate: 4
+      vitB12: 0
+      pantothenic: 0.153
+      water: 88.87
+  apple:
+    name: яблоко
+    fdcId: 171688
+    fdcDescription: Apples, raw, with skin (Includes foods for USDA's Food Distribution Program)
+    per100g:
+      kcal: 52
+      protein: 0.26
+      fat: 0.17
+      carbs: 13.81
+    tags:
+      - fruit
+    micro100g:
+      fiber: 2.4
+      sugar: 10.39
+      satFat: 0.028
+      monoFat: 0.007
+      polyFat: 0.051
+      cholesterol: 0
+      calcium: 6
+      iron: 0.12
+      magnesium: 5
+      phosphorus: 11
+      potassium: 107
+      sodium: 1
+      zinc: 0.04
+      copper: 0.027
+      manganese: 0.035
+      selenium: 0
+      vitA: 3
+      vitC: 4.6
+      vitD: 0
+      vitE: 0.18
+      vitK: 2.2
+      thiamin: 0.017
+      riboflavin: 0.026
+      niacin: 0.091
+      vitB6: 0.041
+      folate: 3
+      vitB12: 0
+      pantothenic: 0.061
+      water: 85.56
+  banana:
+    name: банан
+    fdcId: 173944
+    fdcDescription: Bananas, raw
+    per100g:
+      kcal: 89
+      protein: 1.09
+      fat: 0.33
+      carbs: 22.84
+    tags:
+      - fruit
+    micro100g:
+      fiber: 2.6
+      sugar: 12.23
+      satFat: 0.112
+      monoFat: 0.032
+      polyFat: 0.073
+      cholesterol: 0
+      calcium: 5
+      iron: 0.26
+      magnesium: 27
+      phosphorus: 22
+      potassium: 358
+      sodium: 1
+      zinc: 0.15
+      copper: 0.078
+      manganese: 0.27
+      selenium: 1
+      vitA: 3
+      vitC: 8.7
+      vitD: 0
+      vitE: 0.1
+      vitK: 0.5
+      thiamin: 0.031
+      riboflavin: 0.073
+      niacin: 0.665
+      vitB6: 0.367
+      folate: 20
+      vitB12: 0
+      pantothenic: 0.334
+      water: 74.91
+  pear:
+    name: груша
+    fdcId: 169118
+    fdcDescription: Pears, raw
+    per100g:
+      kcal: 57
+      protein: 0.36
+      fat: 0.14
+      carbs: 15.23
+    tags:
+      - fruit
+    micro100g:
+      fiber: 3.1
+      sugar: 9.75
+      satFat: 0.022
+      monoFat: 0.084
+      polyFat: 0.094
+      cholesterol: 0
+      calcium: 9
+      iron: 0.18
+      magnesium: 7
+      phosphorus: 12
+      potassium: 116
+      sodium: 1
+      zinc: 0.1
+      copper: 0.082
+      manganese: 0.048
+      selenium: 0.1
+      vitA: 1
+      vitC: 4.3
+      vitD: 0
+      vitE: 0.12
+      vitK: 4.4
+      thiamin: 0.012
+      riboflavin: 0.026
+      niacin: 0.161
+      vitB6: 0.029
+      folate: 7
+      vitB12: 0
+      pantothenic: 0.049
+      water: 83.96
+  raisins:
+    name: изюм
+    fdcId: 168165
+    fdcDescription: Raisins, dark, seedless (Includes foods for USDA's Food Distribution Program)
+    per100g:
+      kcal: 299
+      protein: 3.3
+      fat: 0.25
+      carbs: 79.32
+    tags:
+      - fruit
+    micro100g:
+      fiber: 4.5
+      sugar: 65.18
+      satFat: 0.094
+      monoFat: 0.024
+      polyFat: 0.053
+      cholesterol: 0
+      calcium: 62
+      iron: 1.79
+      magnesium: 36
+      phosphorus: 98
+      potassium: 744
+      sodium: 26
+      zinc: 0.36
+      copper: 0.272
+      manganese: 0.281
+      selenium: 0.6
+      vitA: 0
+      vitC: 2.3
+      vitD: 0
+      vitE: 0.12
+      vitK: 3.5
+      thiamin: 0.106
+      riboflavin: 0.125
+      niacin: 0.766
+      vitB6: 0.174
+      folate: 5
+      vitB12: 0
+      water: 15.46
+  dates:
+    name: финики
+    fdcId: 171726
+    fdcDescription: Dates, deglet noor
+    per100g:
+      kcal: 282
+      protein: 2.45
+      fat: 0.39
+      carbs: 75.03
+    tags:
+      - fruit
+    micro100g:
+      fiber: 8
+      sugar: 63.35
+      satFat: 0.032
+      monoFat: 0.036
+      polyFat: 0.019
+      cholesterol: 0
+      calcium: 39
+      iron: 1.02
+      magnesium: 43
+      phosphorus: 62
+      potassium: 656
+      sodium: 2
+      zinc: 0.29
+      copper: 0.206
+      manganese: 0.262
+      selenium: 3
+      vitA: 0
+      vitC: 0.4
+      vitD: 0
+      vitE: 0.05
+      vitK: 2.7
+      thiamin: 0.052
+      riboflavin: 0.066
+      niacin: 1.274
+      vitB6: 0.165
+      folate: 19
+      vitB12: 0
+      pantothenic: 0.589
+      water: 20.53
+  pomegranate:
+    name: гранат (зёрна)
+    fdcId: 169134
+    fdcDescription: Pomegranates, raw
+    per100g:
+      kcal: 83
+      protein: 1.67
+      fat: 1.17
+      carbs: 18.7
+    tags:
+      - fruit
+    micro100g:
+      fiber: 4
+      sugar: 13.67
+      satFat: 0.12
+      monoFat: 0.093
+      polyFat: 0.079
+      cholesterol: 0
+      calcium: 10
+      iron: 0.3
+      magnesium: 12
+      phosphorus: 36
+      potassium: 236
+      sodium: 3
+      zinc: 0.35
+      copper: 0.158
+      manganese: 0.119
+      selenium: 0.5
+      vitA: 0
+      vitC: 10.2
+      vitD: 0
+      vitE: 0.6
+      vitK: 16.4
+      thiamin: 0.067
+      riboflavin: 0.053
+      niacin: 0.293
+      vitB6: 0.075
+      folate: 38
+      vitB12: 0
+      pantothenic: 0.377
+      water: 77.93
+  blueberry:
+    name: черника
+    fdcId: 171711
+    fdcDescription: Blueberries, raw
+    per100g:
+      kcal: 57
+      protein: 0.74
+      fat: 0.33
+      carbs: 14.49
+    tags:
+      - berries
+    micro100g:
+      fiber: 2.4
+      sugar: 9.96
+      satFat: 0.028
+      monoFat: 0.047
+      polyFat: 0.146
+      cholesterol: 0
+      calcium: 6
+      iron: 0.28
+      magnesium: 6
+      phosphorus: 12
+      potassium: 77
+      sodium: 1
+      zinc: 0.16
+      copper: 0.057
+      manganese: 0.336
+      selenium: 0.1
+      vitA: 3
+      vitC: 9.7
+      vitD: 0
+      vitE: 0.57
+      vitK: 19.3
+      thiamin: 0.037
+      riboflavin: 0.041
+      niacin: 0.418
+      vitB6: 0.052
+      folate: 6
+      vitB12: 0
+      pantothenic: 0.124
+      water: 84.21
+  lemon:
+    name: лимон
+    fdcId: 167746
+    fdcDescription: Lemons, raw, without peel
+    per100g:
+      kcal: 29
+      protein: 1.1
+      fat: 0.3
+      carbs: 9.32
+    tags:
+      - fruit
+    micro100g:
+      fiber: 2.8
+      sugar: 2.5
+      satFat: 0.039
+      monoFat: 0.011
+      polyFat: 0.089
+      cholesterol: 0
+      calcium: 26
+      iron: 0.6
+      magnesium: 8
+      phosphorus: 16
+      potassium: 138
+      sodium: 2
+      zinc: 0.06
+      copper: 0.037
+      manganese: 0.03
+      selenium: 0.4
+      vitA: 1
+      vitC: 53
+      vitD: 0
+      vitE: 0.15
+      vitK: 0
+      thiamin: 0.04
+      riboflavin: 0.02
+      niacin: 0.1
+      vitB6: 0.08
+      folate: 11
+      vitB12: 0
+      pantothenic: 0.19
+      water: 88.98
+  cocoa:
+    name: какао-порошок несладкий
+    fdcId: 169593
+    fdcDescription: Cocoa, dry powder, unsweetened
+    per100g:
+      kcal: 228
+      protein: 19.6
+      fat: 13.7
+      carbs: 57.9
+    tags: []
+    micro100g:
+      fiber: 37
+      sugar: 1.75
+      satFat: 8.07
+      monoFat: 4.57
+      polyFat: 0.44
+      cholesterol: 0
+      calcium: 128
+      iron: 13.86
+      magnesium: 499
+      phosphorus: 734
+      potassium: 1524
+      sodium: 21
+      zinc: 6.81
+      copper: 3.788
+      manganese: 3.837
+      selenium: 14.3
+      vitA: 0
+      vitC: 0
+      vitD: 0
+      vitE: 0.1
+      vitK: 2.5
+      thiamin: 0.078
+      riboflavin: 0.241
+      niacin: 2.185
+      vitB6: 0.118
+      folate: 32
+      vitB12: 0
+      pantothenic: 0.254
+      water: 3
+  cinnamon:
+    name: корица молотая
+    fdcId: 171320
+    fdcDescription: Spices, cinnamon, ground
+    per100g:
+      kcal: 247
+      protein: 3.99
+      fat: 1.24
+      carbs: 80.59
+    tags: []
+    micro100g:
+      fiber: 53.1
+      sugar: 2.17
+      satFat: 0.345
+      monoFat: 0.246
+      polyFat: 0.068
+      cholesterol: 0
+      calcium: 1002
+      iron: 8.32
+      magnesium: 60
+      phosphorus: 64
+      potassium: 431
+      sodium: 10
+      zinc: 1.83
+      copper: 0.339
+      manganese: 17.466
+      selenium: 3.1
+      vitA: 15
+      vitC: 3.8
+      vitD: 0
+      vitE: 2.32
+      vitK: 31.2
+      thiamin: 0.022
+      riboflavin: 0.041
+      niacin: 1.332
+      vitB6: 0.158
+      folate: 6
+      vitB12: 0
+      pantothenic: 0.358
+      water: 10.58
