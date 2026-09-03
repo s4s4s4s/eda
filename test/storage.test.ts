@@ -57,6 +57,9 @@ function defaultStateChecks(): void {
   assert(Object.keys(s.log).length === 0, 'дневник по умолчанию пуст')
   assert(Object.keys(s.preferences.ingredients).length === 0, 'ingredients по умолчанию пуст')
   assert(Object.keys(s.preferences.dishes).length === 0, 'dishes по умолчанию пуст')
+  assert(s.settings.shturmanToken === '', 'shturmanToken по умолчанию пуст — разбор своей еды не настроен')
+  assert(Object.keys(s.customFoods).length === 0, 'книга своей еды по умолчанию пуста')
+  assert(Array.isArray(s.foodRequests) && s.foodRequests.length === 0, 'очередь заказов на разбор по умолчанию пуста')
   group('defaultState: валидное дефолтное состояние')
 }
 
@@ -86,8 +89,72 @@ function roundTripChecks(): void {
         title: 'Обед',
         loggedAt: '2026-08-05T13:00:00'
       }
+    },
+    extras: [
+      /* Порядок полей здесь тот же, в котором их складывает sanitizeExtraEntry:
+         round-trip сверяется через JSON.stringify, а он чувствителен к порядку
+         ключей. Это сверка формата, а не поблажка проверке. */
+      {
+        id: 'x-1',
+        slot: 'dinner',
+        fraction: 0.5,
+        title: 'Обед дня 5',
+        kbju: { kcal: 800, p: 40, f: 20, c: 90 },
+        nutrients: { ...emptyNutrientTotals(), fiber: { value: 8, known: 2, total: 2 } },
+        loggedAt: '2026-08-05T20:00:00',
+        kind: 'menu',
+        mealId: 'obed-dnya-5',
+        fromCycleDay: 5,
+        fromSlot: 'lunch',
+        productsRevision: '2026-08-17'
+      },
+      {
+        id: 'x-2',
+        slot: 'snack',
+        fraction: 1,
+        title: 'Тирамису, порция',
+        kbju: { kcal: 350, p: 6, f: 22, c: 32 },
+        nutrients: { ...emptyNutrientTotals(), sugar: { value: 25, known: 1, total: 1 } },
+        loggedAt: '2026-08-05T21:00:00',
+        kind: 'custom',
+        customFoodId: 'food-tiramisu',
+        source: 'USDA SR Legacy 2018-04'
+      }
+    ]
+  }
+  original.customFoods = {
+    'food-tiramisu': {
+      id: 'food-tiramisu',
+      title: 'Тирамису, порция',
+      source: 'USDA SR Legacy 2018-04',
+      spec: 1,
+      jobId: 'food:11111111-2222-4333-8444-555555555555',
+      request: { text: 'тирамису', grams: 120 },
+      components: [
+        {
+          fdcId: 171843,
+          description: 'Tiramisu',
+          category: 'Sweets',
+          grams: 120,
+          note: 'готовый десерт, mascarpone-based',
+          per100: { kbju: { kcal: 291, p: 4.9, f: 18.3, c: 26.6 }, micro: { sugar: 20.8, calcium: 68 } }
+        }
+      ],
+      createdAt: '2026-08-05T20:55:00'
     }
   }
+  original.foodRequests = [
+    {
+      id: '99999999-8888-4777-8666-555555555555',
+      text: 'сырники со сметаной',
+      grams: null,
+      askedAt: '2026-08-05T21:30:00',
+      target: { date: '2026-08-05', slot: 'snack' },
+      status: 'pending',
+      pcAgo: 12,
+      lastPolledAt: '2026-08-05T21:30:04'
+    }
+  ]
   original.preferences = {
     ingredients: { tofu: 'avoid', losos: 'love' },
     dishes: {
@@ -97,8 +164,9 @@ function roundTripChecks(): void {
 
   const restored = deserialize(serialize(original))
   assert(restored.source === 'stored', `source ожидался 'stored', получено '${restored.source}'`)
+  assert(restored.dropped === 0, `round-trip не имеет права ничего потерять, dropped = ${restored.dropped}`)
   assert(JSON.stringify(restored.state) === JSON.stringify(original), 'round-trip serialize/deserialize должен вернуть то же состояние')
-  group('serialize -> deserialize: round-trip сохраняет состояние')
+  group('serialize -> deserialize: round-trip версии 5 сохраняет состояние целиком (добавленная еда, книга, очередь заказов)')
 }
 
 // ---- мусор не роняет ------------------------------------------------------
@@ -365,6 +433,222 @@ function migrationV3ToV4Checks(): void {
   assert(stillFalse.settings.cycleStartConfirmed === false,
     'состояние уже текущей версии с явным false обязано остаться false, а не подняться до true')
   group('deserialize: состояние текущей версии с явным cycleStartConfirmed = false его не теряет')
+}
+
+// ---- миграция v4 -> v5: добавленная еда, книга и очередь появляются пустыми ----
+
+/* Главная проверка этой версии: в хранилище телефона лежат уже записанные дни,
+   и появление четырёх новых полей не имеет права ни потерять запись, ни
+   объявить потерю там, где её нет. Состояние версии 4 — обычный дневник:
+   ни extras, ни customFoods, ни foodRequests, ни shturmanToken в нём нет. */
+function migrationV4ToV5Checks(): void {
+  const v4 = {
+    version: 4,
+    settings: {
+      cycleStartDate: '2026-08-20', cycleShift: 1, targetKcal: 3100, targetProteinG: 130,
+      shortcutName: 'ЗаписатьЕду', cycleStartConfirmed: true
+    },
+    log: {
+      '2026-08-25': {
+        cycleDay: 6,
+        meals: {
+          breakfast: {
+            slot: 'breakfast', mealId: 'ovsyanka', status: 'eaten', fraction: 1,
+            kbju: { kcal: 700, p: 30, f: 20, c: 90 },
+            nutrients: { fiber: { value: 9, known: 2, total: 2 } },
+            title: 'Овсянка', loggedAt: '2026-08-25T08:00:00', productsRevision: '2026-08-17'
+          },
+          dinner: {
+            slot: 'dinner', mealId: 'losos', status: 'partial', fraction: 0.5,
+            kbju: { kcal: 900, p: 50, f: 35, c: 70 },
+            nutrients: { fiber: { value: 4, known: 1, total: 2 } },
+            title: 'Лосось', loggedAt: '2026-08-25T19:00:00'
+          }
+        }
+      }
+    },
+    preferences: { ingredients: { losos: 'love' }, dishes: {} }
+  }
+
+  const result = deserialize(JSON.stringify(v4))
+  const migrated = result.state
+  assert(result.source === 'stored', `source ожидался 'stored', получено '${result.source}'`)
+  assert(result.dropped === 0, `миграция v4 -> v5 не имеет права ничего потерять, dropped = ${result.dropped}`)
+  assert(migrated.version === CURRENT_VERSION, `версия после миграции ожидалась ${CURRENT_VERSION}, получено ${migrated.version}`)
+
+  const day = migrated.log['2026-08-25']
+  assert(!!day, 'записанный день версии 4 обязан пережить миграцию')
+  assert(Array.isArray(day.extras) && day.extras.length === 0,
+    `у дня версии 4 добавленной еды не было — список обязан стать пустым массивом, получено ${JSON.stringify(day.extras)}`)
+  assert(day.cycleDay === 6, 'день цикла сохранился')
+  assert(day.meals.breakfast?.kbju.kcal === 700 && day.meals.breakfast?.title === 'Овсянка', 'запись завтрака цела')
+  assert(day.meals.breakfast?.productsRevision === '2026-08-17', 'ревизия справочника записи цела')
+  assert(day.meals.dinner?.fraction === 0.5 && day.meals.dinner?.status === 'partial', 'запись ужина цела вместе с долей')
+  assert(day.meals.dinner?.nutrients.fiber.value === 4 && day.meals.dinner?.nutrients.fiber.total === 2,
+    'снапшот нутриентов записи цел вместе с полнотой')
+
+  assert(Object.keys(migrated.customFoods).length === 0, 'книга своей еды после миграции пуста')
+  assert(Array.isArray(migrated.foodRequests) && migrated.foodRequests.length === 0, 'очередь заказов после миграции пуста')
+  assert(migrated.settings.shturmanToken === '',
+    `токена у версии 4 не было — обязан стать пустой строкой, получено ${JSON.stringify(migrated.settings.shturmanToken)}`)
+  assert(migrated.settings.cycleStartConfirmed === true, 'подтверждение даты старта не теряется')
+  assert(migrated.settings.cycleShift === 1 && migrated.settings.shortcutName === 'ЗаписатьЕду', 'настройки версии 4 сохраняются')
+  assert(migrated.preferences.ingredients.losos === 'love', 'книга предпочтений версии 4 сохраняется')
+
+  // суммы дня считаются ровно как до миграции: добавлять нечего
+  assert(dayTotal(day).kcal === 700 + 450, `сумма дня после миграции ожидалась 1150 ккал, получено ${dayTotal(day).kcal}`)
+
+  group('deserialize: миграция v4 -> v5 достраивает extras/customFoods/foodRequests/shturmanToken пустыми, ничего не теряя')
+}
+
+// ---- добавленная еда: битая запись выпадает, соседняя остаётся ---------------
+
+/** Валидная запись добавленной еды вида menu — эталон, от которого тесты
+    отступают ровно на одно поле. */
+function storedExtra(id: string, extra: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id,
+    kind: 'menu',
+    slot: 'dinner',
+    fraction: 0.5,
+    title: `Добавка ${id}`,
+    kbju: { kcal: 400, p: 20, f: 10, c: 50 },
+    nutrients: { fiber: { value: 6, known: 1, total: 1 } },
+    loggedAt: '2026-09-01T20:00:00',
+    mealId: 'obed-dnya-5',
+    fromCycleDay: 5,
+    fromSlot: 'lunch',
+    ...extra
+  }
+}
+
+function droppedExtrasChecks(): void {
+  const result = deserialize(storedState({
+    '2026-09-01': {
+      cycleDay: 1,
+      meals: { breakfast: storedEntry('breakfast') },
+      extras: [
+        storedExtra('celaya'),
+        storedExtra('chuzhoy-slot', { slot: 'brunch' }),
+        storedExtra('dolya-dva', { fraction: 2 }),
+        storedExtra('dolya-nol', { fraction: 0 }),
+        storedExtra('bez-dnya-tsikla', { fromCycleDay: undefined }),
+        storedExtra('chuzhoy-vid', { kind: 'sneaky' }),
+        storedExtra('bez-id', { id: '' }),
+        storedExtra('celaya'),                                  // повтор id
+        storedExtra('svoya-eda', {
+          kind: 'custom', customFoodId: 'food-1', source: 'USDA SR Legacy 2018-04',
+          mealId: undefined, fromCycleDay: undefined, fromSlot: undefined
+        }),
+        storedExtra('svoya-bez-ssylki', {
+          kind: 'custom', source: 'USDA SR Legacy 2018-04',
+          mealId: undefined, fromCycleDay: undefined, fromSlot: undefined
+        }),
+        'не объект вовсе'
+      ]
+    }
+  }))
+
+  const day = result.state.log['2026-09-01']
+  const ids = day.extras.map(e => e.id)
+  assert(JSON.stringify(ids) === JSON.stringify(['celaya', 'svoya-eda']),
+    `уцелеть обязаны только целая запись и своя еда, получено ${JSON.stringify(ids)}`)
+  assert(result.dropped === 9,
+    `отброшенных ожидалось 9 (чужой слот, доли 2 и 0, нет дня цикла, чужой вид, пустой id, повтор id, своя еда без ссылки, не-объект), получено ${result.dropped}`)
+  assert(day.meals.breakfast?.title === 'Приём breakfast', 'запись приёма рядом с битой добавкой цела')
+  assert(day.extras[0].kind === 'menu' && day.extras[0].nutrients.fiber.value === 6, 'снапшот целой добавки сохранился')
+  assert(day.extras[0].nutrients.calcium.known === 0 && day.extras[0].nutrients.calcium.total === 1,
+    'нутриент, которого в снапшоте добавки нет, входит одной НЕИЗВЕСТНОЙ позицией, а не нулём')
+  group('sanitizeExtras: битая добавленная еда выпадает и считается, соседние записи дня выживают')
+}
+
+// ---- день из одной добавленной еды — записанный день -------------------------
+
+/* Добавленное — такая же запись дня, как приём: день, в котором человек записал
+   только съеденный сверх меню десерт, обязан пережить санитизацию. Уносить его
+   как «день без записей» значило бы терять съеденное. */
+function extrasOnlyDaySurvivesChecks(): void {
+  const result = deserialize(storedState({
+    '2026-09-04': { cycleDay: 4, meals: {}, extras: [storedExtra('tolko-dobavka', { fraction: 1 })] },
+    '2026-09-05': { cycleDay: 5, meals: {}, extras: [] },
+    '2026-09-06': { cycleDay: 6, meals: {}, extras: [storedExtra('bitaya', { kbju: null })] }
+  }))
+
+  const day = result.state.log['2026-09-04']
+  assert(!!day, 'день из одной добавленной еды обязан остаться в дневнике')
+  assert(day.extras.length === 1 && Object.keys(day.meals).length === 0, 'в дне ровно одна добавка и ни одного приёма')
+  assert(dayTotal(day).kcal === 400, `сумма такого дня — калории добавки, получено ${dayTotal(day).kcal}`)
+  assert(!('2026-09-05' in result.state.log), 'день без приёмов и без добавок не хранится: он не «день с нулём»')
+  assert(!('2026-09-06' in result.state.log), 'день, у которого единственная добавка не пережила проверку, уходит целиком')
+  assert(result.dropped === 1, `отброшенной ожидалась одна запись (битая добавка), получено ${result.dropped}`)
+  group('sanitizeDayLog: день из одной добавленной еды переживает санитизацию, пустой — нет')
+}
+
+// ---- книга своей еды и очередь заказов: недостоверная запись выпадает и считается ----
+
+function storedCustomFood(id: string, food: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id,
+    title: 'Тирамису, порция',
+    source: 'USDA SR Legacy 2018-04',
+    spec: 1,
+    jobId: 'food:11111111-2222-4333-8444-555555555555',
+    request: { text: 'тирамису', grams: 120 },
+    components: [{
+      fdcId: 171843, description: 'Tiramisu', category: 'Sweets', grams: 120,
+      per100: { kbju: { kcal: 291, p: 4.9, f: 18.3, c: 26.6 }, micro: { sugar: 20.8, calcium: 68 } }
+    }],
+    createdAt: '2026-09-01T20:55:00',
+    ...food
+  }
+}
+
+function customFoodsGarbageChecks(): void {
+  const raw = {
+    version: CURRENT_VERSION,
+    settings: {
+      cycleStartDate: '2026-08-01', cycleShift: 0, targetKcal: 3200, targetProteinG: 120,
+      shortcutName: '', cycleStartConfirmed: true, shturmanToken: 'sekret'
+    },
+    log: {},
+    preferences: { ingredients: {}, dishes: {} },
+    customFoods: {
+      'food-celaya': storedCustomFood('food-celaya'),
+      'food-chuzhoy-klyuch': storedCustomFood('food-drugoy-id'),
+      'food-bez-sostava': storedCustomFood('food-bez-sostava', { components: [] }),
+      'food-bityy-komponent': storedCustomFood('food-bityy-komponent', {
+        components: [
+          { fdcId: 171843, description: 'Tiramisu', category: 'Sweets', grams: 120, per100: { kbju: { kcal: 291, p: 4.9, f: 18.3, c: 26.6 }, micro: {} } },
+          { fdcId: 0, description: 'Ничто', category: '', grams: 50, per100: { kbju: { kcal: 1, p: 1, f: 1, c: 1 }, micro: {} } }
+        ]
+      })
+    },
+    foodRequests: [
+      {
+        id: 'req-celyy', text: 'сырники', grams: 200, askedAt: '2026-09-01T21:00:00',
+        target: { date: '2026-09-01', slot: 'snack' }, status: 'pending', pcAgo: 8
+      },
+      { id: 'req-chuzhoy-slot', text: 'сырники', grams: null, askedAt: '2026-09-01T21:00:00', target: { date: '2026-09-01', slot: 'brunch' }, status: 'pending', pcAgo: null },
+      { id: 'req-done-bez-razbora', text: 'сырники', grams: null, askedAt: '2026-09-01T21:00:00', target: { date: '2026-09-01', slot: 'snack' }, status: 'done', pcAgo: null },
+      { id: 'req-chuzhoy-status', text: 'сырники', grams: null, askedAt: '2026-09-01T21:00:00', target: { date: '2026-09-01', slot: 'snack' }, status: 'taken', pcAgo: null }
+    ]
+  }
+
+  const result = deserialize(JSON.stringify(raw))
+  const state = result.state
+
+  assert(Object.keys(state.customFoods).length === 1, `в книге ожидалась одна уцелевшая еда, получено ${JSON.stringify(Object.keys(state.customFoods))}`)
+  assert(state.customFoods['food-celaya'].components[0].per100.micro.sugar === 20.8, 'числа компонента на 100 г сохранились дословно')
+  assert(state.customFoods['food-celaya'].request.grams === 120, 'запрос, по которому еда разобрана, сохранился')
+  assert(!('food-chuzhoy-klyuch' in state.customFoods), 'еда под чужим ключом недостоверна целиком — ссылки записей держатся за ключ')
+  assert(!('food-bez-sostava' in state.customFoods), 'еда без компонентов — еда без чисел, хранить её нечем')
+  assert(!('food-bityy-komponent' in state.customFoods), 'еда с битым компонентом выпадает целиком: сумма по неполному составу неверна')
+
+  assert(state.foodRequests.length === 1, `в очереди ожидался один уцелевший заказ, получено ${JSON.stringify(state.foodRequests.map(r => r.id))}`)
+  assert(state.foodRequests[0].id === 'req-celyy' && state.foodRequests[0].pcAgo === 8, 'целый заказ сохранился вместе с временем связи')
+  assert(state.settings.shturmanToken === 'sekret', 'токен Штурмана переносится строкой как есть')
+  assert(result.dropped === 6, `отброшенных записей ожидалось 6 (3 еды + 3 заказа), получено ${result.dropped}`)
+  group('sanitizeCustomFoods/sanitizeFoodRequests: недостоверная своя еда и битый заказ выпадают и считаются в dropped')
 }
 
 // ---- ingredients: мусорное значение теряет только испорченный ключ -----------
@@ -744,6 +1028,10 @@ function main(): void {
   migrationV1ToV2Checks()
   migrationV2ToV3Checks()
   migrationV3ToV4Checks()
+  migrationV4ToV5Checks()
+  droppedExtrasChecks()
+  extrasOnlyDaySurvivesChecks()
+  customFoodsGarbageChecks()
   ingredientsGarbageChecks()
   dishesGarbageChecks()
   nutrientGapMakesDayIncompleteChecks()

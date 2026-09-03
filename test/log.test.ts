@@ -3,8 +3,9 @@
  * снапшот КБЖУ, суммы. Никакого localStorage — только чистые функции над
  * AppState. Гоняются node-ом после сборки esbuild: `npm run test:log`.
  */
-import { clearLog, dayNutrientTotals, dayTotal, eatenKbju, eatenNutrients, logFootprint, logMeal, unlogMeal } from '../src/core/log'
-import type { AppState, Kbju, Meal, Nutrients, Product, ProductIndex } from '../src/core/types'
+import { addExtra, clearLog, dayNutrientTotals, dayTotal, eatenExtraKbju, eatenKbju, eatenNutrients, logFootprint, logMeal, removeExtra, unlogMeal } from '../src/core/log'
+import { emptyNutrientTotals } from '../src/core/nutrition'
+import type { AppState, CustomFood, ExtraLogEntry, Kbju, Meal, NutrientTotals, Nutrients, Product, ProductIndex } from '../src/core/types'
 
 let passed = 0
 function assert(cond: boolean, msg: string): void {
@@ -37,8 +38,10 @@ function emptyState(): AppState {
     version: 1,
     settings: { cycleStartDate: '2026-08-01', cycleShift: 0, targetKcal: 3200, shortcutName: '' },
     log: {},
-    preferences: { ingredients: {}, dishes: {} }
-  }
+    preferences: { ingredients: {}, dishes: {} },
+    customFoods: {},
+    foodRequests: []
+  } as unknown as AppState
 }
 
 // ---- снапшот не переписывается задним числом --------------------------------
@@ -295,6 +298,120 @@ function clearAndFootprintChecks(): void {
   group('clearLog: стирает дневник целиком, сохраняет настройки, исходное состояние не мутирует')
 }
 
+// ---- добавленная сверх меню еда ------------------------------------------------
+
+/** Запись своей еды: снапшот ПОЛНОЙ порции, долю применяет потребитель. */
+function customExtra(id: string, kcal: number, fraction: number, nutrients: NutrientTotals = emptyNutrientTotals()): ExtraLogEntry {
+  return {
+    id,
+    slot: 'dinner',
+    fraction,
+    title: `Добавка ${id}`,
+    kbju: { kcal, p: kcal / 20, f: kcal / 40, c: kcal / 10 },
+    nutrients,
+    loggedAt: '2026-08-05T21:00:00',
+    kind: 'custom',
+    customFoodId: `food-${id}`,
+    source: 'USDA SR Legacy 2018-04'
+  }
+}
+
+/* Добавленная еда входит в сумму дня той же арифметикой, что и приём: снапшот
+   × доля. Полнота складывается вместе с числами — нутриент, которого добавка
+   не знает, делает день неполным по этому нутриенту. */
+function addExtraChecks(): void {
+  const idx = products(product('x', { kcal: 200, p: 10, f: 5, c: 20 }, { fiber: 10 }))
+  const state0 = logMeal(emptyState(), '2026-08-05', 'lunch', meal('lunch', 'Обед', 200), idx, 'eaten', 1, 5, 't1')
+  const beforeKcal = dayTotal(state0.log['2026-08-05']).kcal
+
+  const extraNutrients: NutrientTotals = { ...emptyNutrientTotals(), fiber: { value: 6, known: 1, total: 1 } }
+  const state1 = addExtra(state0, '2026-08-05', customExtra('e1', 400, 0.5, extraNutrients), 5)
+
+  const day = state1.log['2026-08-05']
+  assert(day.extras.length === 1, `в дне ожидалась одна добавка, получено ${day.extras.length}`)
+  assert(Object.keys(day.meals).length === 1, 'добавленная еда не трогает записи приёмов')
+  assert(dayTotal(day).kcal === beforeKcal + 200,
+    `сумма дня обязана вырасти ровно на kbju × долю (${beforeKcal} + 200), получено ${dayTotal(day).kcal}`)
+  assert(eatenExtraKbju(day.extras[0]).kcal === 200, 'съеденное по добавке — снапшот, умноженный на долю')
+  assert(state0.log['2026-08-05'].extras.length === 0, 'addExtra не должен мутировать входной state')
+
+  const totals = dayNutrientTotals(day)
+  assert(totals.fiber.value === 10 + 3, `клетчатка дня ожидалась 13 (10 приём + 6 × 0.5), получено ${totals.fiber.value}`)
+  assert(totals.fiber.known === 2 && totals.fiber.total === 2, `полнота обязана сложиться (2 из 2), получено ${JSON.stringify(totals.fiber)}`)
+  assert(totals.calcium.known === 0 && totals.calcium.total === 1,
+    `нутриент, неизвестный ни приёму, ни добавке, остаётся неизвестной позицией, получено ${JSON.stringify(totals.calcium)}`)
+
+  // добавка в день, где записей ещё не было: день заводится вместе с ней
+  const fresh = addExtra(emptyState(), '2026-08-09', customExtra('e2', 300, 1), 9)
+  assert(fresh.log['2026-08-09'].cycleDay === 9, 'день, заведённый добавкой, несёт переданный день цикла')
+  assert(dayTotal(fresh.log['2026-08-09']).kcal === 300, 'сумма дня из одной добавки — её калории целиком')
+
+  // повторное сохранение того же разбора не удваивает калории
+  const twice = addExtra(state1, '2026-08-05', customExtra('e1', 400, 1, extraNutrients), 5)
+  assert(twice.log['2026-08-05'].extras.length === 1, 'запись с тем же id перезаписывается, а не дублируется')
+  assert(dayTotal(twice.log['2026-08-05']).kcal === beforeKcal + 400, 'перезаписанная добавка считается по новой доле')
+
+  group('addExtra: сумма дня растёт на kbju × долю, полнота складывается, повтор id перезаписывает')
+}
+
+/* День уходит из дневника только когда пусты И приёмы, И добавленное. Пока в
+   дне живёт хоть одна добавка, отмена последнего приёма его не уносит: иначе
+   съеденный сверх меню десерт исчезал бы вместе с записью об обеде. */
+function removeExtraChecks(): void {
+  const idx = products(product('x', { kcal: 200, p: 10, f: 5, c: 20 }))
+  let state = logMeal(emptyState(), '2026-08-05', 'lunch', meal('lunch', 'Обед', 200), idx, 'eaten', 1, 5, 't1')
+  state = addExtra(state, '2026-08-05', customExtra('e1', 400, 1), 5)
+  state = addExtra(state, '2026-08-05', customExtra('e2', 100, 1), 5)
+
+  const afterUnlog = unlogMeal(state, '2026-08-05', 'lunch')
+  assert('2026-08-05' in afterUnlog.log, 'день с живыми добавками обязан остаться после отмены последнего приёма')
+  assert(afterUnlog.log['2026-08-05'].extras.length === 2, 'отмена приёма не трогает добавленное')
+  assert(dayTotal(afterUnlog.log['2026-08-05']).kcal === 500, 'в дне остались только калории добавок')
+
+  const afterOne = removeExtra(afterUnlog, '2026-08-05', 'e1')
+  assert(afterOne.log['2026-08-05'].extras.length === 1, 'убирается ровно одна запись')
+  assert(afterOne.log['2026-08-05'].extras[0].id === 'e2', 'соседняя добавка не трогается')
+
+  const afterLast = removeExtra(afterOne, '2026-08-05', 'e2')
+  assert(!('2026-08-05' in afterLast.log), 'после удаления последней добавки ключ даты обязан исчезнуть — «дня с нулём» не бывает')
+  assert(afterOne.log['2026-08-05'].extras.length === 1, 'removeExtra не должен мутировать входной state')
+
+  const unknown = removeExtra(afterOne, '2026-08-05', 'ne-sushchestvuet')
+  assert(unknown === afterOne, 'удаление несуществующей записи не создаёт нового состояния')
+  const missingDay = removeExtra(afterOne, '2026-01-01', 'e2')
+  assert(missingDay === afterOne, 'удаление из дня, которого нет, ничего не меняет')
+
+  group('removeExtra: убирает запись, последняя уносит ключ даты; unlogMeal при живых добавках день оставляет')
+}
+
+/* Книга своей еды весит килобайт на компонент и лежит в том же localStorage.
+   Человек, который смотрит на размер перед очисткой, обязан видеть её тоже. */
+function footprintCountsCustomFoodsChecks(): void {
+  const idx = products(product('x', { kcal: 200, p: 10, f: 5, c: 20 }))
+  const state = logMeal(emptyState(), '2026-08-05', 'lunch', meal('lunch', 'Обед', 200), idx, 'eaten', 1, 5, 't1')
+
+  const food: CustomFood = {
+    id: 'food-tiramisu',
+    title: 'Тирамису, порция',
+    source: 'USDA SR Legacy 2018-04',
+    spec: 1,
+    jobId: 'food:11111111-2222-4333-8444-555555555555',
+    request: { text: 'тирамису', grams: 120 },
+    components: [{
+      fdcId: 171843, description: 'Tiramisu', category: 'Sweets', grams: 120,
+      per100: { kbju: { kcal: 291, p: 4.9, f: 18.3, c: 26.6 }, micro: { sugar: 20.8 } }
+    }],
+    createdAt: '2026-08-05T20:55:00'
+  }
+
+  const withoutBook = logFootprint(state.log)
+  const withBook = logFootprint(state.log, { 'food-tiramisu': food })
+  assert(withoutBook.foods === 0 && withBook.foods === 1, `в книге ожидалась одна еда, получено ${withBook.foods}`)
+  assert(withBook.days === 1, 'дни считаются по дневнику, книга их число не меняет')
+  assert(withBook.bytes > withoutBook.bytes, `книга обязана увеличить размер (${withoutBook.bytes} -> ${withBook.bytes})`)
+  group('logFootprint: книга своей еды входит в размер записанного, дни считаются по дневнику')
+}
+
 function main(): void {
   console.log('log — дневник: снапшот, перезапись, unlog, суммы')
   snapshotIsFrozenChecks()
@@ -309,6 +426,9 @@ function main(): void {
   skippedNutrientsChecks()
   dayNutrientTotalsChecks()
   clearAndFootprintChecks()
+  addExtraChecks()
+  removeExtraChecks()
+  footprintCountsCustomFoodsChecks()
   console.log(`\nВсе проверки log пройдены (${passed} групп).`)
 }
 

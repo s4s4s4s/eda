@@ -3,7 +3,7 @@
  * Гоняются node-ом после сборки esbuild: `npm run test:nutrition`.
  */
 import {
-  addKbju, addNutrientTotals, dayKbju, dayNutrients, emptyNutrientTotals, incompleteNutrients,
+  addItemToTotals, addKbju, addNutrientTotals, addPer100ToTotals, dayKbju, dayNutrients, emptyNutrientTotals, incompleteNutrients,
   isKnown, itemGrams, itemKbju, itemNutrients, mealKbju, mealNutrients, scaleKbju, scaleNutrientTotals
 } from '../src/core/nutrition'
 import { NUTRIENT_KEYS } from '../src/core/types'
@@ -323,6 +323,45 @@ function dayNutrientsChecks(): void {
   group('dayNutrients: суммирует приёмы вместе с полнотой')
 }
 
+// ---- addPer100ToTotals: одна арифметика на меню и на свою еду -----------------
+
+/* Общая функция выделена из addItemToTotals ради того, чтобы позиция меню и
+   компонент своей еды считались ОДНИМ кодом: разойдись эти два расчёта, одна и
+   та же еда дала бы в приложении и в расчёте на компьютере разные суммы, причём
+   молча. Отсюда и проверка — не «примерно совпадает», а до бита. */
+function addPer100EquivalenceChecks(): void {
+  const micro: Nutrients = { fiber: 10.7, calcium: 54, sodium: 0, vitK: 4.3, epa: 0.862 }
+  const idx = products(product('oats', { kcal: 380, p: 13, f: 7, c: 67 }, { micro100: micro }))
+  const item = { product: 'oats', g: 90, where: 'container' as const }
+
+  // прежний путь: сначала пересчёт позиции на её вес, потом сложение
+  const viaItem = addItemToTotals(emptyNutrientTotals(), itemNutrients(item, idx))
+  // новый путь: числа на 100 г и граммовка отдаются одной функции
+  const viaPer100 = addPer100ToTotals(emptyNutrientTotals(), micro, 90)
+
+  for (const key of NUTRIENT_KEYS) {
+    assert(viaPer100[key].value === viaItem[key].value,
+      `значение «${key}» обязано совпасть до бита: ${viaPer100[key].value} против ${viaItem[key].value}`)
+    assert(viaPer100[key].known === viaItem[key].known && viaPer100[key].total === viaItem[key].total,
+      `полнота «${key}» обязана совпасть: ${JSON.stringify(viaPer100[key])} против ${JSON.stringify(viaItem[key])}`)
+  }
+  assert(viaPer100.fiber.value === 10.7 * 0.9, `клетчатка 90 г овса ожидалась ${10.7 * 0.9}, получено ${viaPer100.fiber.value}`)
+  assert(viaPer100.sodium.known === 1 && viaPer100.sodium.value === 0, 'честный ноль из датасета остаётся знанием')
+  assert(viaPer100.vitB12.known === 0 && viaPer100.vitB12.total === 1,
+    `нутриент, которого у продукта нет, входит одной НЕИЗВЕСТНОЙ позицией, получено ${JSON.stringify(viaPer100.vitB12)}`)
+
+  // граммовка 100 — множитель ровно 1: числа не «почти те же», а те же
+  assert(addPer100ToTotals(emptyNutrientTotals(), micro, 100).fiber.value === 10.7,
+    'при 100 г числа на 100 г складываются без изменения')
+
+  // и сама addItemToTotals осталась той же функцией сложения уже пересчитанных чисел
+  const twice = addPer100ToTotals(viaPer100, micro, 10)
+  assert(twice.fiber.total === 2 && twice.fiber.known === 2, 'вторая позиция увеличивает и known, и total')
+  assert(approx(twice.fiber.value, 10.7 * 0.9 + 1.07), `сумма двух позиций ожидалась ${10.7 * 0.9 + 1.07}, получено ${twice.fiber.value}`)
+
+  group('addPer100ToTotals: считает позицию меню тем же числом, что и прежний addItemToTotals, полнота не меняется')
+}
+
 function main(): void {
   console.log('nutrition — граммы/КБЖУ позиций, приёмов, дня, микронутриенты')
   itemGramsChecks()
@@ -338,6 +377,7 @@ function main(): void {
   zeroFractionDropsPositionsChecks()
   isKnownChecks()
   dayNutrientsChecks()
+  addPer100EquivalenceChecks()
   console.log(`\nВсе проверки nutrition пройдены (${passed} групп).`)
 }
 

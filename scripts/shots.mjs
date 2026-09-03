@@ -15,7 +15,7 @@
 // каждая шторка из шапки. Итог — PNG-файлы, report.json и код возврата: 1, если
 // хоть одна полоса с процентом получила нулевую ширину или высоту.
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 const CHROME = process.env.CHROME ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe';
@@ -28,6 +28,9 @@ if (!existsSync(CHROME)) {
   console.error(`Chrome не найден: ${CHROME}. Укажи путь через переменную окружения CHROME.`);
   process.exit(2);
 }
+// Снимки прошлого прогона убираем целиком: сменилась нумерация — старый файл
+// иначе останется рядом с новыми и сойдёт за результат.
+rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
 /* Профиль браузера — одноразовый: в нём остаётся localStorage прошлого прогона
    (дневник с уже записанными приёмами), и сценарий «записать обед» упирается
@@ -186,7 +189,10 @@ try {
   if (report.panel.zeroHeight > 0 || report.panel.emptyWithPct > 0) failed = true;
 
   // 4. Шторки по кнопкам шапки — каждая открывается, снимается и закрывается крестиком.
-  const labels = await evaluate(`[...document.querySelectorAll('button[aria-label]')].filter(b => !b.closest('[role=dialog]')).map(b => b.getAttribute('aria-label'))`);
+  // Ограничено кнопками шапки: секция .day-extras (E4a/E4b) добавила на главный
+  // экран ещё две кнопки с aria-label вне <header> — «Добавить блюдо из другого
+  // дня» и «Своя еда» — у них свои сцены ниже (5–8), общий перебор их не трогает.
+  const labels = await evaluate(`[...document.querySelectorAll('header button[aria-label]')].map(b => b.getAttribute('aria-label'))`);
   report.headerButtons = labels;
   let n = 4;
   for (const label of labels) {
@@ -203,6 +209,181 @@ try {
       report['sheet:' + label + ':closed'] = false;
       failed = true;
     }
+  }
+
+  /* Число ккал за день из шапки «day-progress»: первое целое в тексте
+     («820 из 2000 ккал за день»). Используется до/после добавок ниже — доказать
+     рост суммы числом, а не сверкой строки целиком. */
+  const dayEatenKcalNow = () => evaluate(
+    `(() => { const m = document.querySelector('.day-progress__value')?.textContent.match(/\\d+/); return m ? Number(m[0]) : null; })()`
+  );
+  /* Закрытие шторки крестиком — тот же приём, что и в шаге 4, но вынесен сюда:
+     новые сцены закрывают шторку не только автоматически (после «Записать»),
+     но и вручную (сцены 6, 8), и обеим веткам нужен один и тот же способ. */
+  const closeDialog = () => evaluate(`(async () => { const sleep = ms => new Promise(r => setTimeout(r, ms));
+    const d = document.querySelector('[role=dialog]');
+    const close = d && [...d.querySelectorAll('button')].find(b => b.textContent.trim() === '✕' || /закры/i.test(b.getAttribute('aria-label') || ''));
+    close?.click(); await sleep(400); return document.querySelector('[role=dialog]') === null; })()`);
+
+  // 5. «Добавить блюдо из другого дня»: день 5, обед, доля ½, «Записать».
+  await evaluate(`(async () => { ${helpers}
+    const openBtn = [...document.querySelectorAll('button[aria-label]')].find(b => b.getAttribute('aria-label') === 'Добавить блюдо из другого дня');
+    if (!openBtn) throw new Error('нет кнопки «Добавить блюдо из другого дня»');
+    openBtn.click(); await sleep(500);
+    // День 5 ищем ТОЛЬКО среди чипов шторки (.add-from-menu__days), а не через
+    // общий btn(): к этому моменту обед уже записан (шаг 3), и под ним
+    // отрисован блок оценки (RatingEditor) с кнопками-баллами 1..10 — они идут
+    // раньше в DOM, и btn('5') находил кнопку балла «5», а не чип дня.
+    const dayBtn5 = [...document.querySelectorAll('.add-from-menu__days button')].find(b => b.textContent.trim() === '5');
+    if (!dayBtn5) throw new Error('нет чипа дня 5 в шторке переноса');
+    dayBtn5.click(); await sleep(300);
+    const slotBtn = [...document.querySelectorAll('.add-from-menu__slot')].find(b => b.querySelector('.add-from-menu__slot-title')?.textContent.trim() === 'Обед');
+    if (!slotBtn) throw new Error('в дне 5 нет приёма «Обед» среди: ' + [...document.querySelectorAll('.add-from-menu__slot-title')].map(b => b.textContent.trim()).join(' | '));
+    slotBtn.click(); await sleep(300);
+    const half = [...document.querySelectorAll('.add-from-menu__fractions button')].find(b => /^(½|1\\/2)$/.test(b.textContent.trim()));
+    if (!half) throw new Error('нет кнопки доли ½ в шторке переноса');
+    half.click(); await sleep(300);
+    return 'ok'; })()`);
+  report['sheet:add-from-menu'] = await evaluate(`document.querySelector('[role=dialog]')?.textContent${squash}.slice(0, 300) ?? null`);
+  await shot(`${String(n++).padStart(2, '0')}-sheet-add-from-menu`);
+
+  const dayEatenKcalBefore = await dayEatenKcalNow();
+  report.dayEatenKcalBefore = dayEatenKcalBefore;
+  await evaluate(`(async () => { ${helpers} await click('Записать'); return 'ok'; })()`);
+  await sleep(400);
+  const addFromMenuClosed = await evaluate(`document.querySelector('[role=dialog]') === null`);
+  if (!addFromMenuClosed) {
+    report['sheet:add-from-menu:closed'] = false;
+    failed = true;
+  }
+  const dayEatenKcalAfter = await dayEatenKcalNow();
+  report.dayEatenKcalAfter = dayEatenKcalAfter;
+  report.dayEatenKcalGrew = dayEatenKcalBefore !== null && dayEatenKcalAfter !== null && dayEatenKcalAfter > dayEatenKcalBefore;
+  if (!report.dayEatenKcalGrew) failed = true;
+  report['extras:menuRow'] = await evaluate(`document.querySelector('.day-extras__item')?.textContent${squash} ?? null`);
+  // Список «Добавлено» стоит под прогрессом дня, ниже сгиба — без прокрутки его на снимке нет.
+  await evaluate(`document.querySelector('.day-extras')?.scrollIntoView({ block: 'center' })`);
+  await sleep(300);
+  await shot(`${String(n++).padStart(2, '0')}-main-with-menu-extra`);
+  await evaluate('window.scrollTo(0, 0)');
+  await sleep(200);
+
+  // 6. «Своя еда» без токена — только объяснение и кнопка настроек, формы нет.
+  await evaluate(`(async () => { ${helpers}
+    const openBtn = [...document.querySelectorAll('button[aria-label]')].find(b => b.getAttribute('aria-label') === 'Своя еда');
+    if (!openBtn) throw new Error('нет кнопки «Своя еда»');
+    openBtn.click(); await sleep(500); return 'ok'; })()`);
+  report.customNoToken = await evaluate(`document.querySelector('.custom-food-no-token__text')?.textContent${squash} ?? null`);
+  if (!report.customNoToken) failed = true;
+  await shot(`${String(n++).padStart(2, '0')}-sheet-custom-no-token`);
+  const noTokenClosed = await closeDialog();
+  if (!noTokenClosed) {
+    report['sheet:custom-no-token:closed'] = false;
+    failed = true;
+  }
+
+  // 7. «Своя еда» с готовым разбором: токен и pending-заказ status:'done' с
+  // result из test/fixtures/food-result.json (настоящий вывод resolve-food.mjs).
+  const foodResultFixture = JSON.parse(
+    readFileSync(path.resolve('test/fixtures/food-result.json'), 'utf8')
+  );
+  const todayLocalDate = localDateShifted(0);
+  const doneRequest = {
+    id: 'shots-custom-done',
+    text: foodResultFixture.request.text,
+    grams: foodResultFixture.request.grams,
+    askedAt: new Date().toISOString(),
+    target: { date: todayLocalDate, slot: 'lunch' },
+    status: 'done',
+    result: foodResultFixture,
+    pcAgo: 30
+  };
+  await evaluate(`(() => { const k = 'eda.state.v1'; const s = JSON.parse(localStorage.getItem(k));
+    s.settings.shturmanToken = 'shots';
+    s.foodRequests = [${JSON.stringify(doneRequest)}];
+    localStorage.setItem(k, JSON.stringify(s)); return 'ok'; })()`);
+  await goto(URL_APP);
+
+  await evaluate(`(async () => { ${helpers}
+    const openBtn = [...document.querySelectorAll('button[aria-label]')].find(b => b.getAttribute('aria-label') === 'Своя еда');
+    openBtn.click(); await sleep(500); return 'ok'; })()`);
+  report['sheet:custom-done'] = await evaluate(`document.querySelector('.custom-food-request--done')?.textContent${squash}.slice(0, 300) ?? null`);
+  report['sheet:custom-done:components'] = await evaluate(`document.querySelectorAll('.custom-food-component').length`);
+  if (!report['sheet:custom-done'] || report['sheet:custom-done:components'] !== foodResultFixture.components.length) failed = true;
+  await shot(`${String(n++).padStart(2, '0')}-sheet-custom-done`);
+  // Второй кадр той же шторки — итог КБЖУ, полнота нутриентов, дата, приём и кнопка записи.
+  await evaluate(`[...document.querySelectorAll('[role=dialog] button')].find(b => b.textContent.trim() === 'Сохранить и записать')?.scrollIntoView({ block: 'end' })`);
+  await sleep(300);
+  await shot(`${String(n++).padStart(2, '0')}-sheet-custom-done-totals`);
+
+  const dayEatenKcalBefore2 = await dayEatenKcalNow();
+  report.dayEatenKcalBeforeCustom = dayEatenKcalBefore2;
+  await evaluate(`(async () => { ${helpers} await click('Сохранить и записать'); return 'ok'; })()`);
+  await sleep(400);
+  const customDoneClosed = await closeDialog();
+  if (!customDoneClosed) {
+    report['sheet:custom-done:closed'] = false;
+    failed = true;
+  }
+  const dayEatenKcalAfter2 = await dayEatenKcalNow();
+  report.dayEatenKcalAfterCustom = dayEatenKcalAfter2;
+  report.dayEatenKcalGrewCustom = dayEatenKcalBefore2 !== null && dayEatenKcalAfter2 !== null && dayEatenKcalAfter2 > dayEatenKcalBefore2;
+  if (!report.dayEatenKcalGrewCustom) failed = true;
+  report['extras:customRow'] = await evaluate(`[...document.querySelectorAll('.day-extras__item')].map(li => li.textContent${squash}).find(t => t.includes('своя еда')) ?? null`);
+  if (!report['extras:customRow']) failed = true;
+  // Список «Добавлено» стоит под прогрессом дня, ниже сгиба — без прокрутки его на снимке нет.
+  await evaluate(`document.querySelector('.day-extras')?.scrollIntoView({ block: 'center' })`);
+  await sleep(300);
+  await shot(`${String(n++).padStart(2, '0')}-main-with-custom-extra`);
+  await evaluate('window.scrollTo(0, 0)');
+  await sleep(200);
+
+  // 8. «Своя еда, ПК не в сети»: fetch к SHTURMAN_BASE подменён на pending с
+  // pcAgo: 7200 (2 часа), задолго до порога 120 с в useFoodPolling.ts.
+  const SHTURMAN_BASE_FOR_MOCK = 'https://shturman.vault-78edd5.workers.dev';
+  await send('Page.addScriptToEvaluateOnNewDocument', {
+    source: `(() => {
+      const BASE = ${JSON.stringify(SHTURMAN_BASE_FOR_MOCK)};
+      const orig = window.fetch.bind(window);
+      window.fetch = async (input, init) => {
+        const url = typeof input === 'string' ? input : (input && input.url) || '';
+        if (url.startsWith(BASE)) {
+          const idMatch = url.match(/[?&]id=([^&]+)/);
+          const id = idMatch ? decodeURIComponent(idMatch[1]) : 'food:unknown';
+          const body = JSON.stringify({ ok: true, id, state: 'pending', pcAgo: 7200, modelOk: true });
+          return new Response(body, { status: 200, headers: { 'content-type': 'application/json' } });
+        }
+        return orig(input, init);
+      };
+    })()`
+  }, S);
+
+  const pendingRequest = {
+    id: 'shots-custom-pending',
+    text: 'тирамису',
+    grams: 120,
+    askedAt: new Date().toISOString(),
+    target: { date: todayLocalDate, slot: 'lunch' },
+    status: 'pending',
+    pcAgo: null
+  };
+  await evaluate(`(() => { const k = 'eda.state.v1'; const s = JSON.parse(localStorage.getItem(k));
+    s.settings.shturmanToken = 'shots';
+    s.foodRequests = [${JSON.stringify(pendingRequest)}];
+    localStorage.setItem(k, JSON.stringify(s)); return 'ok'; })()`);
+  await goto(URL_APP);
+  await sleep(800); // useFoodPolling опрашивает сразу при монтировании — ждём круг опроса
+
+  await evaluate(`(async () => { ${helpers}
+    const openBtn = [...document.querySelectorAll('button[aria-label]')].find(b => b.getAttribute('aria-label') === 'Своя еда');
+    openBtn.click(); await sleep(500); return 'ok'; })()`);
+  report.customPending = await evaluate(`document.querySelector('.custom-food-request__status')?.textContent${squash} ?? null`);
+  if (!report.customPending || !/не в сети/.test(report.customPending)) failed = true;
+  await shot(`${String(n++).padStart(2, '0')}-sheet-custom-pending`);
+  const pendingClosed = await closeDialog();
+  if (!pendingClosed) {
+    report['sheet:custom-pending:closed'] = false;
+    failed = true;
   }
 } catch (err) {
   report.error = String(err);

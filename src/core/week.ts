@@ -19,6 +19,10 @@ export interface DaySummary {
   kbju: Kbju
   loggedSlots: Slot[]
   missingSlots: Slot[]
+  /** Сколько записей добавленной еды в дне. На loggedSlots/missingSlots не
+      влияет — добавленное не отвечает за статус приёма, — но объясняет, откуда
+      у дня «одного приёма» взялись калории, и нужно подписи на экране. */
+  extrasCount: number
   nutrients: NutrientTotals | null
 }
 
@@ -113,7 +117,12 @@ function addDaysLocal(dateStr: string, offsetDays: number): string {
    хранилищах, и санитизацию, выбросившую все записи дня как битые; день с нулём
    приёмов, посчитанный записанным, вошёл бы в средние нулём и занизил их. */
 function summarizeDay(date: string, dayLog: DayLog | undefined): DaySummary {
-  if (!dayLog || !SLOTS.some((slot) => dayLog.meals[slot] !== undefined)) {
+  /* Добавленная еда делает день записанным наравне с приёмом: день, в котором
+     человек записал только съеденный сверх меню десерт, — день с данными, и
+     его калории обязаны войти в средние. Статусы приёмов при этом не
+     затрагиваются: у такого дня все четыре приёма остаются missing, и неделя
+     честно считает его неполным. */
+  if (!dayLog || (!SLOTS.some((slot) => dayLog.meals[slot] !== undefined) && dayLog.extras.length === 0)) {
     return {
       date,
       cycleDay: null,
@@ -121,6 +130,7 @@ function summarizeDay(date: string, dayLog: DayLog | undefined): DaySummary {
       kbju: ZERO_KBJU,
       loggedSlots: [],
       missingSlots: [...SLOTS],
+      extrasCount: 0,
       nutrients: null
     }
   }
@@ -133,6 +143,7 @@ function summarizeDay(date: string, dayLog: DayLog | undefined): DaySummary {
     kbju: dayTotal(dayLog),
     loggedSlots,
     missingSlots,
+    extrasCount: dayLog.extras.length,
     nutrients: dayNutrientTotals(dayLog)
   }
 }

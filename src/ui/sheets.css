@@ -574,3 +574,331 @@
   font-style: italic;
   text-align: center;
 }
+
+/* ---- Шторка «Добавить блюдо из другого дня» ---- */
+
+.add-from-menu {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.add-from-menu__days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* Точка «сегодня» на чипе дня — тот же приём, что и slot-switch__now-dot на
+   главном экране: отдельный признак «идёт сейчас», который может не совпадать
+   с выбранным. */
+.add-from-menu__today-dot {
+  display: inline-block;
+  width: .35em;
+  height: .35em;
+  margin-left: var(--space-1);
+  border-radius: 50%;
+  background: currentColor;
+  opacity: .7;
+  vertical-align: middle;
+}
+
+.add-from-menu__slots {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.add-from-menu__slot {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  width: 100%;
+  min-height: var(--tap-min);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-8);
+  background: var(--surface);
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+}
+
+.add-from-menu__slot--selected {
+  border-color: var(--accent);
+  background: var(--surface-2);
+}
+
+.add-from-menu__slot--empty {
+  color: var(--fg-faint);
+}
+
+.add-from-menu__slot:disabled {
+  opacity: .7;
+}
+
+.add-from-menu__slot-title {
+  font-size: var(--text-13);
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+}
+
+.add-from-menu__slot-meal {
+  font-size: var(--text-15);
+}
+
+.add-from-menu__slot-empty {
+  font-size: var(--text-15);
+  font-style: italic;
+}
+
+.add-from-menu__fractions,
+.add-from-menu__target {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* ---- Шторка «Своя еда» ---- */
+
+.custom-food {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.custom-food__section-title {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-13);
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+}
+
+.custom-food__error {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-13);
+  line-height: var(--lh-text);
+  color: var(--danger);
+}
+
+.custom-food__poll-error {
+  margin: 0;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+  font-size: var(--text-13);
+  line-height: var(--lh-text);
+  color: var(--danger);
+}
+
+/* Без токена — только объяснение и путь в настройки, никакой формы. */
+.custom-food-no-token {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.custom-food-no-token__text {
+  margin: 0;
+  font-size: var(--text-15);
+  line-height: var(--lh-text);
+  color: var(--fg-dim);
+}
+
+/* -- книга своей еды -- */
+
+.custom-food-book__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.custom-food-book-row {
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-8);
+  background: var(--surface);
+}
+
+.custom-food-book-row__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.custom-food-book-row__title {
+  font-size: var(--text-17);
+  font-weight: 600;
+}
+
+.custom-food-book-row__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.custom-food-book-row__add {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.custom-food-book-row__group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.custom-food-book-row__confirm {
+  width: 100%;
+}
+
+/* -- форма нового заказа -- */
+
+.custom-food-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* -- очередь заказов -- */
+
+.custom-food-requests__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.custom-food-request {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-8);
+  background: var(--surface);
+}
+
+.custom-food-request--failed {
+  border-color: var(--danger);
+}
+
+.custom-food-request__title {
+  margin: 0;
+  font-size: var(--text-17);
+  font-weight: 600;
+}
+
+.custom-food-request__text {
+  font-size: var(--text-15);
+  font-weight: 600;
+}
+
+.custom-food-request__status {
+  margin: 0;
+  font-size: var(--text-13);
+  line-height: var(--lh-text);
+  color: var(--fg-dim);
+}
+
+.custom-food-request--failed .custom-food-request__status {
+  color: var(--danger);
+}
+
+.custom-food-request__actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.custom-food-request__actions .btn {
+  flex: 1;
+}
+
+.custom-food-request__group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.custom-food-request__totals {
+  margin: 0;
+  font-size: var(--text-17);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.custom-food-request__completeness {
+  margin: 0;
+  font-size: var(--text-13);
+  color: var(--fg-faint);
+}
+
+.custom-food-components {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.custom-food-component {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-8);
+  background: var(--surface-2);
+}
+
+.custom-food-component__meta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.custom-food-component__desc {
+  font-size: var(--text-15);
+}
+
+.custom-food-component__category {
+  font-size: var(--text-13);
+  color: var(--fg-dim);
+}
+
+.custom-food-component__note {
+  font-size: var(--text-13);
+  color: var(--fg-faint);
+  font-style: italic;
+}
+
+.custom-food-component__grams {
+  flex: none;
+  width: 6rem;
+}
+
+.add-from-menu__submit {
+  width: 100%;
+}

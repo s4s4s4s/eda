@@ -18,7 +18,7 @@ import {
   NUTRIENT_GROUP, NUTRIENT_GROUP_ORDER, NUTRIENT_TITLE, NUTRIENT_UNIT, SLOT_TITLE, SLOTS
 } from '../core/types.ts'
 import type {
-  DishRating, Item, Kbju, Meal, MealLogEntry, MealStatus, NutrientNorms,
+  DishRating, ExtraLogEntry, Item, Kbju, Meal, MealLogEntry, MealStatus, NutrientNorms,
   NutrientTotals, Preferences, ProductIndex, Slot
 } from '../core/types.ts'
 import RatingEditor from './RatingEditor.tsx'
@@ -41,6 +41,10 @@ export interface DaySlotProgress {
       «слот не записан», либо «запись сделана до появления ревизии» — оба
       случая читаются одинаково: по каким числам считано, неизвестно. */
   productsRevision: string | undefined
+  /** Съеденное сверх меню, отнесённое к этому слоту (сумма kbju.kcal × fraction
+      по ExtraLogEntry.slot === slot). Не входит в plannedKcal — план всегда
+      идёт из меню, добавленное лишь заполняет заливку сегмента сверх него. */
+  extrasKcal: number
 }
 
 interface MealScreenProps {
@@ -95,6 +99,11 @@ interface MealScreenProps {
       нечего, и кнопки выгрузки дня на экране тоже нет: кнопка, которая отдаёт
       пустой CSV, врёт не меньше, чем кнопка, которая ничего не отправляет. */
   hasDayLog: boolean
+  /** Съеденное сверх меню за сегодня — перенесённые блюда и своя еда. Список
+      рисуется под прогрессом дня, порядок — порядок добавления (см. addExtra
+      в core/log.ts). */
+  extras: ExtraLogEntry[]
+  onRemoveExtra: (extraId: string) => void
   onLog: (status: MealStatus, fraction: number) => void
   onUnlog: () => void
   onOpenSettings: () => void
@@ -103,6 +112,10 @@ interface MealScreenProps {
   onOpenDayExport: () => void
   /** Открыть книгу предпочтений. */
   onOpenBook: () => void
+  /** Открыть шторку переноса блюда из другого дня цикла. */
+  onOpenAddFromMenu: () => void
+  /** Открыть шторку своей еды. */
+  onOpenCustomFood: () => void
   /** Дата первого дня цикла (Settings.cycleStartDate) — баннер первого
       запуска печатает её словами, а не выдуманным «сегодня — день 1»: дата
       подставлена при установке и может уже разойтись с сегодня. */
@@ -114,7 +127,11 @@ interface MealScreenProps {
   onConfirmCycleStart: () => void
 }
 
-const FRACTIONS: { value: number; label: string }[] = [
+/** Доли «съел часть» — общий словарь для панели действий, подписи «съедено (½)»
+    и шторки переноса блюда из другого дня (AddFromMenuSheet), которая
+    добавляет к этому же словарю долю 1 («целиком»): доля не должна значить
+    разное в двух местах экрана. */
+export const FRACTIONS: { value: number; label: string }[] = [
   { value: 0.75, label: '3/4' },
   { value: 0.5, label: '1/2' },
   { value: 0.25, label: '1/4' }
@@ -241,13 +258,15 @@ function DayProgress({ slots }: { slots: DaySlotProgress[] }) {
   return (
     <div className="day-progress__bar">
       {slots.map(s => {
+        const filledKcal = s.eatenKcal + s.extrasKcal
         const ratio = s.plannedKcal > 0
-          ? Math.min(1, s.eatenKcal / s.plannedKcal)
-          : (s.eatenKcal > 0 ? 1 : 0)
+          ? Math.min(1, filledKcal / s.plannedKcal)
+          : (filledKcal > 0 ? 1 : 0)
         const status = s.status
-        const label = status !== undefined
+        let label = status !== undefined
           ? `${SLOT_TITLE[s.slot]}: ${STATUS_LABEL[status]}, ${round(s.eatenKcal)} из ${round(s.plannedKcal)} ккал`
           : `${SLOT_TITLE[s.slot]}: не записан, в плане ${round(s.plannedKcal)} ккал`
+        if (s.extrasKcal > 0) label += `, + добавлено ${round(s.extrasKcal)} ккал`
         return (
           <div
             key={s.slot}
@@ -307,8 +326,12 @@ const MODE_LABEL: Record<NutrientsMode, string> = {
 }
 
 /** Доля приёма человеческими словами — тот же словарь долей, что и в
-    панели действий (`FRACTIONS`), чтобы «½» значило одно и то же везде. */
-function fractionLabel(fraction: number): string {
+    панели действий (`FRACTIONS`), чтобы «½» значило одно и то же везде.
+    Доля 1 читается как «целиком»: у приёма меню это состояние 'eaten' и
+    через эту функцию не проходит, а у добавленной еды (ExtraLogEntry) доля 1 —
+    обычное значение, и оно обязано что-то печатать, а не «1». */
+export function fractionLabel(fraction: number): string {
+  if (fraction === 1) return 'целиком'
   return FRACTIONS.find(f => f.value === fraction)?.label ?? String(fraction)
 }
 
@@ -320,8 +343,16 @@ function fractionLabel(fraction: number): string {
     Если среди записанных слотов дня есть хоть один со снапшотом по чужой или
     отсутствующей ревизии справочника, подпись коротко предупреждает об этом:
     подробности — в meal-revision-note у самой записи (см. `revisionNote`),
-    здесь только флаг, что день считает по смеси справочников. */
-function nutrientsCaption(mode: NutrientsMode, daySlots: DaySlotProgress[], productsRevision: string): string {
+    здесь только флаг, что день считает по смеси справочников. Добавленная
+    еда (`extras`) перечисляется отдельным хвостом «+ добавлено: …» — она не
+    входит в meals и своего слота-подписи не имеет, но входит в те же суммы
+    dayTotals/dayNutrientTotals. */
+function nutrientsCaption(
+  mode: NutrientsMode,
+  daySlots: DaySlotProgress[],
+  productsRevision: string,
+  extras: ExtraLogEntry[]
+): string {
   if (mode === 'meal') return ''
   const loggedSlots = daySlots.filter(s => s.status !== undefined)
   const parts = loggedSlots.map(s => {
@@ -334,12 +365,20 @@ function nutrientsCaption(mode: NutrientsMode, daySlots: DaySlotProgress[], prod
   })
   const base = parts.length > 0 ? `записано: ${parts.join(', ')}` : 'за день пока ничего не записано'
   const withProjected = mode === 'projected' ? `${base} + этот приём (не записан)` : base
+  const withExtras = extras.length > 0
+    ? `${withProjected} + добавлено: ${extras.map(e => `${e.title} (${fractionLabel(e.fraction)})`).join(', ')}`
+    : withProjected
   // Пропущенный приём в сумму дня не входит (см. комментарий выше и
   // scaleNutrientTotals) — его ревизия справочника не влияет на то, по каким
   // числам посчитана сама сумма, и не должна включать оговорку о смеси
-  // справочников. Проверяем только слоты, реально вошедшие в сумму.
-  const hasOldRevision = loggedSlots.some(s => s.status !== 'skipped' && s.productsRevision !== productsRevision)
-  return hasOldRevision ? `${withProjected} · часть записей по прежнему справочнику` : withProjected
+  // справочников. Проверяем только слоты, реально вошедшие в сумму, и
+  // добавленные блюда меню (kind 'menu') — своя еда (kind 'custom') не несёт
+  // productsRevision вовсе, у неё источник другой (USDA через воркер).
+  const hasOldRevisionMeals = loggedSlots.some(s => s.status !== 'skipped' && s.productsRevision !== productsRevision)
+  const hasOldRevisionExtras = extras.some(e => e.kind === 'menu' && e.productsRevision !== productsRevision)
+  return (hasOldRevisionMeals || hasOldRevisionExtras)
+    ? `${withExtras} · часть записей по прежнему справочнику`
+    : withExtras
 }
 
 /** Одна строка покрытия. Что видно и чего не видно в каждом состоянии — таблица
@@ -430,7 +469,7 @@ function NutrientRow({
     её значило бы сказать «этого в еде нет», а пустая дорожка читалась бы как
     измеренный ноль, поэтому её там нет вовсе. */
 function NutrientsBlock({
-  dayTotals, mealTotals, norms, hasMeal, hasEntry, daySlots, productsRevision
+  dayTotals, mealTotals, norms, hasMeal, hasEntry, daySlots, productsRevision, extras
 }: {
   dayTotals: NutrientTotals
   mealTotals: NutrientTotals
@@ -445,6 +484,8 @@ function NutrientsBlock({
   /** Текущая ревизия справочника — нужна подписи, чтобы заметить смесь
       справочников в записях дня (см. nutrientsCaption). */
   productsRevision: string
+  /** Съеденное сверх меню за день — хвост подписи «+ добавлено: …». */
+  extras: ExtraLogEntry[]
 }) {
   /* Раскрытие держим в состоянии, а не отдаём браузеру: иконка рисуется двумя
      разными путями, и React должен знать, какой из них показывать. */
@@ -526,7 +567,7 @@ function NutrientsBlock({
 
       {effectiveMode === 'meal'
         ? <p className="meal-nutrients__note">нормы суточные — процент показан только за день</p>
-        : <p className="meal-nutrients__note">{nutrientsCaption(effectiveMode, daySlots, productsRevision)}</p>}
+        : <p className="meal-nutrients__note">{nutrientsCaption(effectiveMode, daySlots, productsRevision, extras)}</p>}
 
       <div className="meal-nutrients__list">
         {NUTRIENT_GROUP_ORDER.map(group => {
@@ -670,9 +711,10 @@ export default function MealScreen({
   date, cycleDayNum, cycleDays, batchDayNum, slot, currentSlot, onSelectSlot,
   meal, mealKbju, mealNutrients, dayNutrients, norms, products, preferences, verdict,
   entry, productsRevision, rating, onRate, onClearRating, daySlots,
-  dayEatenKcal, targetKcal, dayProteinG, targetProteinG, hasDayLog,
+  dayEatenKcal, targetKcal, dayProteinG, targetProteinG, hasDayLog, extras, onRemoveExtra,
   cycleStartDate, cycleStartConfirmed, onConfirmCycleStart,
-  onLog, onUnlog, onOpenSettings, onOpenWeek, onOpenExport, onOpenDayExport, onOpenBook
+  onLog, onUnlog, onOpenSettings, onOpenWeek, onOpenExport, onOpenDayExport, onOpenBook,
+  onOpenAddFromMenu, onOpenCustomFood
 }: MealScreenProps) {
   const [pickingFraction, setPickingFraction] = useState(false)
 
@@ -846,6 +888,54 @@ export default function MealScreen({
         <DayProtein eatenG={dayProteinG} targetG={targetProteinG} />
       </section>
 
+      {/* Съеденное сверх меню: не трогает статус приёмов, поэтому живёт
+          отдельным блоком под прогрессом дня, а не внутри одного из сегментов. */}
+      <section className="day-extras">
+        {extras.length > 0 && (
+          <>
+            <h2 className="day-extras__title">Добавлено</h2>
+            <ul className="day-extras__list">
+              {extras.map(e => (
+                <li key={e.id} className="day-extras__item">
+                  <span className="day-extras__name">{e.title}</span>
+                  <span className="day-extras__meta nums">
+                    {fractionLabel(e.fraction)} · {round(e.kbju.kcal * e.fraction)} ккал ·{' '}
+                    {e.kind === 'menu'
+                      ? `день ${e.fromCycleDay}, ${SLOT_TITLE[e.fromSlot].toLowerCase()}`
+                      : 'своя еда'}
+                  </span>
+                  <button
+                    type="button"
+                    className="day-extras__remove"
+                    onClick={() => onRemoveExtra(e.id)}
+                  >
+                    убрать
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+        <div className="day-extras__actions">
+          <button
+            type="button"
+            className="btn btn--secondary"
+            aria-label="Добавить блюдо из другого дня"
+            onClick={onOpenAddFromMenu}
+          >
+            Добавить блюдо из другого дня
+          </button>
+          <button
+            type="button"
+            className="btn btn--secondary"
+            aria-label="Своя еда"
+            onClick={onOpenCustomFood}
+          >
+            Своя еда
+          </button>
+        </div>
+      </section>
+
       <NutrientsBlock
         dayTotals={dayNutrients}
         mealTotals={mealNutrients}
@@ -854,6 +944,7 @@ export default function MealScreen({
         hasEntry={entry !== undefined}
         daySlots={daySlots}
         productsRevision={productsRevision}
+        extras={extras}
       />
 
       {(meal || entry) && (

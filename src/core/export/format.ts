@@ -124,8 +124,20 @@ export function mealClipboardText(payload: MealPayload): string {
   return lines.join('\n')
 }
 
+/** Доля добавленной еды в скобках рядом с названием: «+ Тирамису (1/2)».
+    Полная порция скобок не получает — приписка «(целиком)» к каждой строке
+    была бы шумом, а не сведением. */
+function extraFractionSuffix(fraction: number): string {
+  if (fraction === 1) return ''
+  const label = FRACTION_LABEL[String(fraction)] ?? `${round(fraction * 100)}%`
+  return ` (${label})`
+}
+
 /** Текст дня: дата, затем строка на каждый записанный приём (в порядке SLOTS,
-    съеденное = снапшот × доля), итог — суммой, которую передал вызывающий. */
+    съеденное = снапшот × доля), затем добавленная сверх меню еда строками
+    «+ название (доля)», итог — суммой, которую передал вызывающий.
+    Добавленное печатается отдельным списком, а не подмешивается к приёмам:
+    «обед» в тексте означает блюдо меню, и десерт, съеденный после него, — не он. */
 export function dayClipboardText(payload: DayPayload): string {
   const lines = [formatDateShort(payload.date)]
   for (const slot of SLOTS) {
@@ -135,6 +147,10 @@ export function dayClipboardText(payload: DayPayload): string {
     lines.push(kbjuLine(eatenOf(entry.kbju, entry.fraction)))
     const fl = fractionLine(entry.fraction)
     if (fl) lines.push(fl)
+  }
+  for (const extra of payload.extras) {
+    lines.push(`+ ${extra.title}${extraFractionSuffix(extra.fraction)}`)
+    lines.push(kbjuLine(eatenOf(extra.kbju, extra.fraction)))
   }
   lines.push(`Итого: ${kbjuLine(payload.total)}`)
   lines.push('', 'Нутриенты за день:', ...nutrientLines(payload.nutrients))
@@ -182,33 +198,58 @@ function csvNutrientCell(total: NutrientTotal): string {
   return formatNutrientAmount(total.value)
 }
 
+/** Значение колонки `status` у строки добавленной еды. Собственный статус, а не
+    'eaten': строка описывает съеденное сверх меню, и подставить сюда статус
+    приёма значило бы объявить, что приём меню съеден, — статуса, которого у
+    добавленной еды нет по устройству (см. ExtraLogEntry в types.ts). */
+export const CSV_EXTRA_STATUS = 'extra'
+
+/** Одна строка CSV: съеденное (снапшот × доля), нутриенты и перечень тех из
+    них, чьё число посчитано не по всем позициям. */
+function csvEntryRow(
+  date: string,
+  slot: string,
+  title: string,
+  kbju: Kbju,
+  totals: NutrientTotals,
+  fraction: number,
+  status: string
+): string {
+  const eaten = eatenOf(kbju, fraction)
+  const nutrients = eatenNutrientsOf(totals, fraction)
+  const incomplete = NUTRIENT_KEYS.filter(key => {
+    const t = nutrients[key]
+    return t.known > 0 && t.known < t.total
+  })
+  return csvRow([
+    date,
+    slot,
+    title,
+    eaten.kcal.toFixed(1),
+    eaten.p.toFixed(1),
+    eaten.f.toFixed(1),
+    eaten.c.toFixed(1),
+    fraction,
+    status,
+    ...NUTRIENT_KEYS.map(key => csvNutrientCell(nutrients[key])),
+    incomplete.join(' ')
+  ])
+}
+
 /** CSV за день: заголовок + строка на каждую запись дневника (в порядке SLOTS),
-    десятичные через точку, CRLF, BOM для Excel/кириллицы. Колонки: макросы
-    (1 знак), затем по колонке на каждый ключ NUTRIENT_KEYS и перечень неполных. */
+    затем строка на каждую добавленную сверх меню еду (в порядке добавления,
+    status = extra), десятичные через точку, CRLF, BOM для Excel/кириллицы.
+    Колонки: макросы (1 знак), затем по колонке на каждый ключ NUTRIENT_KEYS и
+    перечень неполных. */
 export function buildDayCsv(payload: DayPayload): string {
   const rows: string[] = []
   for (const slot of SLOTS) {
     const entry: MealLogEntry | undefined = payload.meals.find(m => m.slot === slot)
     if (!entry) continue
-    const eaten = eatenOf(entry.kbju, entry.fraction)
-    const nutrients = eatenNutrientsOf(entry.nutrients, entry.fraction)
-    const incomplete = NUTRIENT_KEYS.filter(key => {
-      const t = nutrients[key]
-      return t.known > 0 && t.known < t.total
-    })
-    rows.push(csvRow([
-      payload.date,
-      entry.slot,
-      entry.title,
-      eaten.kcal.toFixed(1),
-      eaten.p.toFixed(1),
-      eaten.f.toFixed(1),
-      eaten.c.toFixed(1),
-      entry.fraction,
-      entry.status,
-      ...NUTRIENT_KEYS.map(key => csvNutrientCell(nutrients[key])),
-      incomplete.join(' ')
-    ]))
+    rows.push(csvEntryRow(payload.date, entry.slot, entry.title, entry.kbju, entry.nutrients, entry.fraction, entry.status))
+  }
+  for (const extra of payload.extras) {
+    rows.push(csvEntryRow(payload.date, extra.slot, extra.title, extra.kbju, extra.nutrients, extra.fraction, CSV_EXTRA_STATUS))
   }
   return '﻿' + [CSV_HEADER, ...rows].join('\r\n')
 }

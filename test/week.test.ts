@@ -3,7 +3,8 @@
  * как ноль, средние только по дням с данными. Гоняются node-ом после сборки esbuild:
  * `npm run test:week`.
  */
-import { logMeal } from '../src/core/log'
+import { addExtra, logMeal } from '../src/core/log'
+import { emptyNutrientTotals } from '../src/core/nutrition'
 import { weekCoverage, weekSummary } from '../src/core/week'
 import { NUTRIENT_KEYS } from '../src/core/types'
 import type { AppState, Kbju, Meal, NutrientNorm, NutrientNorms, Nutrients, Product, ProductIndex, Slot } from '../src/core/types'
@@ -32,8 +33,11 @@ function emptyState(): AppState {
   return {
     version: 1,
     settings: { cycleStartDate: '2026-08-01', cycleShift: 0, targetKcal: 3200, shortcutName: '' },
-    log: {}
-  }
+    log: {},
+    preferences: { ingredients: {}, dishes: {} },
+    customFoods: {},
+    foodRequests: []
+  } as unknown as AppState
 }
 
 // ---- пустой дневник -------------------------------------------------------------
@@ -371,7 +375,7 @@ function emptyDayIsNotZeroDayChecks(): void {
   state = logFullDay(state, '2026-08-06', 6, meal('lunch', 'день', 'a'), idx)
   state = logFullDay(state, '2026-08-07', 7, meal('lunch', 'день', 'a'), idx)
   // день с ключом, но без единой записи — так выглядит отменённый день в старом хранилище
-  state = { ...state, log: { ...state.log, '2026-08-05': { cycleDay: 5, meals: {} } } }
+  state = { ...state, log: { ...state.log, '2026-08-05': { cycleDay: 5, meals: {}, extras: [] } } }
 
   const week = weekSummary(state.log, '2026-08-07', 7)
   const emptyDay = week.days.find((d) => d.date === '2026-08-05')!
@@ -446,6 +450,51 @@ function coverageCdrrChecks(): void {
   group('weekCoverage: cdrr натрия считается отдельно от ul; overCdrr не влияет на overUl и наоборот')
 }
 
+// ---- день из одной добавленной еды — записанный, но неполный по приёмам ----------
+
+/* Добавленное сверх меню делает день записанным: калории съедены, и не считать
+   их значило бы занизить неделю. Но статусы приёмов оно НЕ трогает — у такого
+   дня все четыре приёма остаются missing, и неделя честно считает его неполным
+   («записан не полностью»), а не полным днём на 400 ккал. */
+function extrasMakeDayLoggedChecks(): void {
+  const extra = {
+    id: 'e1',
+    slot: 'dinner' as Slot,
+    fraction: 0.5,
+    title: 'Тирамису, порция',
+    kbju: { kcal: 800, p: 12, f: 44, c: 64 },
+    nutrients: { ...emptyNutrientTotals(), sugar: { value: 50, known: 1, total: 1 } },
+    loggedAt: '2026-08-07T21:00:00',
+    kind: 'custom' as const,
+    customFoodId: 'food-tiramisu',
+    source: 'USDA SR Legacy 2018-04'
+  }
+  const state = addExtra(emptyState(), '2026-08-07', extra, 7)
+
+  const week = weekSummary(state.log, '2026-08-07', 7)
+  const day = week.days.find((d) => d.date === '2026-08-07')!
+
+  assert(day.hasLog === true, 'день, в котором записана только добавленная еда, — записанный день')
+  assert(day.extrasCount === 1, `extrasCount ожидался 1, получено ${day.extrasCount}`)
+  assert(JSON.stringify(day.loggedSlots) === JSON.stringify([]),
+    `добавленная еда не даёт приёму статуса, loggedSlots ожидались пустыми, получено ${JSON.stringify(day.loggedSlots)}`)
+  assert(day.missingSlots.length === 4, `все четыре приёма обязаны остаться missing, получено ${JSON.stringify(day.missingSlots)}`)
+  assert(day.kbju.kcal === 400, `калории дня — снапшот × доля (800 × 0.5), получено ${day.kbju.kcal}`)
+  assert(day.nutrients!.sugar.value === 25, `сахара дня ожидались 25 (50 × 0.5), получено ${day.nutrients!.sugar.value}`)
+
+  assert(week.daysWithLog === 1, `день с добавкой обязан войти в число дней с записями, получено ${week.daysWithLog}`)
+  assert(week.avgKcal === 400, `среднее за неделю ожидалось 400, получено ${week.avgKcal}`)
+  assert(week.incompleteDays === 1, 'день без единого статуса приёма неполон, сколько бы в нём ни было добавок')
+  assert(week.loggedSlots === 0 && week.expectedSlots === 4,
+    `приёмов записано 0 из 4, получено ${week.loggedSlots} из ${week.expectedSlots}`)
+
+  // контроль: соседние дни окна добавка не трогает
+  assert(week.days.filter((d) => d.hasLog).length === 1, 'записанным стал ровно один день окна')
+  assert(week.days.every((d) => d.date === '2026-08-07' || d.extrasCount === 0), 'у дней без записей extrasCount равен нулю')
+
+  group('summarizeDay: день из одной добавленной еды записан (hasLog), но все четыре приёма остаются missing')
+}
+
 function main(): void {
   console.log('week — недельная сводка: окно дат, средние только по дням с данными')
   emptyDiaryChecks()
@@ -467,6 +516,7 @@ function main(): void {
   coverageUlChecks()
   coverageUlNotExceededChecks()
   coverageCdrrChecks()
+  extrasMakeDayLoggedChecks()
   console.log(`\nВсе проверки week пройдены (${passed} групп).`)
 }
 

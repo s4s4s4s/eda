@@ -91,18 +91,31 @@ export function emptyNutrientTotals(): NutrientTotals {
   return totals
 }
 
-/** Добавляет к сумме одну позицию: total растёт всегда, value и known — только
-    там, где у позиции есть число. */
-export function addItemToTotals(totals: NutrientTotals, nutrients: Nutrients): NutrientTotals {
+/** Добавляет к сумме одну позицию, заданную числами НА 100 Г и граммовкой:
+    total растёт всегда, value и known — только там, где у позиции есть число.
+
+    Это общая арифметика для позиции меню и для компонента своей еды: и там и
+    там числа приходят на 100 г и домножаются на граммы. Держать две копии
+    нельзя — разойдясь, они дали бы приложению и расчёту на компьютере разные
+    суммы за одну и ту же еду, причём молча. */
+export function addPer100ToTotals(totals: NutrientTotals, per100: Nutrients, grams: number): NutrientTotals {
+  const factor = grams / 100
   const result = {} as NutrientTotals
   for (const key of NUTRIENT_KEYS) {
     const acc = totals[key]
-    const value = nutrients[key]
+    const value = per100[key]
     result[key] = value === undefined
       ? { value: acc.value, known: acc.known, total: acc.total + 1 }
-      : { value: acc.value + value, known: acc.known + 1, total: acc.total + 1 }
+      : { value: acc.value + value * factor, known: acc.known + 1, total: acc.total + 1 }
   }
   return result
+}
+
+/** Добавляет к сумме одну позицию, числа которой УЖЕ пересчитаны на её вес
+    (itemNutrients). Тот же расчёт при граммовке 100 — множитель ровно 1, так
+    что числа совпадают до бита, а не «с точностью до округления». */
+export function addItemToTotals(totals: NutrientTotals, nutrients: Nutrients): NutrientTotals {
+  return addPer100ToTotals(totals, nutrients, 100)
 }
 
 export function addNutrientTotals(a: NutrientTotals, b: NutrientTotals): NutrientTotals {

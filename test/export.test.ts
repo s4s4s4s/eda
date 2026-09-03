@@ -6,7 +6,7 @@
  */
 import type { ExportChannel, ExportPayload } from '../src/core/export/types.ts'
 import {
-  buildDayCsv, CSV_HEADER, CSV_NUTRIENT_COLUMNS, dayClipboardText, formatNutrientAmount, mealClipboardText, NO_DATA_TEXT
+  buildDayCsv, CSV_EXTRA_STATUS, CSV_HEADER, CSV_NUTRIENT_COLUMNS, dayClipboardText, formatNutrientAmount, mealClipboardText, NO_DATA_TEXT
 } from '../src/core/export/format.ts'
 import { emptyNutrientTotals } from '../src/core/nutrition.ts'
 import { NUTRIENT_KEYS, NUTRIENT_UNIT } from '../src/core/types.ts'
@@ -15,7 +15,7 @@ import { clipboardChannel } from '../src/core/export/clipboard.ts'
 import { CSV_FALLBACK_NOTE, CSV_NOT_A_DAY_ERROR, csvChannel } from '../src/core/export/csv.ts'
 import { buildShortcutUrl, healthNutrients, healthShortcutChannel, NO_HEALTHKIT_TYPE, readCallback } from '../src/core/export/health-shortcut.ts'
 import { buildChannels, sendViaChannel, SKIPPED_MEAL_REASON } from '../src/core/export/index.ts'
-import type { Kbju, MealLogEntry } from '../src/core/types.ts'
+import type { ExtraLogEntry, Kbju, MealLogEntry } from '../src/core/types.ts'
 
 let passed = 0
 function assert(cond: boolean, msg: string): void {
@@ -68,11 +68,39 @@ function mealEntry(overrides: Partial<MealLogEntry> = {}): MealLogEntry {
   }
 }
 
-function dayPayload(meals: MealLogEntry[], total: Kbju, nutrients?: NutrientTotals): Extract<ExportPayload, { kind: 'day' }> {
+/** Съеденное сверх меню: своя еда либо перенесённое блюдо другого дня.
+    Снапшот ПОЛНОЙ порции — долю применяет потребитель, как и у приёма. */
+function extraEntry(overrides: Partial<Extract<ExtraLogEntry, { kind: 'custom' }>> = {}): ExtraLogEntry {
+  return {
+    id: 'x-1',
+    slot: 'snack',
+    fraction: 1,
+    title: 'Тирамису, порция',
+    kbju: kbju(350, 6, 22, 32),
+    nutrients: totals({
+      sugar: { value: 25, known: 1, total: 1 },
+      sodium: { value: 0, known: 1, total: 1 },
+      vitK: { value: 4, known: 1, total: 2 }
+    }),
+    loggedAt: '2026-08-30T21:00:00',
+    kind: 'custom',
+    customFoodId: 'food-tiramisu',
+    source: 'USDA SR Legacy 2018-04',
+    ...overrides
+  }
+}
+
+function dayPayload(
+  meals: MealLogEntry[],
+  total: Kbju,
+  nutrients?: NutrientTotals,
+  extras: ExtraLogEntry[] = []
+): Extract<ExportPayload, { kind: 'day' }> {
   return {
     kind: 'day',
     date: '2026-08-30',
     meals,
+    extras,
     total,
     nutrients: nutrients ?? totals({
       fiber: { value: 20, known: 4, total: 4 },
@@ -128,6 +156,26 @@ function dayClipboardTextChecks(): void {
   group('dayClipboardText: строки по приёмам в порядке слотов и итог')
 }
 
+/* Съеденное сверх меню печатается отдельными строками «+ название (доля)», а
+   не подмешивается к приёмам: «обед» в тексте означает блюдо меню, и десерт
+   после него — не он. Числа — съеденные, как и у приёмов. */
+function dayClipboardExtrasChecks(): void {
+  const meals = [mealEntry({ slot: 'breakfast', title: 'Омлет', kbju: kbju(320, 20, 24, 4), fraction: 1 })]
+  const extras = [
+    extraEntry(),
+    extraEntry({ id: 'x-2', title: 'Обед дня 5', kbju: kbju(800, 40, 20, 90), fraction: 0.5 })
+  ]
+  const text = dayClipboardText(dayPayload(meals, kbju(320 + 350 + 400, 0, 0, 0), undefined, extras))
+
+  assert(text.includes('+ Тирамису, порция'), `добавленная еда обязана быть в тексте отдельной строкой, получено:\n${text}`)
+  assert(!text.includes('+ Тирамису, порция ('), 'полная порция скобок с долей не получает')
+  assert(text.includes('+ Обед дня 5 (1/2)'), `доля добавки печатается в скобках, получено:\n${text}`)
+  assert(text.includes('400 ккал'), `числа добавки — съеденные (800 × 0.5), получено:\n${text}`)
+  assert(text.indexOf('Омлет') < text.indexOf('+ Тирамису, порция'), 'добавленное идёт после приёмов')
+  assert(text.indexOf('+ Обед дня 5') < text.indexOf('Итого'), 'итог остаётся последним числом дня')
+  group('dayClipboardText: добавленная еда печатается строками «+ название (доля)» съеденными числами')
+}
+
 // ---- format.ts: CSV ----------------------------------------------------------
 
 function csvChecks(): void {
@@ -159,6 +207,45 @@ function csvChecks(): void {
   assert(lines[2].includes('250.2'), `десятичное число должно быть с точкой (500.4*0.5=250.2): ${lines[2]}`)
 
   group('buildDayCsv: заголовок, число строк, CRLF, BOM, экранирование запятой и кавычки, точка в десятичных')
+}
+
+/* Съеденное сверх меню обязано попасть в CSV своей строкой: дневные total и
+   nutrients его уже учитывают, и день без этих строк не сходился бы со своим
+   же итогом. Статус такой строки — extra, а не 'eaten': статуса приёма у
+   добавленной еды нет по устройству. */
+function csvExtrasChecks(): void {
+  const meals = [mealEntry({ slot: 'breakfast', title: 'Каша', kbju: kbju(300, 10, 5, 40), fraction: 1 })]
+  // название без запятой намеренно: разбор строки здесь идёт простым split(','),
+  // а экранирование полей с запятыми проверяет csvChecks своим примером
+  const extras = [
+    extraEntry({ id: 'x-1', slot: 'snack', title: 'Тирамису порция', kbju: kbju(350, 6, 22, 32), fraction: 0.5 })
+  ]
+  const csv = buildDayCsv(dayPayload(meals, kbju(475, 13, 16, 56), undefined, extras))
+  const lines = csv.slice(1).split('\r\n')
+  const columns = lines[0].split(',')
+  const cell = (row: string, name: string): string => row.split(',')[columns.indexOf(name)]
+
+  assert(lines.length === meals.length + extras.length + 1,
+    `строк ожидалось ${meals.length + extras.length + 1} (заголовок, приём, добавка), получено ${lines.length}`)
+
+  const extraRow = lines[2]
+  assert(cell(extraRow, 'status') === CSV_EXTRA_STATUS,
+    `статус строки добавленной еды ожидался «${CSV_EXTRA_STATUS}», получено «${cell(extraRow, 'status')}»`)
+  assert(cell(extraRow, 'slot') === 'snack', `слот добавки печатается как есть, получено «${cell(extraRow, 'slot')}»`)
+  assert(cell(extraRow, 'title') === 'Тирамису порция', `название добавки печатается как есть, получено «${cell(extraRow, 'title')}»`)
+  assert(cell(extraRow, 'fraction') === '0.5', `доля добавки печатается своим числом, получено «${cell(extraRow, 'fraction')}»`)
+  assert(cell(extraRow, 'kcal') === '175.0', `калории добавки — съеденные (350 × 0.5), получено «${cell(extraRow, 'kcal')}»`)
+
+  // нутриенты добавки — по тем же правилам, что у приёма: доля умножает числа,
+  // честный ноль остаётся нулём, «нет данных» — пустой ячейкой, неполнота названа
+  assert(cell(extraRow, 'sugar_g') === '12.5', `сахара добавки ожидались 12.5 (25 × 0.5), получено «${cell(extraRow, 'sugar_g')}»`)
+  assert(cell(extraRow, 'sodium_mg') === '0', `честный ноль обязан печататься нулём, получено «${cell(extraRow, 'sodium_mg')}»`)
+  assert(cell(extraRow, 'calcium_mg') === '', `нутриент без данных — пустая ячейка, получено «${cell(extraRow, 'calcium_mg')}»`)
+  assert(cell(extraRow, 'incomplete').includes('vitK'), `неполнота добавки обязана быть названа, получено «${cell(extraRow, 'incomplete')}»`)
+
+  // строка приёма от появления добавки не изменилась
+  assert(cell(lines[1], 'status') === 'eaten' && cell(lines[1], 'kcal') === '300.0', `строка приёма не должна меняться: ${lines[1]}`)
+  group('buildDayCsv: добавленная еда идёт своей строкой со status = extra, долей и своими нутриентами')
 }
 
 // ---- format.ts: formatNutrientAmount — три значащие цифры, честный ноль ------
@@ -536,7 +623,9 @@ async function main(): Promise<void> {
   formatNutrientAmountChecks()
   mealClipboardTextChecks()
   dayClipboardTextChecks()
+  dayClipboardExtrasChecks()
   csvChecks()
+  csvExtrasChecks()
   csvNutrientCellsChecks()
   csvColumnsMatchNutrientKeysChecks()
   clipboardNutrientsChecks()

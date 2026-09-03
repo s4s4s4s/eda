@@ -14,12 +14,11 @@
 //   node scripts/build-products.mjs <путь к распакованному каталогу SR Legacy>
 //   (или переменная окружения FDC_DIR, если аргумент не передан)
 
-import { createReadStream } from 'node:fs';
 import { writeFile, mkdir, readFile } from 'node:fs/promises';
-import { createInterface } from 'node:readline';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import yaml from 'js-yaml';
+import { NUTRIENT_IDS, MICRO_NUTRIENT_IDS, streamCsv, round, resolveFdcDir, per100Of } from './lib/usda.mjs';
 
 /** Текст с LF вместо CRLF — для сравнения содержимого независимо от того,
     с какими переводами строк файл лежит на диске. */
@@ -30,78 +29,21 @@ function toLf(text) {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..');
 
-const fdcDir = process.argv[2] ?? process.env.FDC_DIR;
-if (!fdcDir) {
-  console.error('Укажи путь к распакованному каталогу SR Legacy первым аргументом или через FDC_DIR.');
+// NUTRIENT_IDS и MICRO_NUTRIENT_IDS (id нутриентов SR Legacy, единое округление
+// per100Of) переехали в scripts/lib/usda.mjs — это же знание нужно
+// food-search.mjs и resolve-food.mjs, дублировать его здесь больше нельзя.
+// id и unit_name проверены по nutrient.csv, таблица сверки — в отчёте прогона.
+// Порядок ключей MICRO_NUTRIENT_IDS = порядок NUTRIENT_KEYS в src/core/types.ts
+// и порядок строк micro100g в data/products.yaml — держится вручную и
+// намеренно, см. комментарий в usda.mjs.
+
+let fdcDir;
+try {
+  fdcDir = resolveFdcDir(process.argv[2]);
+} catch (err) {
+  console.error(err.message);
   process.exit(1);
 }
-
-// Нутриенты SR Legacy, проверены по nutrient.csv (id -> name):
-// 1008 Energy (KCAL), 1003 Protein (G), 1004 Total lipid (fat) (G),
-// 1005 Carbohydrate, by difference (G).
-const NUTRIENT_IDS = { kcal: '1008', protein: '1003', fat: '1004', carbs: '1005' };
-
-// Дополнительные нутриенты (клетчатка, минералы, витамины) — идут в micro100g.
-// Отсутствие строки в food_nutrient.csv для конкретного продукта — это НЕ ноль,
-// поле в таком случае просто не попадает в micro100g (см. сборку entry.micro100g).
-// id и unit_name проверены по nutrient.csv, таблица сверки — в отчёте прогона.
-// Порядок ключей здесь = порядок NUTRIENT_KEYS в src/core/types.ts и порядок
-// строк micro100g в data/products.yaml. Держится вручную и намеренно: файл
-// справочника читают глазами, сверяя число с источником, и группы (жиры рядом
-// с жирами, витамины с витаминами) читаются, а хвост из дописанных ключей — нет.
-const MICRO_NUTRIENT_IDS = {
-  fiber: '1079',
-  sugar: '2000',
-  satFat: '1258',
-  monoFat: '1292',
-  polyFat: '1293',
-  cholesterol: '1253',
-  // ПНЖК: 1269/1270 — суммарные 18:2 и 18:3 (все изомеры), а не изомер-
-  // специфичные 1316 (18:2 n-6 c,c, линолевая) и 1404 (18:3 n-3, ALA).
-  // Изомер-специфичные id заполнены у малой доли продуктов проекта, суммарные —
-  // почти у всех; точные числа печатает каждый прогон в разделе отчёта «Сверка
-  // приближения по ПНЖК» (см. APPROXIMATION_CHECK_IDS ниже), проверять надо там,
-  // а не верить этой строке. Практически весь пищевой 18:2 — линолевая кислота,
-  // а 18:3 — ALA, так что подстановка суммы вместо изомера — честное
-  // приближение, а не ноль.
-  linoleic: '1269',
-  ala: '1270',
-  epa: '1278',
-  dha: '1272',
-  calcium: '1087',
-  iron: '1089',
-  magnesium: '1090',
-  phosphorus: '1091',
-  potassium: '1092',
-  sodium: '1093',
-  zinc: '1095',
-  copper: '1098',
-  manganese: '1101',
-  selenium: '1103',
-  vitA: '1106',
-  retinol: '1105',
-  vitC: '1162',
-  vitD: '1114',
-  vitE: '1109',
-  vitK: '1185',
-  thiamin: '1165',
-  riboflavin: '1166',
-  niacin: '1167',
-  vitB6: '1175',
-  // Folate, DFE (не "Folate, total" 1177): норма DRI по фолатам задана в DFE
-  // (dietary folate equivalents), и складывать с ней "Folate, total" было бы
-  // сравнением разного. Смена источника числа осознанная.
-  folate: '1190',
-  vitB12: '1178',
-  pantothenic: '1170',
-  choline: '1180',
-  betaCarotene: '1107',
-  alphaCarotene: '1108',
-  betaCryptoxanthin: '1120',
-  lycopene: '1122',
-  luteinZeaxanthin: '1123',
-  water: '1051',
-};
 
 // Эти id в данные НЕ идут: они собираются только ради отчёта прогона, чтобы
 // приближение выше («суммарные 18:2 и 18:3 вместо изомер-специфичных») не
@@ -283,71 +225,6 @@ const MEASURES_BY_KEY = {
   egg: { piece: { source: 'fdc', fdcPortionId: 88374 } }, // "large"
 };
 
-// ---------------------------------------------------------------------------
-// CSV: все файлы SR Legacy заключают каждое поле в двойные кавычки, запятые и
-// кавычки внутри значений экранируются удвоением кавычки ("").
-// ---------------------------------------------------------------------------
-function parseCsvLine(line) {
-  const fields = [];
-  let field = '';
-  let inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (inQuotes) {
-      if (ch === '"') {
-        if (line[i + 1] === '"') {
-          field += '"';
-          i++;
-        } else {
-          inQuotes = false;
-        }
-      } else {
-        field += ch;
-      }
-    } else if (ch === '"') {
-      inQuotes = true;
-    } else if (ch === ',') {
-      fields.push(field);
-      field = '';
-    } else {
-      field += ch;
-    }
-  }
-  fields.push(field);
-  return fields;
-}
-
-async function readCsvHeader(filePath) {
-  const rl = createInterface({ input: createReadStream(filePath, 'utf8'), crlfDelay: Infinity });
-  for await (const line of rl) {
-    rl.close();
-    return parseCsvLine(line);
-  }
-  throw new Error(`Пустой файл: ${filePath}`);
-}
-
-async function streamCsv(filePath, onRow) {
-  const header = await readCsvHeader(filePath);
-  const rl = createInterface({ input: createReadStream(filePath, 'utf8'), crlfDelay: Infinity });
-  let isHeader = true;
-  for await (const line of rl) {
-    if (isHeader) {
-      isHeader = false;
-      continue;
-    }
-    if (line.length === 0) continue;
-    const fields = parseCsvLine(line);
-    const row = {};
-    for (let i = 0; i < header.length; i++) row[header[i]] = fields[i];
-    onRow(row);
-  }
-}
-
-function round(n, digits) {
-  const factor = 10 ** digits;
-  return Math.round(n * factor) / factor;
-}
-
 async function main() {
   // Ключи должны совпадать 1:1 с закрытым списком тегов — ни своих, ни забытых.
   const productKeys = PRODUCTS.map((p) => p.key);
@@ -462,25 +339,20 @@ async function main() {
       name: p.name,
       fdcId: p.fdcId,
       fdcDescription: descriptions[id],
-      per100g: {
-        kcal: round(n[NUTRIENT_IDS.kcal], 0),
-        protein: round(n[NUTRIENT_IDS.protein], 2),
-        fat: round(n[NUTRIENT_IDS.fat], 2),
-        carbs: round(n[NUTRIENT_IDS.carbs], 2),
-      },
-      tags: TAGS_BY_KEY[p.key],
     };
+
+    // per100Of — общее с resolve-food.mjs округление: build-products и разбор
+    // «своей еды» для одного fdcId обязаны давать одно и то же число.
+    // missingNutrients выше уже гарантировал, что все четыре макроса на месте.
+    const { kbju, micro } = per100Of(n);
+    entry.per100g = { kcal: kbju.kcal, protein: kbju.p, fat: kbju.f, carbs: kbju.c };
+    entry.tags = TAGS_BY_KEY[p.key];
     if (p.substitute) entry.substitute = p.substitute;
 
     // micro100g: поле пишем ТОЛЬКО если в food_nutrient.csv реально есть строка
-    // для этого нутриента у этого fdc_id. Отсутствие строки — это дыра в
-    // датасете, а не ноль, поэтому поле просто не появляется в объекте.
-    const micro100g = {};
-    for (const [field, nid] of Object.entries(MICRO_NUTRIENT_IDS)) {
-      const amount = n[nid];
-      if (amount !== undefined) micro100g[field] = round(amount, 3);
-    }
-    entry.micro100g = micro100g;
+    // для этого нутриента у этого fdc_id — отсутствие строки не ноль, а дыра в
+    // датасете (см. per100Of).
+    entry.micro100g = micro;
 
     const measures = MEASURES_BY_KEY[p.key];
     if (measures?.tbsp) {

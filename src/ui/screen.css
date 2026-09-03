@@ -457,6 +457,76 @@
   color: var(--fg-dim);
 }
 
+/* ---- добавленная еда: перенесённое блюдо и своя еда, сверх меню ---- */
+
+/* Живёт под прогрессом дня — extras не трогают статус приёмов, поэтому и на
+   экране это отдельный блок, а не часть одного из четырёх сегментов. */
+.day-extras {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.day-extras__title {
+  margin: 0;
+  font-size: var(--text-13);
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+}
+
+.day-extras__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.day-extras__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--r-8);
+  background: var(--surface);
+  font-size: var(--text-15);
+}
+
+.day-extras__name {
+  flex: 1 1 auto;
+  min-width: 8rem;
+}
+
+.day-extras__meta {
+  font-size: var(--text-13);
+  color: var(--fg-dim);
+}
+
+.day-extras__remove {
+  flex: none;
+  padding: var(--space-1) 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: var(--text-13);
+  color: var(--fg-dim);
+  text-decoration: underline;
+}
+
+.day-extras__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.day-extras__actions .btn {
+  flex: 1 1 12rem;
+}
+
 /* ---- 8. микронутриенты: покрытие суточных норм ---- */
 
 /* Свёрнутый блок под числами. Главное на экране — приём и его состав, поэтому

@@ -187,7 +187,10 @@ function DayRow({ day, isToday, targetKcal }: { day: DaySummary; isToday: boolea
         <span className="week-day__kcal">{round(day.kbju.kcal)} ккал</span>
       </div>
       {ratio !== null && <CoverageBar ratio={ratio} />}
-      <span className="week-day__meals">{day.loggedSlots.length} из {SLOTS.length} приёмов</span>
+      <span className="week-day__meals">
+        {day.loggedSlots.length} из {SLOTS.length} приёмов
+        {day.extrasCount > 0 && ` · добавлено: ${day.extrasCount}`}
+      </span>
     </li>
   )
 }

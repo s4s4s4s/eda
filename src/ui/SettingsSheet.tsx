@@ -13,6 +13,10 @@ interface SettingsSheetProps {
   cycleDays: number
   /** Дневник нужен здесь только чтобы показать его размер и дать его стереть. */
   log: AppState['log']
+  /** Книга своей еды — входит в тот же размер (см. logFootprint): своя еда с
+      компонентами весит не меньше дневника, и молчать про неё в строке
+      размера значило бы занижать оценку перед очисткой. */
+  customFoods: AppState['customFoods']
   onChange: (settings: Settings) => void
   onClearLog: () => void
   onClose: () => void
@@ -37,10 +41,24 @@ function daysWord(n: number): string {
   }
 }
 
-export default function SettingsSheet({ settings, cycleDays, log, onChange, onClearLog, onClose }: SettingsSheetProps) {
+/** Русское склонение слова «блюдо» по числу — для строки размера книги своей
+    еды, той же формы, что и daysWord. */
+function dishesWord(n: number): string {
+  const mod100 = n % 100
+  if (mod100 >= 11 && mod100 <= 14) return 'блюд'
+  switch (n % 10) {
+    case 1: return 'блюдо'
+    case 2:
+    case 3:
+    case 4: return 'блюда'
+    default: return 'блюд'
+  }
+}
+
+export default function SettingsSheet({ settings, cycleDays, log, customFoods, onChange, onClearLog, onClose }: SettingsSheetProps) {
   const today = todayLocal(new Date())
   const todayCycleDay = cycleDay(settings.cycleStartDate, today, settings.cycleShift, cycleDays)
-  const footprint = logFootprint(log)
+  const footprint = logFootprint(log, customFoods)
 
   /* Стирание дневника необратимо и никуда не отправляется — поэтому оно в два
      шага, а не по одному нажатию рядом с настройками цикла. */
@@ -123,12 +141,29 @@ export default function SettingsSheet({ settings, cycleDays, log, onChange, onCl
         </span>
       </label>
 
+      <label className="field">
+        <span className="field__label">Токен приложения для Штурмана</span>
+        <input
+          type="password"
+          className="field__input"
+          autoComplete="off"
+          value={settings.shturmanToken}
+          onChange={e => patch({ shturmanToken: e.target.value })}
+        />
+        <span className="field__hint">
+          Хранится только в этом браузере, нужен для разбора своей еды на домашнем компьютере.
+        </span>
+      </label>
+
       <div className="field">
         <span className="field__label">Дневник</span>
         <span className="field__hint">
-          {footprint.days === 0
+          {footprint.days === 0 && footprint.foods === 0
             ? 'Записей нет'
-            : `${footprint.days} ${daysWord(footprint.days)}, ${formatBytes(footprint.bytes)} в хранилище браузера`}
+            : [
+                footprint.days > 0 ? `${footprint.days} ${daysWord(footprint.days)}` : null,
+                footprint.foods > 0 ? `${footprint.foods} ${dishesWord(footprint.foods)} своей еды` : null
+              ].filter(Boolean).join(', ') + `, ${formatBytes(footprint.bytes)} в хранилище браузера`}
         </span>
         {footprint.days > 0 && !confirmingClear && (
           <button type="button" className="btn btn--secondary" onClick={() => setConfirmingClear(true)}>

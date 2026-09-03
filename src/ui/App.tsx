@@ -6,21 +6,29 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { batchDay, currentSlot, cycleDay, todayLocal } from '../core/cycle.ts'
 import { buildChannels } from '../core/export/index.ts'
 import type { ExportPayload } from '../core/export/index.ts'
-import { clearLog, dayNutrientTotals, dayTotal, logMeal, unlogMeal } from '../core/log.ts'
+import { addExtra, clearLog, dayNutrientTotals, dayTotal, logMeal, removeExtra, unlogMeal } from '../core/log.ts'
 import { menuDayFor } from '../core/menu.ts'
+import {
+  applyFoodAsk, customExtraFrom, discardFoodRequest, menuExtraFrom, newFoodRequest,
+  removeCustomFood, retryFoodRequest, saveCustomFood
+} from '../core/food.ts'
+import { askFood, SHTURMAN_BASE } from '../core/foodClient.ts'
 import { emptyNutrientTotals, mealKbju, mealNutrients, scaleNutrientTotals } from '../core/nutrition.ts'
 import { clearRating, rateDish, ratingOf, setStance } from '../core/preferences.ts'
 import { mealVerdict } from '../core/verdict.ts'
 import type { MealVerdict } from '../core/verdict.ts'
 import { SLOTS } from '../core/types.ts'
 import type {
-  AppState, IngredientStance, Kbju, Meal, MealStatus, NutrientTotals, Settings, Slot
+  AppState, CustomFood, IngredientStance, Kbju, Meal, MealStatus, NutrientTotals, Settings, Slot
 } from '../core/types.ts'
 import { loadData } from '../data/load.ts'
 import { BACKUP_KEY, defaultState, loadState, saveState } from '../state/storage.ts'
 import type { StateSource } from '../state/storage.ts'
 import MealScreen from './MealScreen.tsx'
 import type { DaySlotProgress } from './MealScreen.tsx'
+import AddFromMenuSheet from './AddFromMenuSheet.tsx'
+import CustomFoodSheet from './CustomFoodSheet.tsx'
+import { useFoodPolling } from './useFoodPolling.ts'
 import Sheet from './Sheet.tsx'
 import SettingsSheet from './SettingsSheet.tsx'
 import ExportSheet from './ExportSheet.tsx'
@@ -87,7 +95,7 @@ function corruptNoticeText(): string {
 
 function droppedNoticeText(dropped: number): string {
   const verb = dropped === 1 ? 'повреждена и пропущена' : 'повреждены и пропущены'
-  return `${dropped} ${entryWord(dropped)} дневника ${verb}; исходный текст сохранён под ключом ${BACKUP_KEY}`
+  return `${dropped} ${entryWord(dropped)} дневника или своей еды ${verb}; исходный текст сохранён под ключом ${BACKUP_KEY}`
 }
 
 export default function App() {
@@ -114,6 +122,9 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [weekOpen, setWeekOpen] = useState(false)
   const [bookOpen, setBookOpen] = useState(false)
+  const [addFromMenuOpen, setAddFromMenuOpen] = useState(false)
+  /* Открытие шторки «Своя еда» (CustomFoodSheet) — задача E4b. */
+  const [customFoodOpen, setCustomFoodOpen] = useState(false)
   const [exportPayload, setExportPayload] = useState<ExportPayload | null>(null)
 
   /* Провал сохранения не глушим: экран обязан сказать, что записанного приёма
@@ -256,19 +267,25 @@ export default function App() {
      нужен весь день, а не только текущий приём. План берётся из меню; если
      меню на приём нет, а запись есть — планом считается снапшот записи, иначе
      съеденное некуда было бы вписать. */
+  const dayExtras = dayLog?.extras ?? []
+
   const daySlots: DaySlotProgress[] = useMemo(() => SLOTS.map(s => {
     const slotMeal = menuDay?.meals.find(m => m.slot === s)
     const slotEntry = dayLog?.meals[s]
     const plannedKcal = slotMeal
       ? mealKbju(slotMeal, products).kcal
       : (slotEntry?.kbju.kcal ?? 0)
+    const extrasKcal = (dayLog?.extras ?? [])
+      .filter(e => e.slot === s)
+      .reduce((sum, e) => sum + e.kbju.kcal * e.fraction, 0)
     return {
       slot: s,
       plannedKcal,
       eatenKcal: slotEntry ? slotEntry.kbju.kcal * slotEntry.fraction : 0,
       status: slotEntry?.status,
       fraction: slotEntry?.fraction,
-      productsRevision: slotEntry?.productsRevision
+      productsRevision: slotEntry?.productsRevision,
+      extrasKcal
     }
   }), [menuDay, dayLog, products])
 
@@ -334,6 +351,96 @@ export default function App() {
     setState(prev => unlogMeal(prev, today, slot))
   }, [today, slot])
 
+  /* Перенос блюда из другого дня цикла: снапшот (menuExtraFrom) считает та же
+     арифметика, что и обычную запись меню (mealKbju/mealNutrients внутри
+     food.ts), поэтому число не может разойтись с тем, что показала бы обычная
+     запись того же блюда. Дата записи выбирается в шторке и может
+     отличаться от сегодняшней, поэтому день цикла считается под неё, как в
+     handleSaveCustomFood. */
+  const handleAddFromMenu = useCallback((
+    fromCycleDay: number, meal: Meal, target: { date: string; slot: Slot }, fraction: number
+  ) => {
+    const now = new Date().toISOString()
+    const extra = menuExtraFrom(meal, products, target.slot, fraction, fromCycleDay, crypto.randomUUID(), now, productsRevision)
+    const targetCycleDay = cycleDay(state.settings.cycleStartDate, target.date, state.settings.cycleShift, menu.cycleDays)
+    setState(prev => addExtra(prev, target.date, extra, targetCycleDay))
+    setAddFromMenuOpen(false)
+  }, [products, productsRevision, state.settings.cycleStartDate, state.settings.cycleShift, menu.cycleDays])
+
+  const handleRemoveExtra = useCallback((extraId: string) => {
+    setState(prev => removeExtra(prev, today, extraId))
+  }, [today])
+
+  /* Опрос заказов на разбор своей еды идёт независимо от того, открыта ли
+     CustomFoodSheet: foodRequests лежат в AppState и переживают закрытие
+     шторки (см. useFoodPolling.ts, раздел 1.7 плана «своя еда»). */
+  const foodPollError = useFoodPolling(state, setState, SHTURMAN_BASE, state.settings.shturmanToken)
+
+  /* Новый заказ на разбор: id заводится здесь (эффект стороны — не ядро),
+     askFood зовёт воркер, и только при успехе заказ попадает в состояние
+     через applyFoodAsk. Провал сети/токена ничего не кладёт в очередь —
+     CustomFoodSheet показывает причину под кнопкой отправки. */
+  const handleAskFood = useCallback(async (
+    text: string, grams: number | null, target: { date: string; slot: Slot }
+  ): Promise<{ ok: true } | { ok: false; error: string }> => {
+    const id = crypto.randomUUID()
+    const result = await askFood(SHTURMAN_BASE, state.settings.shturmanToken, { id, text, grams })
+    if (!result.ok) return { ok: false, error: result.error }
+    const now = new Date().toISOString()
+    setState(prev => applyFoodAsk(prev, newFoodRequest(id, text, grams, target, now)))
+    return { ok: true }
+  }, [state.settings.shturmanToken])
+
+  /* «Повторить» на failed/expired — новый askFood с тем же текстом под новым
+     uuid; заказ в очереди заменяется (retryFoodRequest), а не дублируется,
+     и только при успешном ответе воркера — неудачная попытка не должна
+     стирать прежний заказ, за которым, может, ещё стоит следить. */
+  const handleRetryFoodRequest = useCallback(async (
+    id: string
+  ): Promise<{ ok: true } | { ok: false; error: string }> => {
+    const existing = state.foodRequests.find(r => r.id === id)
+    if (!existing) return { ok: false, error: 'Этот заказ уже убран из очереди.' }
+    const newId = crypto.randomUUID()
+    const result = await askFood(
+      SHTURMAN_BASE, state.settings.shturmanToken, { id: newId, text: existing.text, grams: existing.grams }
+    )
+    if (!result.ok) return { ok: false, error: result.error }
+    const now = new Date().toISOString()
+    setState(prev => retryFoodRequest(prev, id, newId, now))
+    return { ok: true }
+  }, [state.foodRequests, state.settings.shturmanToken])
+
+  const handleDiscardFoodRequest = useCallback((id: string) => {
+    setState(prev => discardFoodRequest(prev, id))
+  }, [])
+
+  /* «Сохранить и записать» на готовом разборе: кладёт еду в книгу, пишет
+     extra на целевую дату/приём и убирает выполненный заказ — три перехода
+     одним действием (saveCustomFood в core/food.ts). Целевая дата может
+     отличаться от сегодняшней (человек мог поправить её в самой строке),
+     поэтому cycleDay считается заново под неё, а не берётся cycleDayNum. */
+  const handleSaveCustomFood = useCallback((
+    requestId: string, editedFood: CustomFood, target: { date: string; slot: Slot }, fraction: number
+  ) => {
+    const now = new Date().toISOString()
+    const targetCycleDay = cycleDay(state.settings.cycleStartDate, target.date, state.settings.cycleShift, menu.cycleDays)
+    setState(prev => saveCustomFood(prev, requestId, editedFood, target, fraction, crypto.randomUUID(), now, targetCycleDay))
+  }, [state.settings.cycleStartDate, state.settings.cycleShift, menu.cycleDays])
+
+  const handleRemoveCustomFood = useCallback((foodId: string) => {
+    setState(prev => removeCustomFood(prev, foodId))
+  }, [])
+
+  /* Добавление из книги своей еды — снапшот полной порции (customExtraFrom)
+     плюс запись в дневник, ровно как перенос блюда меню (handleAddFromMenu),
+     только на сегодняшний день и текущий cycleDayNum: книга добавляется «в
+     день», который сейчас открыт на главном экране. */
+  const handleAddCustomFoodFromBook = useCallback((food: CustomFood, slot: Slot, fraction: number) => {
+    const now = new Date().toISOString()
+    const extra = customExtraFrom(food, slot, fraction, crypto.randomUUID(), now)
+    setState(prev => addExtra(prev, today, extra, cycleDayNum))
+  }, [today, cycleDayNum])
+
   const handleOpenExport = useCallback(() => {
     if (!entry || !meal) return
     const payload: ExportPayload = {
@@ -357,6 +464,10 @@ export default function App() {
       kind: 'day',
       date: today,
       meals: Object.values(dayLog.meals).filter((m): m is NonNullable<typeof m> => Boolean(m)),
+      // добавленное сверх меню входит в total и nutrients (dayTotal их считает),
+      // поэтому уходит в выгрузку своими строками — иначе день в CSV не сошёлся
+      // бы со своим же итогом.
+      extras: dayLog.extras,
       total: dayTotal(dayLog),
       nutrients: dayNutrientTotals(dayLog)
     }
@@ -437,7 +548,9 @@ export default function App() {
         targetKcal={state.settings.targetKcal}
         dayProteinG={dayKbju.p}
         targetProteinG={state.settings.targetProteinG}
-        hasDayLog={Boolean(dayLog && Object.keys(dayLog.meals).length > 0)}
+        hasDayLog={Boolean(dayLog && (Object.keys(dayLog.meals).length > 0 || dayLog.extras.length > 0))}
+        extras={dayExtras}
+        onRemoveExtra={handleRemoveExtra}
         cycleStartDate={state.settings.cycleStartDate}
         cycleStartConfirmed={state.settings.cycleStartConfirmed}
         onConfirmCycleStart={handleConfirmCycleStart}
@@ -448,6 +561,8 @@ export default function App() {
         onOpenBook={() => setBookOpen(true)}
         onOpenExport={handleOpenExport}
         onOpenDayExport={handleOpenDayExport}
+        onOpenAddFromMenu={() => setAddFromMenuOpen(true)}
+        onOpenCustomFood={() => setCustomFoodOpen(true)}
       />
 
       {settingsOpen && (
@@ -455,9 +570,41 @@ export default function App() {
           settings={state.settings}
           cycleDays={menu.cycleDays}
           log={state.log}
+          customFoods={state.customFoods}
           onChange={updateSettings}
           onClearLog={handleClearLog}
           onClose={() => setSettingsOpen(false)}
+        />
+      )}
+
+      {addFromMenuOpen && (
+        <AddFromMenuSheet
+          menu={menu}
+          products={products}
+          cycleDays={menu.cycleDays}
+          currentCycleDay={cycleDayNum}
+          defaultDate={today}
+          defaultSlot={slot}
+          onAdd={handleAddFromMenu}
+          onClose={() => setAddFromMenuOpen(false)}
+        />
+      )}
+
+      {customFoodOpen && (
+        <CustomFoodSheet
+          token={state.settings.shturmanToken}
+          customFoods={state.customFoods}
+          foodRequests={state.foodRequests}
+          defaultTarget={{ date: today, slot }}
+          pollError={foodPollError}
+          onAskNew={handleAskFood}
+          onRetry={handleRetryFoodRequest}
+          onDiscard={handleDiscardFoodRequest}
+          onSave={handleSaveCustomFood}
+          onRemoveCustomFood={handleRemoveCustomFood}
+          onAddFromBook={handleAddCustomFoodFromBook}
+          onOpenSettings={() => { setCustomFoodOpen(false); setSettingsOpen(true) }}
+          onClose={() => setCustomFoodOpen(false)}
         />
       )}
 

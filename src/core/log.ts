@@ -2,7 +2,7 @@
    каждая функция возвращает новый объект, входной не мутируется. */
 
 import { addNutrientTotals, emptyNutrientTotals, mealKbju, mealNutrients, scaleNutrientTotals } from './nutrition'
-import type { AppState, DayLog, Kbju, Meal, MealLogEntry, MealStatus, NutrientTotals, ProductIndex, Slot } from './types'
+import type { AppState, DayLog, ExtraLogEntry, Kbju, Meal, MealLogEntry, MealStatus, NutrientTotals, ProductIndex, Slot } from './types'
 
 const ZERO_KBJU: Kbju = { kcal: 0, p: 0, f: 0, c: 0 }
 
@@ -42,10 +42,11 @@ export function logMeal(
     // бы как «ревизия есть и она пустая» для всякого, кто проверяет `in`.
     ...(productsRevision !== undefined ? { productsRevision } : {})
   }
-  const existingDay: DayLog = state.log[date] ?? { cycleDay: cycleDayForDate, meals: {} }
+  const existingDay: DayLog = state.log[date] ?? { cycleDay: cycleDayForDate, meals: {}, extras: [] }
   const newDay: DayLog = {
     cycleDay: existingDay.cycleDay,
-    meals: { ...existingDay.meals, [slot]: entry }
+    meals: { ...existingDay.meals, [slot]: entry },
+    extras: existingDay.extras
   }
   return {
     ...state,
@@ -65,14 +66,44 @@ export function unlogMeal(state: AppState, date: string, slot: Slot): AppState {
   if (!existingDay) return state
   const newMeals = { ...existingDay.meals }
   delete newMeals[slot]
+  return replaceDay(state, date, { cycleDay: existingDay.cycleDay, meals: newMeals, extras: existingDay.extras })
+}
+
+/** Кладёт день на место или убирает его вместе с ключом даты, если в нём не
+    осталось ни записей приёмов, ни добавленной еды. Пустой день не хранится
+    (см. unlogMeal), и добавленная еда — такая же запись дня, как приём: день,
+    в котором остался только съеденный сверх меню десерт, — записанный день. */
+function replaceDay(state: AppState, date: string, day: DayLog): AppState {
   const newLog = { ...state.log }
-  if (Object.keys(newMeals).length === 0) {
+  if (Object.keys(day.meals).length === 0 && day.extras.length === 0) {
     delete newLog[date]
   } else {
-    const newDay: DayLog = { cycleDay: existingDay.cycleDay, meals: newMeals }
-    newLog[date] = newDay
+    newLog[date] = day
   }
   return { ...state, log: newLog }
+}
+
+/** Записывает добавленную еду в день date. Запись с тем же id перезаписывается
+    (повторное сохранение одного разбора не удваивает калории), новая встаёт в
+    конец — порядок списка на экране повторяет порядок добавления. */
+export function addExtra(state: AppState, date: string, extra: ExtraLogEntry, cycleDayForDate: number): AppState {
+  const existingDay: DayLog = state.log[date] ?? { cycleDay: cycleDayForDate, meals: {}, extras: [] }
+  const known = existingDay.extras.findIndex(e => e.id === extra.id)
+  const extras = known === -1
+    ? [...existingDay.extras, extra]
+    : existingDay.extras.map(e => (e.id === extra.id ? extra : e))
+  return replaceDay(state, date, { cycleDay: existingDay.cycleDay, meals: existingDay.meals, extras })
+}
+
+/** Убирает добавленную еду из дня. День уходит из дневника вместе с ключом
+    даты, если после этого в нём не осталось ни приёмов, ни добавленного, — по
+    той же причине, что и в unlogMeal. */
+export function removeExtra(state: AppState, date: string, extraId: string): AppState {
+  const existingDay = state.log[date]
+  if (!existingDay) return state
+  const extras = existingDay.extras.filter(e => e.id !== extraId)
+  if (extras.length === existingDay.extras.length) return state
+  return replaceDay(state, date, { cycleDay: existingDay.cycleDay, meals: existingDay.meals, extras })
 }
 
 /** Стирает дневник целиком, сохраняя настройки. Нужен, когда хранилище браузера
@@ -83,13 +114,25 @@ export function clearLog(state: AppState): AppState {
   return { ...state, log: {} }
 }
 
-/** Сколько дней и байт занимает дневник. Байты считаются по UTF-8 того же
-    JSON, который уходит в localStorage, — иначе кириллические названия
-    приёмов занижают оценку вдвое. */
-export function logFootprint(log: AppState['log']): { days: number; bytes: number } {
+/** Сколько дней, своих блюд и байт занимает записанное. Байты считаются по
+    UTF-8 того же JSON, который уходит в localStorage, — иначе кириллические
+    названия приёмов занижают оценку вдвое.
+
+    Книга своей еды входит в тот же счёт: одна разобранная еда с компонентами
+    и их per100 весит около килобайта, и человек, который смотрит на размер
+    перед очисткой, обязан видеть её тоже. Аргумент необязателен потому, что
+    вызывающий может спрашивать именно про дневник; пустая книга — «книгу не
+    считаем», а не «книга пуста». */
+export function logFootprint(
+  log: AppState['log'],
+  customFoods: AppState['customFoods'] = {}
+): { days: number; foods: number; bytes: number } {
   const days = Object.keys(log).length
-  const bytes = new TextEncoder().encode(JSON.stringify(log)).length
-  return { days, bytes }
+  const foods = Object.keys(customFoods).length
+  const encoder = new TextEncoder()
+  const bytes = encoder.encode(JSON.stringify(log)).length
+    + (foods > 0 ? encoder.encode(JSON.stringify(customFoods)).length : 0)
+  return { days, foods, bytes }
 }
 
 /** Съеденное по одной записи: снапшот КБЖУ, умноженный на долю. */
@@ -103,13 +146,36 @@ export function eatenKbju(entry: MealLogEntry): Kbju {
   }
 }
 
-/** Сумма съеденного за день по всем записанным приёмам. */
+/** Съеденное по одной добавленной записи. Арифметика та же, что у приёма
+    меню: снапшот полной порции × доля. */
+export function eatenExtraKbju(extra: ExtraLogEntry): Kbju {
+  const factor = extra.fraction
+  return {
+    kcal: extra.kbju.kcal * factor,
+    p: extra.kbju.p * factor,
+    f: extra.kbju.f * factor,
+    c: extra.kbju.c * factor
+  }
+}
+
+/** Съеденные нутриенты по одной добавленной записи — см. eatenNutrients. */
+export function eatenExtraNutrients(extra: ExtraLogEntry): NutrientTotals {
+  return scaleNutrientTotals(extra.nutrients, extra.fraction)
+}
+
+/** Сумма съеденного за день: записанные приёмы плюс добавленная еда. Второе
+    слагаемое обязательно — иначе съеденный сверх меню десерт не попадал бы ни
+    в панель «за день», ни в неделю, ни в выгрузку. */
 export function dayTotal(dayLog: DayLog): Kbju {
   let total = ZERO_KBJU
   for (const slot of Object.keys(dayLog.meals) as Slot[]) {
     const entry = dayLog.meals[slot]
     if (!entry) continue
     const eaten = eatenKbju(entry)
+    total = { kcal: total.kcal + eaten.kcal, p: total.p + eaten.p, f: total.f + eaten.f, c: total.c + eaten.c }
+  }
+  for (const extra of dayLog.extras) {
+    const eaten = eatenExtraKbju(extra)
     total = { kcal: total.kcal + eaten.kcal, p: total.p + eaten.p, f: total.f + eaten.f, c: total.c + eaten.c }
   }
   return total
@@ -122,14 +188,19 @@ export function eatenNutrients(entry: MealLogEntry): NutrientTotals {
   return scaleNutrientTotals(entry.nutrients, entry.fraction)
 }
 
-/** Сумма съеденных нутриентов за день. Полнота складывается вместе с числами:
-    день, где один приём не знал витамина K, остаётся неполным по витамину K. */
+/** Сумма съеденных нутриентов за день: приёмы и добавленная еда. Полнота
+    складывается вместе с числами: день, где один приём не знал витамина K,
+    остаётся неполным по витамину K — и добавленная еда, которая его не знает,
+    делает день неполным ровно так же. */
 export function dayNutrientTotals(dayLog: DayLog): NutrientTotals {
   let total = emptyNutrientTotals()
   for (const slot of Object.keys(dayLog.meals) as Slot[]) {
     const entry = dayLog.meals[slot]
     if (!entry) continue
     total = addNutrientTotals(total, eatenNutrients(entry))
+  }
+  for (const extra of dayLog.extras) {
+    total = addNutrientTotals(total, eatenExtraNutrients(extra))
   }
   return total
 }

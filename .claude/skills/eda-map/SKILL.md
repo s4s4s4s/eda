@@ -47,7 +47,9 @@ React 19 + TypeScript + Vite 7, PWA (`vite-plugin-pwa`, `registerType: 'prompt'`
 | `preferences.ts` | книга предпочтений: `setStance`/`stanceOf` (отметки продуктов «люблю»/«не ем»), `rateDish`/`ratingOf`/`clearRating` (оценка блюда 1–10 и комментарий; `ratedAt` двигается, только когда меняется сам балл или оценки раньше не было — правка одного комментария при том же балле его не трогает), `mealStances` |
 | `verdict.ts` | плюсы и минусы приёма (`mealVerdict`): плюс — нутриент ≥ 30 % суточной нормы (не больше пяти) либо ингредиент «люблю»; минус — «не ем», превышение верхнего предела, натрий выше CDRR, больше половины состава без данных |
 | `cycle.ts` | день цикла (1..8) из даты старта и ручного сдвига, день партии (1..4), текущий приём по времени суток, `todayLocal`, `formatDateFull` (день недели и число из `WEEKDAY_NAMES`/`MONTH_NAMES_GENITIVE`, без `Intl` — ядро остаётся чистым) |
-| `log.ts` | дневник: `logMeal` (снапшот КБЖУ и нутриентов — правка меню задним числом прошлое не переписывает; необязательный `productsRevision` — ревизия справочника на момент записи, не выдумывается, если не передана), `unlogMeal` (удаляет и ключ даты целиком, если после удаления записей в дне не осталось — пустой день не хранится), `dayTotal`, `dayNutrientTotals`, `clearLog`, `logFootprint` |
+| `log.ts` | дневник: `logMeal` (снапшот КБЖУ и нутриентов — правка меню задним числом прошлое не переписывает; необязательный `productsRevision` — ревизия справочника на момент записи, не выдумывается, если не передана), `unlogMeal` (удаляет и ключ даты целиком, если после удаления записей в дне не осталось — пустой день не хранится), `dayTotal`, `dayNutrientTotals`, `clearLog`, `logFootprint`, `addExtra`/`removeExtra` — добавленная еда (`ExtraLogEntry`), не меняет статус приёма, день опустевает, только если пусты и `meals`, и `extras` |
+| `food.ts` | домен «своя еда» (чистое ядро, без fetch/localStorage): `parseFoodResult` — строгая проверка ответа воркера (все ключи `NUTRIENT_KEYS`, `known ≤ total`, `per100` каждого компонента); `customFoodFromResult`, `customFoodTotals` (та же арифметика, что у позиций меню — `addPer100ToTotals`), `withComponentGrams` (граммы компонента правятся локально, состав — только новым запросом); `menuExtraFrom`/`customExtraFrom` — снапшоты extras; `newFoodRequest`, `applyFoodAsk`/`applyFoodPoll` — переходы очереди заказов `pending → done/failed/expired`; `saveCustomFood`, `discardFoodRequest`, `retryFoodRequest`, `removeCustomFood` |
+| `foodClient.ts` | клиент воркера Штурмана: `SHTURMAN_BASE` (`https://shturman.vault-78edd5.workers.dev`), `askFood`/`pollFood` — размеченный результат `{ok:true, response} \| {ok:false, reason, error}` (`unauthorized`/`not-found`/`bad-request`/`network`/`bad-response`), фейковый `fetchFn` вместо мока глобального `fetch` в тестах |
 
 ## Выгрузка — `src/core/export/`
 
@@ -73,10 +75,14 @@ React 19 + TypeScript + Vite 7, PWA (`vite-plugin-pwa`, `registerType: 'prompt'`
 | `ExportSheet.tsx` | шторка выгрузки: крупные числа первыми (запасной путь), список каналов с честными причинами — `channel.availability(payload)` зовётся с текущим пейлоадом, поэтому пропущенный приём (`SKIPPED_MEAL_REASON`) виден ещё до нажатия |
 | `SettingsSheet.tsx` | дата старта цикла, сдвиг, цель, имя команды Shortcuts, размер дневника и его очистка в два шага. Правку `cycleStartDate` сама не помечает подтверждённой — `App.tsx` (`updateSettings`) сравнивает дату со старой и форсирует `cycleStartConfirmed = true`, когда она меняется |
 | `WeekSheet.tsx` | шторка «Неделя»: отвечает, ем ли по плану — сводка `weekSummary`/`weekCoverage` из `core/week.ts`, раздел «Итоги недели» по всем позициям `NUTRIENT_KEYS`, `.week-section__caveat` — оговорка про `incompleteDays`/`loggedSlots`/`expectedSlots` («N дней записаны не полностью»), знаменатель везде `summary.days.length`; своих стилей не заводит, использует `.nutrient` из `theme.css` и классы `week-*` в `sheets.css` |
+| `SettingsSheet.tsx` | дата старта цикла, сдвиг, цель, имя команды Shortcuts, **токен приложения для Штурмана** (`Settings.shturmanToken`, поле `type="password"`, живёт только в localStorage браузера — см. «Ключей, токенов и паролей…» ниже), размер дневника (учитывает книгу своей еды) и его очистка в два шага |
 | `BookSheet.tsx` | шторка «Книга»: отметки продуктов (люблю/не ем) и оценки блюд (шкала 1–10 + комментарий через `RatingEditor`); список блюд и подпись «день N, приём» берёт через `allMeals` из `core/menu.ts`, склейку одинаковых id не повторяет у себя; список блюд и продуктов не сокращается из-за отметок — это вкус, а не диагноз |
 | `Sheet.tsx` | общий каркас шторки — подложка, панель, хват, шапка с заголовком и закрытием; один каркас на все шторки (настройки, выгрузка, неделя, книга) |
 | `useSheet.ts` | поведение модальной шторки: Esc закрывает, Tab держит фокус внутри панели, фокус возвращается на кнопку-источник, прокрутка фона блокируется на время открытия |
 | `RatingEditor.tsx` | общий примитив оценки блюда — шкала 1–10 сеткой 5×2 и поле комментария; используется и на главном экране, и в шторке «Книга» |
+| `AddFromMenuSheet.tsx` | шторка «Добавить блюдо из другого дня»: чипы дня цикла и слота, блюдо через `mealFor`/`mealKbju`, доля (`FRACTIONS` + «целиком») — «Записать» кладёт `menuExtraFrom` через `addExtra` |
+| `CustomFoodSheet.tsx` | шторка «Своя еда»: книга `customFoods` сверху, форма нового заказа (`NewFoodForm`), очередь `foodRequests` с честными состояниями по статусу (`PendingRequestRow`/`FailedOrExpiredRequestRow`/`DoneRequestRow`) — тексты состояний см. `DESIGN.md`; сетевые вызовы (`askFood`) идут через `App.tsx`, опрос (`pollFood`) — отдельно через `useFoodPolling.ts` |
+| `useFoodPolling.ts` | опрос очереди заказов на разбор: адаптивный интервал (4 с при живом ПК, `pcAgo ≤ 120` с; иначе 60 с), пауза при `document.hidden`, ответ применяется через `applyFoodPoll`; работает независимо от того, открыта ли `CustomFoodSheet` |
 | `UpdateBanner.tsx` | честная полоса обновления: новая версия скачивается сама, но подмена экрана — только по нажатию человека; ничего не рисует, пока обновления нет |
 | `swUpdate.ts` | посредник между регистрацией service worker и React: `announceUpdateReady`/`onUpdateReady`, запоминает событие, если оно пришло раньше подписки |
 | `theme.css` | **токены и примитивы**: обе темы, шкалы, движение, `.btn`, `.field`, `.card`, `.chip`, `.nums`, строка нутриента с покрытием нормы (`.nutrient*`), отношение к ингредиенту (`.stance-dot`, `.name--avoided`), оценка блюда (`.rating*`), глобальная полоса обновления (`.update-banner*`) |
@@ -91,9 +97,13 @@ React 19 + TypeScript + Vite 7, PWA (`vite-plugin-pwa`, `registerType: 'prompt'`
 
 `src/state/storage.ts` (—) — единственный, кто знает про localStorage. Ключ
 `STORAGE_KEY` = `eda.state.v1`, копия при потере — `BACKUP_KEY` = `eda.state.v1.backup`.
-Версия формата `CURRENT_VERSION` (сейчас 4 — в `Settings` появился
-`cycleStartConfirmed`; версии 3 и старше получают его как `true` при миграции —
-человек уже жил с датой старта, спрашивать задним числом нечестно). `deserialize`
+Версия формата `CURRENT_VERSION` (сейчас 5 — миграция 4→5 добавила `extras` в
+`DayLog`, книгу `customFoods`, очередь `foodRequests` и `Settings.shturmanToken`;
+версии 4 и старше получают пустые `extras`/`customFoods`/`foodRequests` и
+`shturmanToken: ''`; версии 3 и старше вдобавок получают `cycleStartConfirmed`
+как `true` — человек уже жил с датой старта, спрашивать задним числом нечестно).
+Битая запись `extras`/`customFoods`/`foodRequests` выпадает целиком и считается
+в `dropped`, соседние записи остаются. `deserialize`
 **никогда не бросает** и отдаёт не голый `AppState`, а `LoadResult` — `{ state, source,
 dropped }`, `source: StateSource` = `'stored' | 'default' | 'newer-version' | 'corrupt'`.
 `'newer-version'` — хранилище держит состояние сборки НОВЕЕ этой; ключ localStorage при
@@ -117,10 +127,13 @@ dropped }`, `source: StateSource` = `'stored' | 'default' | 'newer-version' | 'c
 
 | Файл | Что делает |
 |---|---|
+| `lib/usda.mjs` | единственное место знаний о CSV USDA SR Legacy: чтение `food.csv`/`food_nutrient.csv`/`food_category.csv`/`measure_unit.csv`/`food_portion.csv` (`loadFoods`, `loadCategories`, `loadMeasureUnits`, `loadPortions`, `loadNutrientsFor`), `resolveFdcDir(argvPath)` — путь к распакованной выгрузке из аргумента либо переменной окружения `FDC_DIR`, `per100Of`, `resolveSpec(spec, {foods, categories, nutrientsById})` — чистый расчёт `FoodResult`. `build-products.mjs` собран поверх него |
 | `build-products.mjs` | собирает `products.yaml` из офлайн-выгрузки USDA SR Legacy; `npm run products` |
+| `food-search.mjs` | `node scripts/food-search.mjs "<запрос>" [--limit 25]` — поиск строк USDA по совпадению токенов запроса в описании, вывод JSON с `fdcId`/`description`/`category`/`portions`; единственный инструмент, который headless-модель на домашнем ПК вызывает при разборе своей еды |
+| `resolve-food.mjs` | stdin — спецификация `FoodSpec` (`{title, components: [{fdcId, grams, note?}]}`), stdout — `FoodResult` с `per100` каждого компонента; коды 0 (успех) / 2 (отказ данных, например неизвестный `fdcId`) / 1 (прочая ошибка) |
 | `check-menu.ts` | **проверка меню до закупки поваром**; `npm run check-menu` |
 | `make-icons.mjs` | иконки PWA и 12 стартовых экранов iOS из одного силуэта-миски; `npm run icons` |
-| `shots.mjs` | снимки экранов headless-Chrome через DevTools-протокол без библиотек (телефонная ширина, сценарий «обед наполовину, ужин целиком», все шторки) и проверка, что полосы покрытия не пустые; `npm run shots -- [url] [каталог]` при поднятом dev-сервере, Chrome через env `CHROME` |
+| `shots.mjs` | снимки экранов headless-Chrome через DevTools-протокол без библиотек (телефонная ширина, сценарий «обед наполовину, ужин целиком», все шторки, перенос блюда между днями, своя еда во всех состояниях очереди) и проверка, что полосы покрытия не пустые; `npm run shots -- [url] [каталог]` при поднятом dev-сервере, Chrome через env `CHROME` |
 
 **Два уровня строгости проверки меню.** Без флага (локально, гейт перед закупкой) любое
 нарушение даёт `exit 1`. С `--warn-only` (в выкатке) сломанный файл меню по-прежнему
@@ -135,11 +148,16 @@ dropped }`, `source: StateSource` = `'stored' | 'default' | 'newer-version' | 'c
 
 ## Тесты — `test/`
 
-Обычные `.ts`, собираются esbuild и гоняются node-ом; `npm test` — вся цепочка, двенадцать
-наборов (см. `scripts` в `package.json`): `data`, `cycle`, `nutrition`, `rules`, `log`,
-`export`, `storage`, `norms`, `week`, `preferences`, `verdict`, `menu` (`npm run test:menu`
-— разбор редакций и выбор действующего дня, идёт сразу после `test:data`). В выкатке идут
-**до** сборки: красный тест оставляет на телефоне прошлую рабочую версию.
+Обычные `.ts`, собираются esbuild и гоняются node-ом; `npm test` — вся цепочка (см.
+`scripts` в `package.json`): `data`, `cycle`, `nutrition`, `rules`, `log`, `export`,
+`storage`, `norms`, `week`, `preferences`, `verdict`, `menu` (`npm run test:menu` —
+разбор редакций и выбор действующего дня, идёт сразу после `test:data`),
+`food-resolve` (`test/food-resolve.test.ts`, `npm run test:food-resolve` — `resolveSpec`
+из `scripts/lib/usda.mjs` на фикстурах `test/fixtures/fdc-mini`, сверка с
+`data/products.yaml`), `food` (`test/food.test.ts`, `npm run test:food` — `food.ts` и
+`foodClient.ts`: разбор ответа воркера, переходы очереди заказов, фейковый `fetch`).
+В выкатке идут **до** сборки: красный тест оставляет на телефоне прошлую рабочую
+версию.
 
 ## Что важно знать до правок
 
@@ -150,5 +168,7 @@ dropped }`, `source: StateSource` = `'stored' | 'default' | 'newer-version' | 'c
   решает команда, а не приложение.
 - `satFat`, `monoFat`, `polyFat` в Health не попадают — таких типов образца нет.
   Они остаются в буфере обмена и в CSV.
-- Ключей, токенов и паролей в репозитории нет и быть не может: приложению не с чем
-  аутентифицироваться, оно ни к какому внешнему сервису не ходит.
+- Ключей, токенов и паролей в репозитории нет. Разбор своей еды ходит к воркеру
+  Штурмана с токеном приложения (`Settings.shturmanToken`), но токен вводит человек
+  в Настройках и хранит его только localStorage браузера — в код, репозиторий и текст
+  ошибок клиента (`foodClient.ts`) он не попадает.

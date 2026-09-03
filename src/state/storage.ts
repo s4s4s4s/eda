@@ -9,7 +9,10 @@
    дефолту — см. комментарии внутри deserialize. */
 
 import { NUTRIENT_KEYS, SLOTS } from '../core/types.ts'
-import type { AppState, DayLog, MealLogEntry, MealStatus, NutrientTotal, NutrientTotals, Preferences, Settings, Slot } from '../core/types.ts'
+import type {
+  AppState, CustomFood, DayLog, ExtraLogEntry, FoodComponent, FoodRequest, FoodRequestStatus, FoodResultOk,
+  Kbju, MealLogEntry, MealStatus, Nutrients, NutrientTotal, NutrientTotals, Preferences, Settings, Slot
+} from '../core/types.ts'
 import { todayLocal } from '../core/cycle.ts'
 
 /** Ключ localStorage — единственное место, где он назван. */
@@ -35,9 +38,15 @@ export const BACKUP_KEY = STORAGE_KEY + '.backup'
     старше этот вопрос никогда не задавался, а дата на экране уже какое-то
     время как настоящая: они получают true, а не false, — иначе баннер
     «сегодня — день 1» появился бы человеку, который цикл давно ведёт.
+    v4 -> v5: появилась еда сверх меню (DayLog.extras), книга своей еды
+    (AppState.customFoods), очередь заказов на разбор (AppState.foodRequests)
+    и токен Штурмана (Settings.shturmanToken). Все четыре поля у состояний
+    версии 4 и старше просто отсутствуют и достраиваются пустыми: пустой
+    список добавленного — это правда про день, записанный до появления
+    добавления, а не потеря. Ни одна запись приёмов при этом не трогается.
     Ключ localStorage при этом НЕ меняется: он адресует хранилище, а не формат,
     и его смена означала бы потерю уже записанных дней. */
-export const CURRENT_VERSION = 4
+export const CURRENT_VERSION = 5
 
 /** Дефолтные настройки, пустой дневник и пустая книга предпочтений — то, с чем
     открывается приложение в первый раз или после потери состояния. */
@@ -49,13 +58,17 @@ export function defaultState(): AppState {
     targetProteinG: 120,
     shortcutName: '',
     // первый запуск — вопрос ещё не задан, баннер на главном экране спросит.
-    cycleStartConfirmed: false
+    cycleStartConfirmed: false,
+    // токен вводит человек в настройках; пусто — разбор своей еды не настроен.
+    shturmanToken: ''
   }
   return {
     version: CURRENT_VERSION,
     settings,
     log: {},
-    preferences: { ingredients: {}, dishes: {} }
+    preferences: { ingredients: {}, dishes: {} },
+    customFoods: {},
+    foodRequests: []
   }
 }
 
@@ -71,9 +84,24 @@ function isSlotStatus(v: unknown): v is 'eaten' | 'partial' | 'skipped' {
   return v === 'eaten' || v === 'partial' || v === 'skipped'
 }
 
-function isKbju(v: unknown): boolean {
+/** Числа КБЖУ обязаны быть конечными: NaN или Infinity, попав в снапшот,
+    отравляют не одну запись, а каждую сумму, куда она входит, — день, неделю и
+    выгрузку, — и делают это молча, показывая «NaN ккал» вместо числа. Запись с
+    таким КБЖУ восстановлению не подлежит и отбрасывается (считаясь в dropped).
+    Через JSON такие значения приходят как null и до typeof-проверки не доживают,
+    но состояние попадает сюда и напрямую (deserialize зовут тестами и
+    инструментами), а проверка стоит копейки. */
+function isKbju(v: unknown): v is Kbju {
   if (!isPlainObject(v)) return false
-  return typeof v.kcal === 'number' && typeof v.p === 'number' && typeof v.f === 'number' && typeof v.c === 'number'
+  return isFiniteNumber(v.kcal) && isFiniteNumber(v.p) && isFiniteNumber(v.f) && isFiniteNumber(v.c)
+}
+
+function isFiniteNumber(v: unknown): v is number {
+  return typeof v === 'number' && Number.isFinite(v)
+}
+
+function isNonEmptyString(v: unknown): v is string {
+  return typeof v === 'string' && v.length > 0
 }
 
 /** Снапшота по этому нутриенту у записи НЕТ — но сам приём был съеден и в сумму
@@ -190,6 +218,103 @@ function sanitizeMealEntry(v: unknown): MealLogEntry | null {
   }
 }
 
+/** Доля добавленной еды: строго в (0, 1]. Нуля здесь нет в отличие от приёма
+    меню — «добавил и не съел» выражается отсутствием записи, а не записью с
+    нулём, — и выводить долю не из чего: статуса у добавленной еды нет по
+    устройству. Поэтому число берётся из поля, но проверяется на пределы; всё
+    остальное (в том числе доля 2, превращающая 300 ккал в 600) — порча, и
+    запись отбрасывается, а не зажимается к границе. */
+function isExtraFraction(v: unknown): v is number {
+  return isFiniteNumber(v) && v > 0 && v <= 1
+}
+
+/** Проверяет и чинит одну запись добавленной еды. null — запись недостоверна
+    целиком и выпадает (считаясь в dropped).
+
+    Обязательные по виду поля (mealId/fromCycleDay/fromSlot у 'menu',
+    customFoodId/source у 'custom') именно обязательны, и это не строгость ради
+    строгости: формат существует только с версии 5, приложение всегда пишет их
+    целиком, и отсутствие любого из них означает, что запись собрана не им.
+    Достроить их нечем — «день 0, завтрак» была бы выдуманной подписью к чужой
+    еде, а к съеденному ничего выдуманного приписывать нельзя.
+
+    Снапшот нутриентов, наоборот, чинится: он проходит тот же sanitizeNutrients,
+    что и у приёма, и отсутствующий ключ даёт неизвестную позицию, а не ноль. */
+function sanitizeExtraEntry(v: unknown): ExtraLogEntry | null {
+  if (!isPlainObject(v)) return null
+  if (!isNonEmptyString(v.id)) return null
+  if (!isSlot(v.slot)) return null
+  if (!isExtraFraction(v.fraction)) return null
+  if (typeof v.title !== 'string') return null
+  if (!isKbju(v.kbju)) return null
+  if (typeof v.loggedAt !== 'string') return null
+
+  const base = {
+    id: v.id,
+    slot: v.slot,
+    fraction: v.fraction,
+    title: v.title,
+    kbju: v.kbju,
+    nutrients: sanitizeNutrients(v.nutrients),
+    loggedAt: v.loggedAt
+  }
+
+  if (v.kind === 'menu') {
+    if (typeof v.mealId !== 'string') return null
+    if (typeof v.fromCycleDay !== 'number' || !Number.isInteger(v.fromCycleDay)) return null
+    if (!isSlot(v.fromSlot)) return null
+    return {
+      ...base,
+      kind: 'menu',
+      mealId: v.mealId,
+      fromCycleDay: v.fromCycleDay,
+      fromSlot: v.fromSlot,
+      // ревизия переносится как есть и не выдумывается — как у MealLogEntry
+      ...(typeof v.productsRevision === 'string' ? { productsRevision: v.productsRevision } : {})
+    }
+  }
+
+  if (v.kind === 'custom') {
+    if (!isNonEmptyString(v.customFoodId)) return null
+    if (typeof v.source !== 'string') return null
+    return { ...base, kind: 'custom', customFoodId: v.customFoodId, source: v.source }
+  }
+
+  // вид неизвестен — экран не знает, как такую запись показать, а калории её
+  // вошли бы в сумму дня незримо. Невидимое слагаемое хуже потерянной записи.
+  return null
+}
+
+interface SanitizedExtras {
+  extras: ExtraLogEntry[]
+  dropped: number
+}
+
+/** Проверяет и чинит список добавленной еды дня. Записи с одинаковым id
+    схлопываются до первой: id — то, чем запись убирают с экрана, и вторая с
+    тем же id либо не убралась бы вовсе, либо унесла бы соседнюю.
+
+    Не-массив на входе даёт пустой список без счётчика потерь — считать там
+    нечего (ровно как у meals, где не-объект даёт пустой набор приёмов):
+    отсутствие поля у состояния версии 4 и мусор вместо него неразличимы, а
+    выдуманное число потерь хуже отсутствующего. */
+function sanitizeExtras(v: unknown): SanitizedExtras {
+  if (!Array.isArray(v)) return { extras: [], dropped: 0 }
+  const extras: ExtraLogEntry[] = []
+  const seen = new Set<string>()
+  let dropped = 0
+  for (const raw of v) {
+    const extra = sanitizeExtraEntry(raw)
+    if (!extra || seen.has(extra.id)) {
+      dropped++
+      continue
+    }
+    seen.add(extra.id)
+    extras.push(extra)
+  }
+  return { extras, dropped }
+}
+
 /** Итог санитизации куска дневника: что уцелело и сколько записей приёмов не
     пережило проверку. Число потерь доходит до экрана (LoadResult.dropped) —
     молча потерянная запись означает, что дневник разошёлся с тем, что человек
@@ -213,7 +338,8 @@ function sanitizeDayLog(v: unknown): SanitizedDay {
   const cycleDay = typeof v.cycleDay === 'number' && Number.isInteger(v.cycleDay) ? v.cycleDay : null
   const rawMeals = isPlainObject(v.meals) ? v.meals : {}
   const meals: DayLog['meals'] = {}
-  let dropped = 0
+  const { extras, dropped: extrasDropped } = sanitizeExtras(v.extras)
+  let dropped = extrasDropped
   for (const [slotKey, entryRaw] of Object.entries(rawMeals)) {
     const entry = sanitizeMealEntry(entryRaw)
     // запись под чужим ключом («lunch: {slot: dinner}») недостоверна целиком:
@@ -224,8 +350,10 @@ function sanitizeDayLog(v: unknown): SanitizedDay {
     }
     meals[entry.slot] = entry
   }
-  if (Object.keys(meals).length === 0) return { day: null, dropped }
-  return { day: { cycleDay, meals }, dropped }
+  // день исчезает, только когда пусты И приёмы, И добавленное: день, в котором
+  // остался один съеденный сверх меню десерт, — записанный день с данными.
+  if (Object.keys(meals).length === 0 && extras.length === 0) return { day: null, dropped }
+  return { day: { cycleDay, meals, extras }, dropped }
 }
 
 interface SanitizedLog {
@@ -266,8 +394,204 @@ function sanitizeSettings(v: unknown, legacyConfirmed: boolean): Settings {
     targetKcal: typeof v.targetKcal === 'number' ? v.targetKcal : def.targetKcal,
     targetProteinG: typeof v.targetProteinG === 'number' ? v.targetProteinG : def.targetProteinG,
     shortcutName: typeof v.shortcutName === 'string' ? v.shortcutName : def.shortcutName,
-    cycleStartConfirmed: typeof v.cycleStartConfirmed === 'boolean' ? v.cycleStartConfirmed : legacyConfirmed
+    cycleStartConfirmed: typeof v.cycleStartConfirmed === 'boolean' ? v.cycleStartConfirmed : legacyConfirmed,
+    // токена нет у состояний версии 4 и старше — пусто честно означает
+    // «разбор своей еды не настроен»; подставлять сюда нечего.
+    shturmanToken: typeof v.shturmanToken === 'string' ? v.shturmanToken : def.shturmanToken
   }
+}
+
+/* ---- своя еда: книга и очередь заказов ----
+
+   Обе структуры новые (версия 5), у старых состояний их просто нет. Правило то
+   же, что и в дневнике: недостоверная запись выпадает целиком и СЧИТАЕТСЯ
+   (LoadResult.dropped), а не чинится подстановкой. Своя еда — это числа, по
+   которым человек считает съеденное; еда с потерянным компонентом занизила бы
+   день молча, выглядя при этом исправной. */
+
+/** Частичная карта нутриентов на 100 г (Product.micro100 и
+    FoodComponent.per100.micro). Ключ с недостоверным числом ВЫБРАСЫВАЕТСЯ, а не
+    обнуляется: отсутствие ключа означает «датасет этого не знает», и сумма
+    честно считает такую позицию неизвестной (known не растёт). Ноль на этом
+    месте был бы измеренным нулём — той самой ложью, ради которой заведена
+    полнота known/total. Ключи вне NUTRIENT_KEYS отбрасываются: их не знает
+    ни один экран, а расхождение со справочником — рассинхрон кода, не данные. */
+function sanitizeMicro(v: unknown): Nutrients {
+  const micro: Nutrients = {}
+  if (!isPlainObject(v)) return micro
+  for (const key of NUTRIENT_KEYS) {
+    const value = v[key]
+    if (isFiniteNumber(value) && value >= 0) micro[key] = value
+  }
+  return micro
+}
+
+/** Компонент своей еды: строка USDA с граммовкой и числами на 100 г. null —
+    компонент недостоверен, и вместе с ним отбрасывается вся еда: сумма по
+    неполному составу — не «почти верная», а неверная. */
+function sanitizeFoodComponent(v: unknown): FoodComponent | null {
+  if (!isPlainObject(v)) return null
+  if (!isFiniteNumber(v.fdcId) || !Number.isInteger(v.fdcId) || v.fdcId <= 0) return null
+  if (typeof v.description !== 'string') return null
+  if (typeof v.category !== 'string') return null
+  if (!isFiniteNumber(v.grams) || v.grams <= 0) return null
+  if (!isPlainObject(v.per100) || !isKbju(v.per100.kbju)) return null
+  return {
+    fdcId: v.fdcId,
+    description: v.description,
+    category: v.category,
+    grams: v.grams,
+    ...(typeof v.note === 'string' ? { note: v.note } : {}),
+    per100: { kbju: v.per100.kbju, micro: sanitizeMicro(v.per100.micro) }
+  }
+}
+
+/** О чём человек спрашивал. Граммовка необязательна (её могли не называть):
+    недостоверное число становится null — «вес не задавали», — а не выдуманным
+    весом. Само по себе это подпись к разбору, а не источник чисел. */
+function sanitizeFoodRequestBody(v: unknown): { text: string; grams: number | null } | null {
+  if (!isPlainObject(v)) return null
+  if (typeof v.text !== 'string') return null
+  return { text: v.text, grams: isFiniteNumber(v.grams) && v.grams > 0 ? v.grams : null }
+}
+
+function sanitizeCustomFood(v: unknown): CustomFood | null {
+  if (!isPlainObject(v)) return null
+  if (!isNonEmptyString(v.id)) return null
+  if (typeof v.title !== 'string') return null
+  if (typeof v.source !== 'string') return null
+  if (!isFiniteNumber(v.spec)) return null
+  if (typeof v.jobId !== 'string') return null
+  if (typeof v.createdAt !== 'string') return null
+  const request = sanitizeFoodRequestBody(v.request)
+  if (!request) return null
+  if (!Array.isArray(v.components) || v.components.length === 0) return null
+  const components: FoodComponent[] = []
+  for (const raw of v.components) {
+    const component = sanitizeFoodComponent(raw)
+    if (!component) return null
+    components.push(component)
+  }
+  return { id: v.id, title: v.title, source: v.source, spec: v.spec, jobId: v.jobId, request, components, createdAt: v.createdAt }
+}
+
+interface SanitizedCustomFoods {
+  customFoods: AppState['customFoods']
+  dropped: number
+}
+
+/** Книга своей еды. Запись под чужим ключом («a: {id: b}») недостоверна целиком
+    по той же причине, что и приём под чужим слотом: неизвестно, что из двух
+    верно, а ссылки записей дневника держатся именно за ключ. */
+function sanitizeCustomFoods(v: unknown): SanitizedCustomFoods {
+  if (!isPlainObject(v)) return { customFoods: {}, dropped: 0 }
+  const customFoods: AppState['customFoods'] = {}
+  let dropped = 0
+  for (const [key, raw] of Object.entries(v)) {
+    const food = sanitizeCustomFood(raw)
+    if (!food || food.id !== key) {
+      dropped++
+      continue
+    }
+    customFoods[key] = food
+  }
+  return { customFoods, dropped }
+}
+
+function isFoodRequestStatus(v: unknown): v is FoodRequestStatus {
+  return v === 'pending' || v === 'done' || v === 'failed' || v === 'expired'
+}
+
+/** Готовый разбор внутри заказа. Проверяется целиком: это те самые числа,
+    которые человек нажатием «Сохранить и записать» превратит в запись дневника.
+    Снапшот нутриентов чинится общей sanitizeNutrients — отсутствующий ключ даёт
+    неизвестную позицию, а не ноль. */
+function sanitizeFoodResult(v: unknown): FoodResultOk | null {
+  if (!isPlainObject(v)) return null
+  if (v.ok !== true) return null
+  if (!isFiniteNumber(v.spec)) return null
+  if (typeof v.source !== 'string') return null
+  if (typeof v.title !== 'string') return null
+  if (!isKbju(v.kbju)) return null
+  const request = sanitizeFoodRequestBody(v.request)
+  if (!request) return null
+  if (!Array.isArray(v.components) || v.components.length === 0) return null
+  const components: FoodComponent[] = []
+  for (const raw of v.components) {
+    const component = sanitizeFoodComponent(raw)
+    if (!component) return null
+    components.push(component)
+  }
+  return {
+    ok: true,
+    spec: v.spec,
+    source: v.source,
+    title: v.title,
+    request,
+    components,
+    kbju: v.kbju,
+    nutrients: sanitizeNutrients(v.nutrients)
+  }
+}
+
+/** Заказ на разбор. Недостоверный выпадает целиком и считается: очередь — не
+    дневник, потерянный заказ означает лишь «спроси заново», а заказ с битым
+    полем показал бы человеку состояние, которого нет.
+
+    'done' без разобранного результата — как раз такой случай: сохранять из
+    него нечего, а «готово» на экране было бы враньём. */
+function sanitizeFoodRequest(v: unknown): FoodRequest | null {
+  if (!isPlainObject(v)) return null
+  if (!isNonEmptyString(v.id)) return null
+  if (typeof v.text !== 'string') return null
+  if (typeof v.askedAt !== 'string') return null
+  if (!isFoodRequestStatus(v.status)) return null
+  if (!isPlainObject(v.target) || !isNonEmptyString(v.target.date) || !isSlot(v.target.slot)) return null
+
+  const result = v.result === undefined ? null : sanitizeFoodResult(v.result)
+  if (v.result !== undefined && !result) return null
+  if (v.status === 'done' && !result) return null
+
+  return {
+    id: v.id,
+    text: v.text,
+    grams: isFiniteNumber(v.grams) && v.grams > 0 ? v.grams : null,
+    askedAt: v.askedAt,
+    target: { date: v.target.date, slot: v.target.slot },
+    status: v.status,
+    ...(result ? { result } : {}),
+    ...(typeof v.error === 'string' ? { error: v.error } : {}),
+    // «сколько секунд назад компьютер выходил на связь» — сведение прошлого
+    // опроса; недостоверное число становится null («неизвестно»), а не нулём,
+    // который читался бы как «компьютер на связи прямо сейчас».
+    pcAgo: isFiniteNumber(v.pcAgo) ? v.pcAgo : null,
+    ...(typeof v.lastPolledAt === 'string' ? { lastPolledAt: v.lastPolledAt } : {})
+  }
+}
+
+interface SanitizedFoodRequests {
+  foodRequests: FoodRequest[]
+  dropped: number
+}
+
+/** Очередь заказов. Порядок сохраняется — он повторяет порядок обращений
+    человека; заказы с повторяющимся id схлопываются до первого, как и записи
+    добавленной еды: по id заказ опрашивают и убирают. */
+function sanitizeFoodRequests(v: unknown): SanitizedFoodRequests {
+  if (!Array.isArray(v)) return { foodRequests: [], dropped: 0 }
+  const foodRequests: FoodRequest[] = []
+  const seen = new Set<string>()
+  let dropped = 0
+  for (const raw of v) {
+    const request = sanitizeFoodRequest(raw)
+    if (!request || seen.has(request.id)) {
+      dropped++
+      continue
+    }
+    seen.add(request.id)
+    foodRequests.push(request)
+  }
+  return { foodRequests, dropped }
 }
 
 /** Проверяет и чинит книгу предпочтений. Запись, которую нельзя доверять
@@ -309,14 +633,21 @@ function sanitizePreferences(v: unknown): Preferences {
     «поле никогда не существовало» (состояние версии 3 и старше) от «поле
     было и потерялось» на состоянии уже текущей версии. */
 function migrate(raw: Record<string, unknown>, rawVersion: number): { state: AppState; dropped: number } {
-  const { log, dropped } = sanitizeLog(raw.log)
+  const { log, dropped: logDropped } = sanitizeLog(raw.log)
+  const { customFoods, dropped: foodsDropped } = sanitizeCustomFoods(raw.customFoods)
+  const { foodRequests, dropped: requestsDropped } = sanitizeFoodRequests(raw.foodRequests)
   const state: AppState = {
     version: CURRENT_VERSION,
     settings: sanitizeSettings(raw.settings, rawVersion < 4),
     log,
-    preferences: sanitizePreferences(raw.preferences)
+    preferences: sanitizePreferences(raw.preferences),
+    customFoods,
+    foodRequests
   }
-  return { state, dropped }
+  // потери книги и очереди считаются вместе с потерями дневника: полоса на
+  // экране говорит про «записи дневника или своей еды» одной строкой, и
+  // отдельный счётчик, о котором никто не спрашивает, был бы молчанием.
+  return { state, dropped: logDropped + foodsDropped + requestsDropped }
 }
 
 /** Источник состояния, которое отдаёт loadState/deserialize:
@@ -345,9 +676,13 @@ export type StateSource = 'stored' | 'default' | 'newer-version' | 'corrupt'
 export interface LoadResult {
   state: AppState
   source: StateSource
-  /** Сколько записей приёмов не пережило санитизацию: чужой слот, доля вне
-      (0, 1) у «съел часть», непоправимо битая запись. Ноль у всех источников,
-      кроме 'stored', — там, где ничего не разбиралось, нечего и терять. */
+  /** Сколько записей не пережило санитизацию: чужой слот, доля вне (0, 1) у
+      «съел часть», непоправимо битая запись приёма или добавленной еды, еда
+      книги с потерянным компонентом, заказ разбора с битым полем. Одно число
+      на всё записанное намеренно — человеку важно «часть записей потеряна, вот
+      копия исходного текста», а не в какой именно структуре. Ноль у всех
+      источников, кроме 'stored', — там, где ничего не разбиралось, нечего и
+      терять. */
   dropped: number
 }
 
@@ -451,7 +786,7 @@ export function saveState(state: AppState): SaveResult {
     return {
       ok: false,
       error: quota
-        ? 'Хранилище браузера переполнено — запись не сохранена. Выгрузите день кнопкой «выгрузить день» и очистите дневник в настройках.'
+        ? 'Хранилище браузера переполнено — запись не сохранена. Выгрузите день кнопкой «выгрузить день», затем очистите дневник в настройках или удалите лишнее из книги своей еды.'
         : 'Не удалось сохранить запись в хранилище браузера.'
     }
   }

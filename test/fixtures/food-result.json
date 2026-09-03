@@ -1,0 +1,390 @@
+{
+  "ok": true,
+  "spec": 1,
+  "source": "USDA SR Legacy 2018-04",
+  "title": "Яйцо, банан и лосось",
+  "components": [
+    {
+      "fdcId": 171287,
+      "description": "Egg, whole, raw, fresh",
+      "category": "Dairy and Egg Products",
+      "grams": 50,
+      "per100": {
+        "kbju": {
+          "kcal": 143,
+          "p": 12.56,
+          "f": 9.51,
+          "c": 0.72
+        },
+        "micro": {
+          "fiber": 0,
+          "sugar": 0.37,
+          "satFat": 3.126,
+          "monoFat": 3.658,
+          "polyFat": 1.911,
+          "cholesterol": 372,
+          "linoleic": 1.555,
+          "ala": 0.048,
+          "epa": 0,
+          "dha": 0.058,
+          "calcium": 56,
+          "iron": 1.75,
+          "magnesium": 12,
+          "phosphorus": 198,
+          "potassium": 138,
+          "sodium": 142,
+          "zinc": 1.29,
+          "copper": 0.072,
+          "manganese": 0.028,
+          "selenium": 30.7,
+          "vitA": 160,
+          "retinol": 160,
+          "vitC": 0,
+          "vitD": 2,
+          "vitE": 1.05,
+          "vitK": 0.3,
+          "thiamin": 0.04,
+          "riboflavin": 0.457,
+          "niacin": 0.075,
+          "vitB6": 0.17,
+          "folate": 47,
+          "vitB12": 0.89,
+          "pantothenic": 1.533,
+          "choline": 293.8,
+          "betaCarotene": 0,
+          "alphaCarotene": 0,
+          "betaCryptoxanthin": 9,
+          "lycopene": 0,
+          "luteinZeaxanthin": 503,
+          "water": 76.15
+        }
+      },
+      "note": "варёное яйцо"
+    },
+    {
+      "fdcId": 173944,
+      "description": "Bananas, raw",
+      "category": "Fruits and Fruit Juices",
+      "grams": 120,
+      "per100": {
+        "kbju": {
+          "kcal": 89,
+          "p": 1.09,
+          "f": 0.33,
+          "c": 22.84
+        },
+        "micro": {
+          "fiber": 2.6,
+          "sugar": 12.23,
+          "satFat": 0.112,
+          "monoFat": 0.032,
+          "polyFat": 0.073,
+          "cholesterol": 0,
+          "linoleic": 0.046,
+          "ala": 0.027,
+          "epa": 0,
+          "dha": 0,
+          "calcium": 5,
+          "iron": 0.26,
+          "magnesium": 27,
+          "phosphorus": 22,
+          "potassium": 358,
+          "sodium": 1,
+          "zinc": 0.15,
+          "copper": 0.078,
+          "manganese": 0.27,
+          "selenium": 1,
+          "vitA": 3,
+          "retinol": 0,
+          "vitC": 8.7,
+          "vitD": 0,
+          "vitE": 0.1,
+          "vitK": 0.5,
+          "thiamin": 0.031,
+          "riboflavin": 0.073,
+          "niacin": 0.665,
+          "vitB6": 0.367,
+          "folate": 20,
+          "vitB12": 0,
+          "pantothenic": 0.334,
+          "choline": 9.8,
+          "betaCarotene": 26,
+          "alphaCarotene": 25,
+          "betaCryptoxanthin": 0,
+          "lycopene": 0,
+          "luteinZeaxanthin": 22,
+          "water": 74.91
+        }
+      }
+    },
+    {
+      "fdcId": 175167,
+      "description": "Fish, salmon, Atlantic, farmed, raw",
+      "category": "Finfish and Shellfish Products",
+      "grams": 150,
+      "per100": {
+        "kbju": {
+          "kcal": 208,
+          "p": 20.42,
+          "f": 13.42,
+          "c": 0
+        },
+        "micro": {
+          "fiber": 0,
+          "sugar": 0,
+          "satFat": 3.05,
+          "monoFat": 3.77,
+          "polyFat": 3.886,
+          "cholesterol": 55,
+          "linoleic": 0.9,
+          "ala": 0.167,
+          "epa": 0.862,
+          "dha": 1.104,
+          "calcium": 9,
+          "iron": 0.34,
+          "magnesium": 27,
+          "phosphorus": 240,
+          "potassium": 363,
+          "sodium": 59,
+          "zinc": 0.36,
+          "copper": 0.045,
+          "manganese": 0.011,
+          "selenium": 24,
+          "vitA": 58,
+          "retinol": 58,
+          "vitC": 3.9,
+          "vitD": 11,
+          "vitE": 3.55,
+          "vitK": 0.5,
+          "thiamin": 0.207,
+          "riboflavin": 0.155,
+          "niacin": 8.672,
+          "vitB6": 0.636,
+          "folate": 26,
+          "vitB12": 3.23,
+          "pantothenic": 1.547,
+          "choline": 78.5,
+          "betaCarotene": 0,
+          "alphaCarotene": 0,
+          "betaCryptoxanthin": 0,
+          "lycopene": 0,
+          "luteinZeaxanthin": 0,
+          "water": 64.89
+        }
+      },
+      "note": "запечённый лосось"
+    }
+  ],
+  "kbju": {
+    "kcal": 490.3,
+    "p": 38.218,
+    "f": 25.281,
+    "c": 27.767999999999997
+  },
+  "nutrients": {
+    "fiber": {
+      "value": 3.12,
+      "known": 3,
+      "total": 3
+    },
+    "sugar": {
+      "value": 14.861,
+      "known": 3,
+      "total": 3
+    },
+    "satFat": {
+      "value": 6.272399999999999,
+      "known": 3,
+      "total": 3
+    },
+    "monoFat": {
+      "value": 7.5224,
+      "known": 3,
+      "total": 3
+    },
+    "polyFat": {
+      "value": 6.8721000000000005,
+      "known": 3,
+      "total": 3
+    },
+    "cholesterol": {
+      "value": 268.5,
+      "known": 3,
+      "total": 3
+    },
+    "linoleic": {
+      "value": 2.1827,
+      "known": 3,
+      "total": 3
+    },
+    "ala": {
+      "value": 0.3069,
+      "known": 3,
+      "total": 3
+    },
+    "epa": {
+      "value": 1.293,
+      "known": 3,
+      "total": 3
+    },
+    "dha": {
+      "value": 1.685,
+      "known": 3,
+      "total": 3
+    },
+    "calcium": {
+      "value": 47.5,
+      "known": 3,
+      "total": 3
+    },
+    "iron": {
+      "value": 1.697,
+      "known": 3,
+      "total": 3
+    },
+    "magnesium": {
+      "value": 78.9,
+      "known": 3,
+      "total": 3
+    },
+    "phosphorus": {
+      "value": 485.4,
+      "known": 3,
+      "total": 3
+    },
+    "potassium": {
+      "value": 1043.1,
+      "known": 3,
+      "total": 3
+    },
+    "sodium": {
+      "value": 160.7,
+      "known": 3,
+      "total": 3
+    },
+    "zinc": {
+      "value": 1.365,
+      "known": 3,
+      "total": 3
+    },
+    "copper": {
+      "value": 0.1971,
+      "known": 3,
+      "total": 3
+    },
+    "manganese": {
+      "value": 0.35450000000000004,
+      "known": 3,
+      "total": 3
+    },
+    "selenium": {
+      "value": 52.55,
+      "known": 3,
+      "total": 3
+    },
+    "vitA": {
+      "value": 170.6,
+      "known": 3,
+      "total": 3
+    },
+    "retinol": {
+      "value": 167,
+      "known": 3,
+      "total": 3
+    },
+    "vitC": {
+      "value": 16.29,
+      "known": 3,
+      "total": 3
+    },
+    "vitD": {
+      "value": 17.5,
+      "known": 3,
+      "total": 3
+    },
+    "vitE": {
+      "value": 5.969999999999999,
+      "known": 3,
+      "total": 3
+    },
+    "vitK": {
+      "value": 1.5,
+      "known": 3,
+      "total": 3
+    },
+    "thiamin": {
+      "value": 0.3677,
+      "known": 3,
+      "total": 3
+    },
+    "riboflavin": {
+      "value": 0.5486,
+      "known": 3,
+      "total": 3
+    },
+    "niacin": {
+      "value": 13.8435,
+      "known": 3,
+      "total": 3
+    },
+    "vitB6": {
+      "value": 1.4794,
+      "known": 3,
+      "total": 3
+    },
+    "folate": {
+      "value": 86.5,
+      "known": 3,
+      "total": 3
+    },
+    "vitB12": {
+      "value": 5.29,
+      "known": 3,
+      "total": 3
+    },
+    "pantothenic": {
+      "value": 3.4878,
+      "known": 3,
+      "total": 3
+    },
+    "choline": {
+      "value": 276.40999999999997,
+      "known": 3,
+      "total": 3
+    },
+    "betaCarotene": {
+      "value": 31.2,
+      "known": 3,
+      "total": 3
+    },
+    "alphaCarotene": {
+      "value": 30,
+      "known": 3,
+      "total": 3
+    },
+    "betaCryptoxanthin": {
+      "value": 4.5,
+      "known": 3,
+      "total": 3
+    },
+    "lycopene": {
+      "value": 0,
+      "known": 3,
+      "total": 3
+    },
+    "luteinZeaxanthin": {
+      "value": 277.9,
+      "known": 3,
+      "total": 3
+    },
+    "water": {
+      "value": 225.30200000000002,
+      "known": 3,
+      "total": 3
+    }
+  },
+  "request": {
+    "text": "Яйцо, банан и лосось",
+    "grams": null
+  }
+}

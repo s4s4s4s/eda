@@ -1,4 +1,4 @@
-import type { Kbju, MealLogEntry, NutrientTotals, Slot } from '../types.ts'
+import type { ExtraLogEntry, Kbju, MealLogEntry, NutrientTotals, Slot } from '../types.ts'
 
 /* Контракт канала выгрузки.
    Смысл контракта — в честности кнопки. Канал обязан уметь сказать про себя
@@ -28,6 +28,12 @@ export type ExportPayload =
       kind: 'day'
       date: string
       meals: MealLogEntry[]
+      /** Съеденное сверх меню за этот день. СНАПШОТЫ ПОЛНЫХ порций — то же
+          соглашение, что у meals: долю применяет потребитель. Поле
+          обязательное: необязательное молча теряло бы добавленную еду в том
+          канале, который про него забыл, а total и nutrients её уже
+          учитывают — и день в CSV не сходился бы со своим же итогом. */
+      extras: ExtraLogEntry[]
       total: Kbju
       /** Дневная сумма нутриентов — уже съеденное (доли применены при сборке
           дня, ровно как у total). */
