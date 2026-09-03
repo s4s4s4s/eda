@@ -8,7 +8,7 @@ import { buildChannels } from '../core/export/index.ts'
 import type { ExportPayload } from '../core/export/index.ts'
 import { clearLog, dayNutrientTotals, dayTotal, logMeal, unlogMeal } from '../core/log.ts'
 import { menuDayFor } from '../core/menu.ts'
-import { emptyNutrientTotals, mealKbju, mealNutrients } from '../core/nutrition.ts'
+import { emptyNutrientTotals, mealKbju, mealNutrients, scaleNutrientTotals } from '../core/nutrition.ts'
 import { clearRating, rateDish, ratingOf, setStance } from '../core/preferences.ts'
 import { mealVerdict } from '../core/verdict.ts'
 import type { MealVerdict } from '../core/verdict.ts'
@@ -17,7 +17,8 @@ import type {
   AppState, IngredientStance, Kbju, Meal, MealStatus, NutrientTotals, Settings, Slot
 } from '../core/types.ts'
 import { loadData } from '../data/load.ts'
-import { defaultState, loadState, saveState } from '../state/storage.ts'
+import { BACKUP_KEY, defaultState, loadState, saveState } from '../state/storage.ts'
+import type { StateSource } from '../state/storage.ts'
 import MealScreen from './MealScreen.tsx'
 import type { DaySlotProgress } from './MealScreen.tsx'
 import Sheet from './Sheet.tsx'
@@ -62,14 +63,53 @@ function currentAppUrl(): string {
   return `${window.location.origin}${window.location.pathname}`
 }
 
+/** Русское склонение слова «запись» по числу (запись/записи/записей). Та же
+    таблица, что и у daysWord в WeekSheet.tsx/SettingsSheet.tsx — своя копия,
+    а не импорт: WeekSheet сейчас правит параллельно другой агент. */
+function entryWord(n: number): string {
+  const mod100 = n % 100
+  if (mod100 >= 11 && mod100 <= 14) return 'записей'
+  switch (n % 10) {
+    case 1: return 'запись'
+    case 2:
+    case 3:
+    case 4: return 'записи'
+    default: return 'записей'
+  }
+}
+
+/** Текст красной полосы для 'corrupt' и для dropped > 0 — оба случая ведут на
+    один и тот же BACKUP_KEY, и оба говорят человеку, где искать потерянное. */
+function corruptNoticeText(): string {
+  return 'Дневник в памяти браузера не прочитался (повреждён). Приложение начало с пустого дневника; '
+    + `исходный текст сохранён в браузере под ключом ${BACKUP_KEY}`
+}
+
+function droppedNoticeText(dropped: number): string {
+  const verb = dropped === 1 ? 'повреждена и пропущена' : 'повреждены и пропущены'
+  return `${dropped} ${entryWord(dropped)} дневника ${verb}; исходный текст сохранён под ключом ${BACKUP_KEY}`
+}
+
 export default function App() {
-  const [state, setState] = useState<AppState>(() => {
+  /* Загрузка читает localStorage один раз при монтировании — вместе с тем,
+     каким источником оказалось прочитанное. Источник держим рядом с самим
+     state, а не пересчитываем: 'newer-version' решает, можно ли вообще писать
+     в хранилище (см. useEffect автосохранения ниже), и это решение не должно
+     меняться в течение сессии — новая сборка узнает об этом только после
+     перезагрузки. */
+  const [initialLoad] = useState(() => {
     try {
       return loadState()
     } catch {
-      return defaultState()
+      return { state: defaultState(), source: 'default' as StateSource, dropped: 0 }
     }
   })
+  const [state, setState] = useState<AppState>(initialLoad.state)
+  const [stateSource] = useState<StateSource>(initialLoad.source)
+  /* Сколько записей приёмов не пережило санитизацию при ЭТОЙ загрузке — число
+     живёт рядом с source по той же причине: пересчитывать его позже не из
+     чего, санитизация происходит один раз, при чтении localStorage. */
+  const [initialDropped] = useState<number>(initialLoad.dropped)
   const [manualSlot, setManualSlot] = useState<ManualSlot | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [weekOpen, setWeekOpen] = useState(false)
@@ -81,10 +121,21 @@ export default function App() {
      которой на диске не существует, и узнает об этом только потеряв её. */
   const [saveError, setSaveError] = useState<string | null>(null)
 
+  /* Полоса про 'corrupt'/dropped закрывается кнопкой «Понятно» — но только до
+     перезагрузки: состояние живёт в памяти вкладки, а не в хранилище, чтобы
+     не спрятать находку от следующего визита, если человек её не прочитал. */
+  const [loadNoticeDismissed, setLoadNoticeDismissed] = useState(false)
+
+  /* Пока source === 'newer-version', хранилище держит состояние сборки НОВЕЕ
+     этой — а state в памяти при этом дефолтный (см. deserialize). Сохранить
+     его значило бы затереть данные, которых эта сборка просто не умеет
+     прочитать. Автосохранение выключается целиком, а не «кроме дневника»:
+     частичной записи здесь быть не может — банер на экране объясняет причину. */
   useEffect(() => {
+    if (stateSource === 'newer-version') return
     const result = saveState(state)
     setSaveError(result.ok ? null : result.error)
-  }, [state])
+  }, [state, stateSource])
 
   // возврат из Команд может принести ?exported=... на уже перезагруженную
   // страницу (ExportSheet больше не смонтирован) — подчищаем адресную строку,
@@ -94,12 +145,17 @@ export default function App() {
     if (params.has('exported') && !exportPayload) {
       window.history.replaceState(null, '', window.location.pathname)
     }
-    // намеренно только при монтировании: пока шторка экспорта открыта, она
-    // сама следит за возвратом через readCallback/visibilitychange
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Пустой массив зависимостей — намеренно, а не забытый exportPayload: этот
+    // эффект должен отработать РОВНО ОДИН РАЗ, сразу после монтирования, чтобы
+    // подчистить query-параметр от возврата из Команд на уже перезагруженной
+    // странице. Пока шторка экспорта открыта в этой же сессии, за возвратом
+    // следит сам ExportSheet (readCallback/visibilitychange) — этому эффекту
+    // реагировать на смену exportPayload не нужно и не следует: рестарт
+    // эффекта на каждое открытие/закрытие шторки не добавил бы ничего, кроме
+    // лишних перечитываний адресной строки.
   }, [])
 
-  const { menu, products, norms } = useMemo(() => loadData(), [])
+  const { menu, products, norms, productsRevision } = useMemo(() => loadData(), [])
 
   /* Дата и текущий приём идут от ОДНОГО минутного таймера. Считать дату один
      раз при монтировании нельзя: приложение, открытое до полуночи и оставленное
@@ -140,14 +196,25 @@ export default function App() {
   const menuToday = useMemo(() => menuDayFor(menu, today, cycleDayNum), [menu, today, cycleDayNum])
   const menuDay = menuToday?.day
   const meal: Meal | undefined = useMemo(() => menuDay?.meals.find(m => m.slot === slot), [menuDay, slot])
-  const currentMealKbju = useMemo(() => (meal ? mealKbju(meal, products) : ZERO_KBJU), [meal, products])
-  const currentMealNutrients = useMemo(
-    () => (meal ? mealNutrients(meal, products) : NO_NUTRIENTS),
-    [meal, products]
-  )
 
   const dayLog = state.log[today]
   const entry = dayLog?.meals[slot]
+
+  /* Правда о приёме: меню есть — она из меню, это состав, который можно
+     собрать заново. Меню нет, но приём уже записан — правда только в снапшоте
+     записи (entry.kbju/entry.nutrients), состав по нему не восстановить, и
+     экран его не рисует. Нет ни того, ни другого — данных о приёме нет вовсе,
+     а не «ноль»: undefined, а не ZERO_KBJU под видом настоящих чисел. */
+  const currentMealKbju: Kbju | undefined = useMemo(() => {
+    if (meal) return mealKbju(meal, products)
+    if (entry) return entry.kbju
+    return undefined
+  }, [meal, entry, products])
+  const currentMealNutrients = useMemo(() => {
+    if (meal) return mealNutrients(meal, products)
+    if (entry) return entry.nutrients
+    return NO_NUTRIENTS
+  }, [meal, entry, products])
 
   /* Суммы за день считаются один раз и идут и в прогресс дня, и в покрытие
      норм: нормы суточные, сравнивать с ними один приём было бы враньём.
@@ -158,12 +225,31 @@ export default function App() {
     [dayLog]
   )
 
-  /* Плюсы и минусы считаются по ТЕКУЩЕМУ приёму, а не по дню: они про то, что
-     сейчас в контейнере. Правила — в core/verdict.ts, экран их не повторяет. */
-  const verdict = useMemo(
-    () => (meal ? mealVerdict(meal, currentMealNutrients, norms, state.preferences) : NO_VERDICT),
-    [meal, currentMealNutrients, norms, state.preferences]
-  )
+  /* Числа нутриентов идут по ПОЙМАННОМУ ПРИЁМУ, когда он записан: запись —
+     факт, что было съедено, и он не должен зависеть от того, что сейчас лежит
+     в меню. Пропущенный приём не разбирается вовсе (сказать нечего — не «всё
+     плохо», см. MealVerdictBlock), «съел часть» считается по доле снапшота
+     (scaleNutrientTotals), «съел целиком» — по снапшоту без масштабирования.
+     Ничего не записано — вердикт по живому meal, как раньше: это подсказка на
+     будущее, а не факт прошлого.
+     mealVerdict при этом ВСЕГДА получает живой `meal`, а не снапшот состава:
+     MealLogEntry состав приёма (items) не хранит вовсе, поэтому «любимое»/«не
+     ем» внутри mealVerdict (mealStances(meal, prefs)) — это всегда текущий
+     состав блюда с этим id в меню, а не то, что реально было в контейнере в
+     момент записи. Поправят состав блюда задним числом — эти строки у уже
+     записанного приёма станут говорить про новый состав (см. DESIGN.md,
+     «Плюсы и минусы приёма»). */
+  const verdict = useMemo(() => {
+    if (!meal) return NO_VERDICT
+    if (entry) {
+      if (entry.status === 'skipped') return NO_VERDICT
+      const nutrientsForVerdict = entry.status === 'partial'
+        ? scaleNutrientTotals(entry.nutrients, entry.fraction)
+        : entry.nutrients
+      return mealVerdict(meal, nutrientsForVerdict, norms, state.preferences)
+    }
+    return mealVerdict(meal, currentMealNutrients, norms, state.preferences)
+  }, [meal, entry, currentMealNutrients, norms, state.preferences])
   const currentRating = meal ? ratingOf(state.preferences, meal.id) : undefined
 
   /* Прогресс дня рисуется сегментами по всем четырём приёмам, поэтому экрану
@@ -180,12 +266,31 @@ export default function App() {
       slot: s,
       plannedKcal,
       eatenKcal: slotEntry ? slotEntry.kbju.kcal * slotEntry.fraction : 0,
-      status: slotEntry?.status
+      status: slotEntry?.status,
+      fraction: slotEntry?.fraction,
+      productsRevision: slotEntry?.productsRevision
     }
   }), [menuDay, dayLog, products])
 
+  /* Ручная правка даты старта цикла — не то же самое, что «всё верно»: она
+     МЕНЯЕТ дату, а значит человек её уже проверил. Оба случая закрывают
+     баннер первого запуска (см. handleConfirmCycleStart), но правку даты
+     нельзя доверить SettingsSheet — confirmed форсируется здесь, единственном
+     месте, где settings реально попадают в state. */
   const updateSettings = useCallback((settings: Settings) => {
-    setState(prev => ({ ...prev, settings }))
+    setState(prev => {
+      const cycleStartChanged = settings.cycleStartDate !== prev.settings.cycleStartDate
+      return {
+        ...prev,
+        settings: cycleStartChanged ? { ...settings, cycleStartConfirmed: true } : settings
+      }
+    })
+  }, [])
+
+  /* Кнопка «Всё верно» в баннере первого запуска: дату не трогает, просто
+     закрывает вопрос. */
+  const handleConfirmCycleStart = useCallback(() => {
+    setState(prev => ({ ...prev, settings: { ...prev.settings, cycleStartConfirmed: true } }))
   }, [])
 
   const handleClearLog = useCallback(() => {
@@ -220,8 +325,10 @@ export default function App() {
   const handleLog = useCallback((status: MealStatus, fraction: number) => {
     if (!meal) return
     const now = new Date()
-    setState(prev => logMeal(prev, today, slot, meal, products, status, fraction, cycleDayNum, now.toISOString()))
-  }, [meal, products, slot, today, cycleDayNum])
+    setState(prev => logMeal(
+      prev, today, slot, meal, products, status, fraction, cycleDayNum, now.toISOString(), productsRevision
+    ))
+  }, [meal, products, slot, today, cycleDayNum, productsRevision])
 
   const handleUnlog = useCallback(() => {
     setState(prev => unlogMeal(prev, today, slot))
@@ -265,10 +372,46 @@ export default function App() {
     window.history.replaceState(null, '', window.location.pathname)
   }, [])
 
+  /* Полоса про потерю при чтении хранилища существует, только пока есть что
+     показать (corrupt или dropped > 0 при ЭТОЙ загрузке) и человек её ещё не
+     закрыл кнопкой «Понятно». */
+  const showLoadNotice = !loadNoticeDismissed && (stateSource === 'corrupt' || initialDropped > 0)
+  const loadNoticeText = stateSource === 'corrupt' ? corruptNoticeText() : droppedNoticeText(initialDropped)
+
   return (
     <>
-      {saveError && <div className="save-error" role="alert">{saveError}</div>}
+      {/* Приоритет полос сверху вниз: 'newer-version' (без кнопки — состояние
+          неавторитетно целиком, закрыть эту причину нечем) > потеря при чтении
+          хранилища ('corrupt'/dropped, с кнопкой «Понятно») > провал текущего
+          сохранения. Они не показываются одновременно: важнее — та причина,
+          из-за которой человек рискует не заметить остальные. */}
+      {stateSource === 'newer-version'
+        ? (
+          <div className="save-error" role="alert">
+            На этом устройстве данные записаны более новой версией приложения.
+            Обновите приложение — дневник не тронут, записи сейчас не сохраняются.
+          </div>
+        )
+        : showLoadNotice
+          ? (
+            <div className="save-error" role="alert">
+              <span className="save-error__text">{loadNoticeText}</span>
+              <button
+                type="button"
+                className="save-error__dismiss"
+                onClick={() => setLoadNoticeDismissed(true)}
+              >
+                Понятно
+              </button>
+            </div>
+          )
+          : (saveError && <div className="save-error" role="alert">{saveError}</div>)}
       <MealScreen
+        // День и приём — разный контекст: локальный выбор режима нутриентов,
+        // раскрытых сносок и «съел часть» не должен пережить переключение
+        // (см. DESIGN.md, «Покрытие норм» — состояние NutrientsBlock и
+        // pickingFraction пересоздаются React'ом по key, а не синхронизацией).
+        key={`${today}:${slot}`}
         date={today}
         cycleDayNum={cycleDayNum}
         cycleDays={menu.cycleDays}
@@ -285,6 +428,7 @@ export default function App() {
         verdict={verdict}
         products={products}
         entry={entry}
+        productsRevision={productsRevision}
         rating={currentRating}
         onRate={handleRateCurrent}
         onClearRating={handleClearRatingCurrent}
@@ -294,6 +438,9 @@ export default function App() {
         dayProteinG={dayKbju.p}
         targetProteinG={state.settings.targetProteinG}
         hasDayLog={Boolean(dayLog && Object.keys(dayLog.meals).length > 0)}
+        cycleStartDate={state.settings.cycleStartDate}
+        cycleStartConfirmed={state.settings.cycleStartConfirmed}
+        onConfirmCycleStart={handleConfirmCycleStart}
         onLog={handleLog}
         onUnlog={handleUnlog}
         onOpenSettings={() => setSettingsOpen(true)}

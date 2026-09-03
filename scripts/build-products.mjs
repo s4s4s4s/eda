@@ -15,11 +15,17 @@
 //   (или переменная окружения FDC_DIR, если аргумент не передан)
 
 import { createReadStream } from 'node:fs';
-import { writeFile, mkdir } from 'node:fs/promises';
+import { writeFile, mkdir, readFile } from 'node:fs/promises';
 import { createInterface } from 'node:readline';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import yaml from 'js-yaml';
+
+/** Текст с LF вместо CRLF — для сравнения содержимого независимо от того,
+    с какими переводами строк файл лежит на диске. */
+function toLf(text) {
+  return text.replace(/\r\n/g, '\n');
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -255,7 +261,7 @@ const PRODUCTS = [
   { key: 'raisins', fdcId: 168165, name: 'изюм' },
   { key: 'dates', fdcId: 171726, name: 'финики' },
   { key: 'pomegranate', fdcId: 169134, name: 'гранат (зёрна)' },
-  { key: 'blueberry', fdcId: 171711, name: 'черника' },
+  { key: 'blueberry', fdcId: 171711, name: 'голубика' },
   { key: 'lemon', fdcId: 167746, name: 'лимон' },
 
   // Прочее
@@ -564,6 +570,15 @@ async function main() {
     '# Числа на 100 г съедобной части в сыром виде, если в описании не сказано иное.',
     '# Файл собирается скриптом scripts/build-products.mjs, руками не правится.',
     '#',
+    '# revision — дата последней правки СОДЕРЖИМОГО справочника (ГГГГ-ММ-ДД), поле',
+    '# данных, а не комментарий (см. parseProductsRevision в src/core/data.ts). На неё',
+    '# опирается снапшот записи дневника (MealLogEntry.productsRevision в types.ts):',
+    '# справочник иногда правится задним числом (смена fdcId, новые нутриенты), и без',
+    '# метки нельзя понять, по каким числам посчитан день. Скрипт ставит её сам —',
+    '# сравнивает новое тело файла со старым (без строки revision) и меняет дату,',
+    '# только если тело изменилось; иначе пересборка без реальных правок молча не',
+    '# сдвигала бы дату «задним числом наоборот».',
+    '#',
     '# pieceG/pieceSource и tbspG/tbspSource — граммы одной штуки/столовой ложки.',
     '# source: fdc — взято из food_portion.csv датасета (см. fdcId и описание продукта),',
     '# source: common — общепринятая мера, не из датасета.',
@@ -573,14 +588,52 @@ async function main() {
     '# ВАЖНО: отсутствие поля в micro100g означает "в датасете нет строки для этого',
     '# нутриента у этого продукта" — это НЕ ноль. Ноль пишется только если в',
     '# food_nutrient.csv реально записан 0. Складывать отсутствующее поле как 0 нельзя.',
+    '# Проверка «kcal = 4·белок + 9·жир + 4·углеводы» здесь не инвариант: USDA считает',
+    '# энергию коэффициентами Атуотера по категориям, а клетчатка даёт меньше 4 ккал/г,',
+    '# поэтому у овощей, фруктов, какао и специй расхождение доходит до 10–47 %. Это',
+    '# свойство источника, а не ошибка сборки. По той же причине у молока и сливок',
+    '# sugar бывает чуть больше carbs: carbs — «by difference», сахар измерен прямо.',
     '# Единицы измерения (взяты из nutrient.csv, unit_name):',
     ...microUnitsLines,
     '',
   ].join('\n');
 
-  const productsYaml = yaml.dump({ products: productsOut }, { lineWidth: -1, noRefs: true });
+  // Тело файла БЕЗ revision — то, что реально сравнивается между прогонами.
+  // revision намеренно не входит сюда: дата не часть содержимого, которое
+  // сверяется, а вывод из того, изменилось ли оно.
+  const bodyYaml = yaml.dump({ products: productsOut }, { lineWidth: -1, noRefs: true });
+  const newBodyWithoutRevision = header + bodyYaml;
 
   const outPath = path.join(REPO_ROOT, 'data', 'products.yaml');
+
+  function todayLocal() {
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  }
+
+  // Дата меняется, только если содержимое реально изменилось: без этого
+  // каждая пересборка (даже без единой правки числа) двигала бы revision на
+  // сегодня, и метка перестала бы отвечать на вопрос «по каким числам
+  // посчитан день» — она отвечала бы «когда последний раз запускали скрипт».
+  let revision = todayLocal();
+  try {
+    const existing = await readFile(outPath, 'utf8');
+    // Переводы строк с обеих сторон приводим к LF: после чекаута с
+    // core.autocrlf=true файл на диске лежит с CRLF, а свежесобранный текст —
+    // с LF, и посимвольное сравнение считало бы каждую пересборку правкой,
+    // то есть двигало бы дату без единого изменённого числа.
+    const existingWithoutRevision = toLf(existing).replace(/^revision: .*\n/m, '');
+    if (existingWithoutRevision === toLf(newBodyWithoutRevision)) {
+      const match = existing.match(/^revision: ['"]?(\d{4}-\d{2}-\d{2})['"]?/m);
+      if (match) revision = match[1];
+    }
+  } catch (err) {
+    if (err.code !== 'ENOENT') throw err;
+  }
+
+  const productsYaml = yaml.dump({ revision, products: productsOut }, { lineWidth: -1, noRefs: true });
+
   await mkdir(path.dirname(outPath), { recursive: true });
   await writeFile(outPath, header + productsYaml, 'utf8');
 

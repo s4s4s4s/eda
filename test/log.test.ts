@@ -89,12 +89,50 @@ function unlogChecks(): void {
   const idx = products(product('x', { kcal: 200, p: 10, f: 5, c: 20 }))
   const state0 = emptyState()
   const state1 = logMeal(state0, '2026-08-05', 'lunch', meal('lunch', 'v1', 200), idx, 'eaten', 1, 5, 't1')
-  const state2 = unlogMeal(state1, '2026-08-05', 'lunch')
+  const state2 = logMeal(state1, '2026-08-05', 'dinner', meal('dinner', 'v1', 200), idx, 'eaten', 1, 5, 't2')
+  const state3 = unlogMeal(state2, '2026-08-05', 'lunch')
 
-  assert(state2.log['2026-08-05'].meals.lunch === undefined, 'unlogMeal должен удалить запись')
-  assert(state1.log['2026-08-05'].meals.lunch !== undefined, 'unlogMeal не должен мутировать входной state')
+  assert(state3.log['2026-08-05'] !== undefined, 'день с оставшейся записью обязан остаться в дневнике')
+  assert(state3.log['2026-08-05'].meals.lunch === undefined, 'unlogMeal должен удалить запись')
+  assert(state3.log['2026-08-05'].meals.dinner !== undefined, 'соседняя запись того же дня не трогается')
+  assert(state2.log['2026-08-05'].meals.lunch !== undefined, 'unlogMeal не должен мутировать входной state')
 
-  group('unlogMeal: удаляет запись, входной state не мутирован')
+  group('unlogMeal: удаляет запись, соседняя остаётся, входной state не мутирован')
+}
+
+/* Отменённая последняя запись обязана унести и сам день: пустой день — это день
+   БЕЗ записей, а не день, в который человек ничего не съел. Оставленный ключ
+   даты делал день записанным для недельной сводки, и среднее за неделю делилось
+   на лишний день: два дня по 3000 ккал и один отменённый давали «2000». */
+function unlogLastMealRemovesDayChecks(): void {
+  const idx = products(product('x', { kcal: 200, p: 10, f: 5, c: 20 }))
+  let state = emptyState()
+  state = logMeal(state, '2026-08-05', 'lunch', meal('lunch', 'v1', 200), idx, 'eaten', 1, 5, 't1')
+  state = logMeal(state, '2026-08-06', 'lunch', meal('lunch', 'v1', 200), idx, 'eaten', 1, 6, 't2')
+  const after = unlogMeal(state, '2026-08-05', 'lunch')
+
+  assert(!('2026-08-05' in after.log), 'после отмены последней записи ключ даты обязан исчезнуть из дневника')
+  assert('2026-08-06' in after.log, 'соседний день не трогается')
+  assert(Object.keys(after.log).length === 1, `в дневнике ожидался 1 день, получено ${Object.keys(after.log).length}`)
+  assert('2026-08-05' in state.log, 'unlogMeal не должен мутировать входной state')
+
+  group('unlogMeal: отмена последней записи дня уносит ключ даты — «дня с нулём» не остаётся')
+}
+
+/* Ревизия справочника — снапшот наравне с КБЖУ: без неё два соседних дня молча
+   считаются по разным числам. Параметр необязателен, и когда его не передали,
+   поля в записи быть не должно — «неизвестно» нельзя записывать как значение. */
+function productsRevisionChecks(): void {
+  const idx = products(product('x', { kcal: 200, p: 10, f: 5, c: 20 }))
+  const withRev = logMeal(emptyState(), '2026-08-05', 'lunch', meal('lunch', 'обед', 200), idx, 'eaten', 1, 5, 't1', '2026-08-17')
+  const entry = withRev.log['2026-08-05'].meals.lunch!
+  assert(entry.productsRevision === '2026-08-17', `ревизия справочника ожидалась 2026-08-17, получено ${entry.productsRevision}`)
+
+  const withoutRev = logMeal(emptyState(), '2026-08-05', 'lunch', meal('lunch', 'обед', 200), idx, 'eaten', 1, 5, 't1')
+  const bare = withoutRev.log['2026-08-05'].meals.lunch!
+  assert(!('productsRevision' in bare), 'без переданной ревизии поля в записи быть не должно')
+
+  group('logMeal: переданная ревизия справочника ложится в запись, непереданная не выдумывается')
 }
 
 // ---- skipped даёт ноль --------------------------------------------------------
@@ -188,6 +226,30 @@ function eatenNutrientsChecks(): void {
   group('eatenNutrients: доля умножает значения и не трогает полноту')
 }
 
+/* Пропущенный приём — ноль ПОЗИЦИЙ, а не позиции с измеренным нулём. Сохрани мы
+   у него known, пропуск выглядел бы полноценным измерением: сумма дня считалась
+   бы полной по этим ключам, а выгрузка в Health отправляла бы три десятка
+   честных на вид нулей. */
+function skippedNutrientsChecks(): void {
+  const idx = products(product('x', { kcal: 200, p: 10, f: 5, c: 20 }, { fiber: 4, vitK: 20, sodium: 0 }))
+  const state = logMeal(emptyState(), '2026-08-09', 'breakfast', meal('breakfast', 'Завтрак', 200), idx, 'skipped', 0, 9, 't')
+  const entry = state.log['2026-08-09'].meals.breakfast!
+
+  assert(entry.nutrients.fiber.known === 1 && entry.nutrients.fiber.total === 1,
+    'сам снапшот приёма полноту сохраняет — обнуляется только съеденное')
+
+  const eaten = eatenNutrients(entry)
+  for (const key of ['fiber', 'vitK', 'sodium'] as const) {
+    assert(eaten[key].value === 0 && eaten[key].known === 0 && eaten[key].total === 0,
+      `пропущенный приём обязан дать ноль позиций по «${key}», получено ${JSON.stringify(eaten[key])}`)
+  }
+
+  const totals = dayNutrientTotals(state.log['2026-08-09'])
+  assert(totals.fiber.known === 0 && totals.fiber.total === 0,
+    `день из одного пропущенного приёма не несёт ни одной позиции, получено ${JSON.stringify(totals.fiber)}`)
+  group('eatenNutrients: пропущенный приём даёт ноль позиций, а не позиции с измеренным нулём')
+}
+
 function dayNutrientTotalsChecks(): void {
   const idx = products(
     product('a', { kcal: 400, p: 20, f: 10, c: 40 }, { fiber: 10, vitK: 30 }),
@@ -238,10 +300,13 @@ function main(): void {
   snapshotIsFrozenChecks()
   overwriteChecks()
   unlogChecks()
+  unlogLastMealRemovesDayChecks()
+  productsRevisionChecks()
   skippedChecks()
   mixChecks()
   nutrientSnapshotChecks()
   eatenNutrientsChecks()
+  skippedNutrientsChecks()
   dayNutrientTotalsChecks()
   clearAndFootprintChecks()
   console.log(`\nВсе проверки log пройдены (${passed} групп).`)

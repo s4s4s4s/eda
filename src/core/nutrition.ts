@@ -116,8 +116,15 @@ export function addNutrientTotals(a: NutrientTotals, b: NutrientTotals): Nutrien
 }
 
 /** Доля съеденного меняет числа, но НЕ полноту: половина приёма известна ровно
-    настолько же, насколько был известен целый. */
+    настолько же, насколько был известен целый.
+
+    Доля 0 (пропущенный приём) — не «половина нуля», а отсутствие позиций:
+    съедено ничего, и складывать в сумму дня нечего. Сохранить здесь known
+    значило бы объявить, что тридцать нутриентов у человека ИЗМЕРЕНЫ и равны
+    нулю: неполнота дня исчезла бы (known === total), а выгрузка в Health ушла
+    бы тридцатью честными на вид нулями. Поэтому пропуск даёт ноль позиций. */
 export function scaleNutrientTotals(totals: NutrientTotals, fraction: number): NutrientTotals {
+  if (fraction === 0) return emptyNutrientTotals()
   const result = {} as NutrientTotals
   for (const key of NUTRIENT_KEYS) {
     const t = totals[key]

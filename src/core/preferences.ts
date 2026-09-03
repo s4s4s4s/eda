@@ -35,7 +35,12 @@ export function ratingOf(prefs: Preferences, mealId: string): DishRating | undef
 }
 
 /** Балл — целое 1..10, 0 не бывает: «не оценено» значит «записи нет». Пустой
-    mealId тоже ошибка — оценка обязана быть привязана к конкретному блюду. */
+    mealId тоже ошибка — оценка обязана быть привязана к конкретному блюду.
+
+    `ratedAt` двигается вперёд, только когда двигается сам балл (или когда
+    оценки раньше не было): правка одного комментария при том же балле не
+    должна выглядеть как повторная оценка блюда — иначе набор текста в поле
+    комментария перетирал бы время оценки при каждом нажатии клавиши. */
 export function rateDish(prefs: Preferences, mealId: string, score: number, comment: string, nowIso: string): Preferences {
   if (mealId === '') {
     throw new Error('rateDish: mealId не может быть пустым')
@@ -43,7 +48,9 @@ export function rateDish(prefs: Preferences, mealId: string, score: number, comm
   if (!Number.isInteger(score) || score < 1 || score > 10) {
     throw new Error(`rateDish: балл должен быть целым числом от 1 до 10, получено ${String(score)}`)
   }
-  const dishes = { ...prefs.dishes, [mealId]: { score, comment, ratedAt: nowIso } }
+  const prev = prefs.dishes[mealId]
+  const ratedAt = prev && prev.score === score ? prev.ratedAt : nowIso
+  const dishes = { ...prefs.dishes, [mealId]: { score, comment, ratedAt } }
   return { ...prefs, dishes }
 }
 

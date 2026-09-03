@@ -189,6 +189,34 @@
   color: var(--danger);
 }
 
+/* ---- баннер первого запуска: дата старта цикла не подтверждена ---- */
+
+/* Спокойная, не красная: это не отказ и не ошибка, а вопрос. Живёт в потоке
+   экрана (под шапкой), а не поверх него — save-error и update-banner уже
+   заняли sticky/fixed верх и низ. */
+.cycle-start-notice {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-14);
+  background: var(--surface-2);
+}
+
+.cycle-start-notice__text {
+  margin: 0;
+  font-size: var(--text-15);
+  line-height: var(--lh-text);
+  color: var(--fg);
+}
+
+.cycle-start-notice__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
 /* ---- 4. состав: два раздельных блока, они не смешиваются никогда ---- */
 
 .meal-section {
@@ -302,6 +330,15 @@
   color: var(--fg-dim);
 }
 
+/* Приём пропущен — вердикту взяться неоткуда, и это не то же самое, что
+   «сказать нечего» у обычной пустоты (тогда блока нет вовсе): здесь блок
+   есть, но состоит из одной честной строки вместо двух колонок. */
+.meal-verdict__skipped {
+  margin: 0;
+  font-size: var(--text-15);
+  color: var(--fg-faint);
+}
+
 /* ---- 5. сборка ---- */
 
 .meal-steps {
@@ -332,6 +369,17 @@
 
 .meal-kbju__bju {
   font-size: var(--text-15);
+  color: var(--fg-dim);
+}
+
+/* Пояснение к числам записи: справочник продуктов правится, а снапшот записи
+   заморожен намеренно — приглушённая строка того же кегля, что у сносок
+   норм (.nutrient__hint из theme.css), но своя, потому что это не часть
+   примитива .nutrient. */
+.meal-revision-note {
+  margin: 0;
+  font-size: var(--text-13);
+  line-height: var(--lh-text);
   color: var(--fg-dim);
 }
 
@@ -446,6 +494,7 @@
    день; «этот приём» показывает те же строки без полос и процентов. */
 .meal-nutrients__modes {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-2);
   margin-top: var(--space-2);
 }
@@ -484,6 +533,16 @@
   color: inherit;
   text-align: left;
   cursor: pointer;
+}
+
+/* Суффикс «AI» рядом с процентом: норма с основанием «адекватное потребление»
+   не то же самое, что суточная норма (RDA), и это стоит видеть с первого
+   взгляда на строку, а не только в раскрытой сноске. Мельче процента и
+   приглушённее — уточнение, а не отдельное число. */
+.nutrient__basis {
+  margin-left: .25em;
+  font-size: var(--text-13);
+  color: var(--fg-faint);
 }
 
 /* ---- 9. панель действий: липкая, под большим пальцем ---- */
@@ -552,15 +611,41 @@
 /* ---- отказ сохранения ---- */
 
 /* Полоса держится сверху и не прячется сама: пока она видна, дневник на экране
-   расходится с дневником на диске. */
+   расходится с дневником на диске (или с тем, что было в хранилище). Текст и
+   необязательная кнопка «Понятно» — в ряд: на узком экране (320px) кнопка
+   переносится под текст, а не срезает его. */
 .save-error {
   position: sticky;
   top: 0;
   z-index: 20;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-3);
   padding: var(--space-3) var(--screen-pad);
   padding-top: max(var(--space-3), env(safe-area-inset-top));
   background: var(--danger);
   color: var(--accent-fg);
   font-size: var(--text-15);
   line-height: var(--lh-text);
+}
+
+.save-error__text {
+  flex: 1 1 14rem;
+}
+
+/* Закрывает полосу «corrupt»/dropped до перезагрузки (состояние в памяти —
+   см. App.tsx). Обводка вместо заливки: полоса уже акцентная сама по себе,
+   вторая заливка внутри неё спорила бы с ней за внимание. */
+.save-error__dismiss {
+  flex: none;
+  min-height: var(--tap-min);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--accent-fg);
+  border-radius: var(--r-8);
+  background: none;
+  color: var(--accent-fg);
+  font: inherit;
+  font-weight: 600;
 }

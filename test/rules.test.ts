@@ -154,6 +154,27 @@ function brokenPortionChecks(): void {
   group('portion.*: рыба/говядина/творог/йогурт/орехи/бобовые(x2)/бразильский(x2)/чиа — каждое ловится')
 }
 
+// ---- бразильский орех: норма в штуках должна ловиться и в граммах -------------
+
+function brazilNutGramsChecks(): void {
+  // та же порция, записанная в граммах (2 шт. * pieceG 5 = 10 г), обязана
+  // дать РОВНО тот же результат (пусто), что и запись в штуках
+  const grams = withReplacedItem('breakfast', 'brazil', item('brazil', { g: 10 }, 'packet'))
+  assert(checkDay(grams, P).length === 0,
+    `бразильский орех 10 г (= 2 шт. * pieceG 5) не должен давать нарушений, получено: ${JSON.stringify(checkDay(grams, P))}`)
+
+  // недобор виден и через граммы, а не только через pieces
+  const gramsLow = withReplacedItem('breakfast', 'brazil', item('brazil', { g: 5 }, 'packet'))
+  assert(hasRule(checkDay(gramsLow, P), 'portion.brazil'),
+    'бразильский орех 5 г (1 шт.) вместо 10 г (2 шт.) должен дать portion.brazil, даже когда позиция задана граммами')
+
+  const violation = checkDay(gramsLow, P).find(v => v.rule === 'portion.brazil')!
+  assert(violation.message.includes('5 г') && violation.message.includes('1 шт.') && violation.message.includes('10 г') && violation.message.includes('2 шт.'),
+    `сообщение о нарушении обязано называть и граммы, и штуки, получено: «${violation.message}»`)
+
+  group('portion.brazil: норма в штуках срабатывает одинаково что при pieces, что при g; сообщение печатает и то, и другое')
+}
+
 function brokenGrainInLunchChecks(): void {
   const base = validDay()
   const meals = base.meals.map(m => {
@@ -307,6 +328,7 @@ function main(): void {
   console.log('rules — проверка меню на нормы порций и калорийность')
   validDayChecks()
   brokenPortionChecks()
+  brazilNutGramsChecks()
   brokenGrainInLunchChecks()
   brokenFlaxMissingChecks()
   brokenOilChecks()

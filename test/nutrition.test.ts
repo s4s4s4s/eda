@@ -4,7 +4,7 @@
  */
 import {
   addKbju, addNutrientTotals, dayKbju, dayNutrients, emptyNutrientTotals, incompleteNutrients,
-  itemGrams, itemKbju, itemNutrients, mealKbju, mealNutrients, scaleKbju, scaleNutrientTotals
+  isKnown, itemGrams, itemKbju, itemNutrients, mealKbju, mealNutrients, scaleKbju, scaleNutrientTotals
 } from '../src/core/nutrition'
 import { NUTRIENT_KEYS } from '../src/core/types'
 import type { Kbju, Meal, MenuDay, Nutrients, Product, ProductIndex } from '../src/core/types'
@@ -267,6 +267,42 @@ function totalsArithmeticChecks(): void {
   group('emptyNutrientTotals/scaleNutrientTotals/addNutrientTotals: доля не трогает полноту, сложение складывает её')
 }
 
+/* Доля 0 — это пропущенный приём, и позиций в нём НЕТ. Сохранённый known сделал
+   бы из пропуска три десятка «измеренных нулей»: сумма дня стала бы полной по
+   этим ключам (known === total), а выгрузка в Health ушла бы нулями, которые
+   выглядят как результат взвешивания. */
+function zeroFractionDropsPositionsChecks(): void {
+  const idx = products(
+    product('a', { kcal: 100, p: 0, f: 0, c: 0 }, { micro100: { fiber: 10, vitK: 40, sodium: 0 } })
+  )
+  const meal: Meal = {
+    slot: 'lunch', id: 'meal-lunch-a', title: 't', steps: [],
+    items: [{ product: 'a', g: 100, where: 'container' }]
+  }
+  const totals = mealNutrients(meal, idx)
+  assert(totals.fiber.known === 1 && totals.sodium.known === 1, 'контроль: у целого приёма позиции известны')
+
+  const skipped = scaleNutrientTotals(totals, 0)
+  assert(NUTRIENT_KEYS.every(k => skipped[k].value === 0 && skipped[k].known === 0 && skipped[k].total === 0),
+    `пропущенный приём обязан дать ноль позиций по каждому ключу, получено ${JSON.stringify(skipped.fiber)}`)
+  assert(!isKnown(skipped.sodium),
+    'честный ноль из справочника, съеденный в доле 0, перестаёт быть известным значением — съедено ничего')
+
+  // и, в отличие от него, доля 0.25 полноту сохраняет
+  const quarter = scaleNutrientTotals(totals, 0.25)
+  assert(quarter.fiber.known === 1 && quarter.fiber.total === 1 && approx(quarter.fiber.value, 2.5),
+    `четверть приёма сохраняет полноту, получено ${JSON.stringify(quarter.fiber)}`)
+
+  group('scaleNutrientTotals: доля 0 даёт ноль позиций, а не позиции с измеренным нулём')
+}
+
+function isKnownChecks(): void {
+  assert(isKnown({ value: 0, known: 2, total: 2 }), 'честный ноль по двум позициям — знание, а не его отсутствие')
+  assert(!isKnown({ value: 0, known: 0, total: 1 }), 'неизвестная позиция (запись без снапшота) знанием не является')
+  assert(!isKnown({ value: 0, known: 0, total: 0 }), 'ноль позиций — тоже отсутствие знания')
+  group('isKnown: известность считается по known, а не по величине value')
+}
+
 function dayNutrientsChecks(): void {
   const idx = products(
     product('a', { kcal: 100, p: 0, f: 0, c: 0 }, { micro100: { fiber: 10, vitK: 40 } }),
@@ -299,6 +335,8 @@ function main(): void {
   unknownEverywhereChecks()
   honestZeroIsKnownChecks()
   totalsArithmeticChecks()
+  zeroFractionDropsPositionsChecks()
+  isKnownChecks()
   dayNutrientsChecks()
   console.log(`\nВсе проверки nutrition пройдены (${passed} групп).`)
 }

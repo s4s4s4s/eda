@@ -6,7 +6,7 @@
  */
 import type { ExportChannel, ExportPayload } from '../src/core/export/types.ts'
 import {
-  buildDayCsv, CSV_HEADER, CSV_NUTRIENT_COLUMNS, dayClipboardText, mealClipboardText, NO_DATA_TEXT
+  buildDayCsv, CSV_HEADER, CSV_NUTRIENT_COLUMNS, dayClipboardText, formatNutrientAmount, mealClipboardText, NO_DATA_TEXT
 } from '../src/core/export/format.ts'
 import { emptyNutrientTotals } from '../src/core/nutrition.ts'
 import { NUTRIENT_KEYS, NUTRIENT_UNIT } from '../src/core/types.ts'
@@ -14,7 +14,7 @@ import type { NutrientTotals } from '../src/core/types.ts'
 import { clipboardChannel } from '../src/core/export/clipboard.ts'
 import { CSV_FALLBACK_NOTE, CSV_NOT_A_DAY_ERROR, csvChannel } from '../src/core/export/csv.ts'
 import { buildShortcutUrl, healthNutrients, healthShortcutChannel, NO_HEALTHKIT_TYPE, readCallback } from '../src/core/export/health-shortcut.ts'
-import { buildChannels, sendViaChannel } from '../src/core/export/index.ts'
+import { buildChannels, sendViaChannel, SKIPPED_MEAL_REASON } from '../src/core/export/index.ts'
 import type { Kbju, MealLogEntry } from '../src/core/types.ts'
 
 let passed = 0
@@ -161,6 +161,25 @@ function csvChecks(): void {
   group('buildDayCsv: заголовок, число строк, CRLF, BOM, экранирование запятой и кавычки, точка в десятичных')
 }
 
+// ---- format.ts: formatNutrientAmount — три значащие цифры, честный ноль ------
+
+function formatNutrientAmountChecks(): void {
+  assert(formatNutrientAmount(0) === '0', `0 должен печататься как «0», получено «${formatNutrientAmount(0)}»`)
+  assert(formatNutrientAmount(0.0004) === '< 0.001',
+    `0.0004 (меньше 0.0005) должен печататься как «< 0.001», получено «${formatNutrientAmount(0.0004)}»`)
+  assert(formatNutrientAmount(0) !== formatNutrientAmount(0.0004),
+    'ноль и «слишком мало, чтобы увидеть» обязаны различаться')
+  assert(formatNutrientAmount(0.1234) === '0.123', `0.1234 → «0.123», получено «${formatNutrientAmount(0.1234)}»`)
+  assert(formatNutrientAmount(0.01234) === '0.012', `0.01234 → «0.012» (не больше трёх дробных знаков), получено «${formatNutrientAmount(0.01234)}»`)
+  assert(formatNutrientAmount(0.9996) === '1.00', `0.9996 → «1.00» (округлилось до единицы — разрядность по округлённому), получено «${formatNutrientAmount(0.9996)}»`)
+  assert(formatNutrientAmount(1.234) === '1.23', `1.234 → «1.23», получено «${formatNutrientAmount(1.234)}»`)
+  assert(formatNutrientAmount(12.34) === '12.3', `12.34 → «12.3», получено «${formatNutrientAmount(12.34)}»`)
+  assert(formatNutrientAmount(99.99) === '100', `99.99 → «100» (не «100.0»), получено «${formatNutrientAmount(99.99)}»`)
+  assert(formatNutrientAmount(100.4) === '100', `100.4 → «100» (не «100.4»/«101»), получено «${formatNutrientAmount(100.4)}»`)
+  assert(formatNutrientAmount(1234) === '1234', `1234 → «1234» (целое не режется до трёх значащих цифр), получено «${formatNutrientAmount(1234)}»`)
+  group('formatNutrientAmount: 0, «< 0.001», три значащие цифры, разрядность не прыгает на границе сотни')
+}
+
 // ---- clipboard.ts ------------------------------------------------------------
 
 async function clipboardChecks(): Promise<void> {
@@ -272,6 +291,53 @@ function buildChannelsChecks(): void {
   group('buildChannels: порядок показа — буфер, CSV, Health')
 }
 
+// ---- пропущенный приём: ни один канал ничего не отправляет --------------------
+
+function skippedMealAvailabilityChecks(): void {
+  resetGlobals()
+  // Готовое устройство: буфер обмена есть, телефон — iOS с заданной командой.
+  // Если бы это было причиной отказа, тест бы это не проверял — здесь важно,
+  // что отказывают ИМЕННО из-за пропущенного приёма, при остальном исправном.
+  ;(globalThis as Record<string, unknown>).navigator = {
+    clipboard: { writeText: async () => {} },
+    userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)',
+    maxTouchPoints: 5
+  }
+  const channels = buildChannels({ getShortcutName: () => 'МояКоманда', appUrl: 'https://eda.example/' })
+  const skipped = mealPayload({ fraction: 0 })
+
+  for (const channel of channels) {
+    const avail = channel.availability(skipped)
+    assert(avail.available === false && avail.reason === SKIPPED_MEAL_REASON,
+      `канал «${channel.id}» обязан отказать на пропущенном приёме с причиной «${SKIPPED_MEAL_REASON}», получено ${JSON.stringify(avail)}`)
+  }
+
+  // тот же payload, но съеденный (доля 1) — каждый канал доступен так же, как
+  // если бы проверки пропуска не было вовсе
+  const eaten = mealPayload({ fraction: 1 })
+  for (const channel of channels) {
+    const withGuard = channel.availability(eaten)
+    const withoutGuard = channel.availability()
+    assert(withGuard.available === withoutGuard.available,
+      `канал «${channel.id}» на съеденном приёме не должен отличаться от собственной доступности, получено ${JSON.stringify(withGuard)} vs ${JSON.stringify(withoutGuard)}`)
+  }
+
+  // и sendViaChannel не должен звать send() у канала на пропущенном приёме
+  resetGlobals()
+  group('buildChannels: пропущенный приём (fraction 0) — все три канала available:false с одной причиной; съеденный — как обычно')
+}
+
+async function skippedMealSendChecks(): Promise<void> {
+  const channels = buildChannels({ getShortcutName: () => 'МояКоманда', appUrl: 'https://eda.example/' })
+  const skipped = mealPayload({ fraction: 0 })
+  for (const channel of channels) {
+    const result = await sendViaChannel(channel, skipped)
+    assert(result.ok === false && result.error === SKIPPED_MEAL_REASON,
+      `sendViaChannel(«${channel.id}», пропущенный приём) должен вернуть ok:false с причиной пропуска, получено ${JSON.stringify(result)}`)
+  }
+  group('sendViaChannel: пропущенный приём не уходит ни в один канал, даже если канал сам по себе доступен')
+}
+
 async function sendViaChannelChecks(): Promise<void> {
   let sendCalled = false
   const deadChannel: ExportChannel = {
@@ -325,7 +391,7 @@ function csvNutrientCellsChecks(): void {
 
   assert(cell('fiber_g') === '8.00', `известное значение печатается числом, получено «${cell('fiber_g')}»`)
   // честный ноль — это 0, а не пустая ячейка
-  assert(cell('sodium_mg') === '0.000', `честный ноль обязан печататься нулём, получено «${cell('sodium_mg')}»`)
+  assert(cell('sodium_mg') === '0', `честный ноль обязан печататься нулём, получено «${cell('sodium_mg')}»`)
   // «нет данных» — пустая ячейка, и она отличается от нуля
   assert(cell('vitB12_ug') === '', `нутриент без данных обязан быть пустой ячейкой, получено «${cell('vitB12_ug')}»`)
   assert(cell('sodium_mg') !== cell('vitB12_ug'), 'честный ноль и «нет данных» обязаны различаться в CSV')
@@ -382,7 +448,7 @@ function clipboardNutrientsChecks(): void {
   assert(text.includes('12.0 г') || text.includes('12.00 г'), `клетчатка печатается с единицей, получено:\n${text}`)
   assert(text.includes(`Витамин B12: ${NO_DATA_TEXT}`), `неизвестный нутриент печатается словами «${NO_DATA_TEXT}», получено:\n${text}`)
   assert(!text.includes('Витамин B12: 0'), 'неизвестный нутриент нельзя печатать нулём')
-  assert(text.includes('Натрий: 0.000 мг'), `честный ноль печатается нулём, получено:\n${text}`)
+  assert(text.includes('Натрий: 0 мг'), `честный ноль печатается нулём, получено:\n${text}`)
   assert(/Витамин K: 40[.,]?\d* мкг \(известно по 2 из 3 позиций\)/.test(text),
     `неполный нутриент печатается с пометкой полноты, получено:\n${text}`)
 
@@ -467,6 +533,7 @@ function healthNoTypeNutrientsChecks(): void {
 
 async function main(): Promise<void> {
   console.log('Export — clipboard/CSV/Health каналы, форматирование, реестр')
+  formatNutrientAmountChecks()
   mealClipboardTextChecks()
   dayClipboardTextChecks()
   csvChecks()
@@ -482,6 +549,8 @@ async function main(): Promise<void> {
   readCallbackChecks()
   buildChannelsChecks()
   await sendViaChannelChecks()
+  skippedMealAvailabilityChecks()
+  await skippedMealSendChecks()
   console.log(`\nВсе проверки экспорта пройдены (${passed} групп).`)
 }
 

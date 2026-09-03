@@ -50,7 +50,12 @@ export type ExportResult =
 export interface ExportChannel {
   id: string
   title: string
-  /** Зовётся при каждом открытии шторки экспорта, синхронно. */
-  availability(): Availability
+  /** Зовётся при каждом открытии шторки экспорта, синхронно. Payload — опция:
+      собственная доступность канала (браузер, iOS, имя команды) от него не
+      зависит, её проверяют без аргумента. Полезную нагрузку передаёт
+      sendViaChannel — там, где доступность зависит ещё и от того, ЧТО именно
+      отправляем (см. index.ts: buildChannels оборачивает каждый канал общей
+      проверкой «приём пропущен — выгружать нечего»). */
+  availability(payload?: ExportPayload): Availability
   send(payload: ExportPayload): Promise<ExportResult>
 }

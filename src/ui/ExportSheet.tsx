@@ -115,7 +115,11 @@ export default function ExportSheet({ payload, channels, onConfirmed }: ExportSh
 
       <div className="export-sheet__channels">
         {channels.map(channel => {
-          const avail = channel.availability()
+          // Payload передан: недоступность может зависеть не только от канала,
+          // но и от того, что отправляем (пропущенный приём — см. withSkippedGuard
+          // в core/export/index.ts). Без payload причина появлялась бы только
+          // после нажатия «выгрузить», хотя была известна уже при отрисовке.
+          const avail = channel.availability(payload)
           if (!avail.available) {
             return (
               <div key={channel.id} className="export-channel export-channel--disabled">

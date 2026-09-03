@@ -271,6 +271,16 @@ function coverageNotComparableChecks(): void {
   group('weekCoverage: comparable: false (вода) даёт состояние not-comparable и ratio null')
 }
 
+/** Записывает все четыре приёма дня одним и тем же блюдом: день выходит полным
+    по приёмам, и на partialDays влияет только полнота внутри нутриента. */
+function logFullDay(state: AppState, date: string, cycleDay: number, m: Meal, idx: ProductIndex): AppState {
+  let result = state
+  for (const slot of ['breakfast', 'lunch', 'dinner', 'snack'] as Slot[]) {
+    result = logMeal(result, date, slot, { ...m, slot }, idx, 'eaten', 1, cycleDay, 't')
+  }
+  return result
+}
+
 function coveragePartialDaysChecks(): void {
   const idx = products(
     product('a', { kcal: 400, p: 20, f: 10, c: 40 }, { fiber: 10 }),
@@ -285,20 +295,93 @@ function coveragePartialDaysChecks(): void {
       { product: 'b', g: 100, where: 'container' }
     ]
   }
+  // оба дня записаны целиком (4 приёма из 4), чтобы partialDays мерил ровно
+  // полноту внутри нутриента, а не неполноту дня по приёмам
   let state = emptyState()
-  state = logMeal(state, '2026-08-06', 'lunch', meal('lunch', 'обед', 'a'), idx, 'eaten', 1, 6, 't')
-  state = logMeal(state, '2026-08-07', 'lunch', twoItemMeal, idx, 'eaten', 1, 7, 't')
+  state = logFullDay(state, '2026-08-06', 6, meal('lunch', 'обед', 'a'), idx)
+  state = logFullDay(state, '2026-08-07', 7, twoItemMeal, idx)
 
   const week = weekSummary(state.log, '2026-08-07', 7)
   const coverage = weekCoverage(week, { fiber: norm(10) })
   const fiber = coverage.find((c) => c.key === 'fiber')!
 
+  assert(week.incompleteDays === 0, `оба дня записаны целиком, incompleteDays ожидался 0, получено ${week.incompleteDays}`)
   assert(fiber.daysWithData === 2, `daysWithData клетчатки ожидался 2, получено ${fiber.daysWithData}`)
   assert(fiber.partialDays === 1, `partialDays ожидался 1 (один из двух дней собран не по всем позициям), получено ${fiber.partialDays}`)
-  assert(fiber.value === 20, `сумма клетчатки за оба дня ожидалась 20, получено ${fiber.value}`)
+  assert(fiber.value === 80, `сумма клетчатки за оба дня ожидалась 40 + 40 = 80, получено ${fiber.value}`)
   assert(fiber.norm === 20, `норма окна ожидалась 10 * 2 = 20, получено ${fiber.norm}`)
 
   group('weekCoverage: partialDays считает дни с неполной суммой (known < total), не отменяя value')
+}
+
+// ---- неполнота дня по приёмам ----------------------------------------------------
+
+/* День, в котором записан один приём из четырёх, нельзя мерить полной суточной
+   нормой: съедено было больше, чем записано, и сумма — нижняя граница. Раньше
+   неделя об этом молчала: missingSlots были посчитаны и не использованы. */
+function incompleteDaysChecks(): void {
+  const idx = products(product('a', { kcal: 400, p: 20, f: 10, c: 40 }, { fiber: 10 }))
+  let state = emptyState()
+  state = logMeal(state, '2026-08-07', 'lunch', meal('lunch', 'обед', 'a'), idx, 'eaten', 1, 7, 't')
+
+  const week = weekSummary(state.log, '2026-08-07', 7)
+  assert(week.daysWithLog === 1, `дней с записями ожидался 1, получено ${week.daysWithLog}`)
+  assert(week.incompleteDays === 1, `день с одним приёмом из четырёх — неполный, incompleteDays ожидался 1, получено ${week.incompleteDays}`)
+  assert(week.loggedSlots === 1, `loggedSlots ожидался 1, получено ${week.loggedSlots}`)
+  assert(week.expectedSlots === 4, `expectedSlots ожидался 4 (4 приёма × 1 день с записями), получено ${week.expectedSlots}`)
+
+  const coverage = weekCoverage(week, { fiber: norm(10) })
+  const fiber = coverage.find((c) => c.key === 'fiber')!
+  assert(fiber.daysWithData === 1, `daysWithData клетчатки ожидался 1, получено ${fiber.daysWithData}`)
+  assert(fiber.partialDays >= 1, `день с недописанными приёмами обязан считаться неполным, partialDays получено ${fiber.partialDays}`)
+
+  group('неполнота дня по приёмам: incompleteDays/loggedSlots/expectedSlots и partialDays в покрытии')
+}
+
+/* Пропуск — тоже статус: день «три съедено, один пропущен» дописан до конца, и
+   помечать его неполным значило бы требовать от человека есть всё подряд. */
+function skippedSlotCompletesDayChecks(): void {
+  const idx = products(product('a', { kcal: 400, p: 20, f: 10, c: 40 }, { fiber: 10 }))
+  let state = emptyState()
+  state = logMeal(state, '2026-08-07', 'breakfast', meal('breakfast', 'завтрак', 'a'), idx, 'eaten', 1, 7, 't')
+  state = logMeal(state, '2026-08-07', 'lunch', meal('lunch', 'обед', 'a'), idx, 'eaten', 1, 7, 't')
+  state = logMeal(state, '2026-08-07', 'dinner', meal('dinner', 'ужин', 'a'), idx, 'eaten', 1, 7, 't')
+  state = logMeal(state, '2026-08-07', 'snack', meal('snack', 'перекус', 'a'), idx, 'skipped', 0, 7, 't')
+
+  const week = weekSummary(state.log, '2026-08-07', 7)
+  assert(week.incompleteDays === 0, `день, где 3 записано и 1 пропущен, полон: incompleteDays ожидался 0, получено ${week.incompleteDays}`)
+  assert(week.loggedSlots === 4 && week.expectedSlots === 4,
+    `все четыре приёма получили статус, ожидалось 4 из 4, получено ${week.loggedSlots} из ${week.expectedSlots}`)
+
+  const coverage = weekCoverage(week, { fiber: norm(10) })
+  const fiber = coverage.find((c) => c.key === 'fiber')!
+  assert(fiber.value === 30, `клетчатка ожидалась 30 (три съеденных приёма по 10), получено ${fiber.value}`)
+  assert(fiber.partialDays === 0, `полный день не может считаться неполным, partialDays получено ${fiber.partialDays}`)
+
+  group('пропущенный приём — тоже статус: день из 3 съеденных и 1 пропущенного полон')
+}
+
+/* День, в котором не осталось ни одной записи (отмена последнего приёма в старом
+   хранилище, санитизация выбросила все записи), — день БЕЗ записей. Считать его
+   записанным значит делить среднее за неделю на лишний день: два дня по 3000 и
+   один пустой давали «2000 в среднем». */
+function emptyDayIsNotZeroDayChecks(): void {
+  const idx = products(product('a', { kcal: 3000, p: 150, f: 100, c: 300 }))
+  let state = emptyState()
+  state = logFullDay(state, '2026-08-06', 6, meal('lunch', 'день', 'a'), idx)
+  state = logFullDay(state, '2026-08-07', 7, meal('lunch', 'день', 'a'), idx)
+  // день с ключом, но без единой записи — так выглядит отменённый день в старом хранилище
+  state = { ...state, log: { ...state.log, '2026-08-05': { cycleDay: 5, meals: {} } } }
+
+  const week = weekSummary(state.log, '2026-08-07', 7)
+  const emptyDay = week.days.find((d) => d.date === '2026-08-05')!
+
+  assert(emptyDay.hasLog === false, 'день с пустым meals не считается записанным')
+  assert(emptyDay.nutrients === null, 'у дня без записей нет и сумм нутриентов')
+  assert(week.daysWithLog === 2, `дней с записями ожидалось 2, получено ${week.daysWithLog}`)
+  assert(week.avgKcal === 12000, `среднее не должно делиться на пустой день: ожидалось 12000, получено ${week.avgKcal}`)
+
+  group('день с ключом даты, но без записей, не входит в средние и не занижает их')
 }
 
 // ---- weekCoverage: ul за окно, overUl -------------------------------------------
@@ -378,6 +461,9 @@ function main(): void {
   coverageNoNormChecks()
   coverageNotComparableChecks()
   coveragePartialDaysChecks()
+  incompleteDaysChecks()
+  skippedSlotCompletesDayChecks()
+  emptyDayIsNotZeroDayChecks()
   coverageUlChecks()
   coverageUlNotExceededChecks()
   coverageCdrrChecks()

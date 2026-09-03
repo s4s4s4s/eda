@@ -5,6 +5,7 @@
    так, будто съеденное было измерено и оказалось пустым. */
 
 import { dayNutrientTotals, dayTotal } from './log'
+import { isKnown } from './nutrition'
 import type { CoverageState } from './norms'
 import { NUTRIENT_KEYS, SLOTS } from './types'
 import type { AppState, DayLog, Kbju, NutrientKey, NutrientNorms, NutrientTotals, Slot } from './types'
@@ -31,6 +32,18 @@ export interface WeekNutrient {
 export interface WeekSummary {
   days: DaySummary[]
   daysWithLog: number
+  /** Дни с записями, в которых статус получили НЕ все приёмы (missingSlots не
+      пуст). Такой день сравнивать с суточной нормой можно только как нижнюю
+      границу: часть еды в него просто не записана. Пропуск — тоже статус, день
+      «три съедено, один пропущен» полон. */
+  incompleteDays: number
+  /** Сколько приёмов получило статус по дням с записями. */
+  loggedSlots: number
+  /** Сколько приёмов должно было получить статус: SLOTS.length × daysWithLog.
+      Считается по дням с записями, а не по всему окну: день без записей вообще
+      не входит ни в одно среднее (см. шапку файла), и требовать от него
+      четырёх статусов значило бы мерить его как недоеденный. */
+  expectedSlots: number
   avgKcal: number | null
   avgProteinG: number | null
   nutrients: WeekNutrient[]
@@ -49,7 +62,12 @@ export interface WeekCoverage {
   daysWithData: number
   /** Дней в окне всего (для подписи «из 7»). */
   dayCount: number
-  /** Сколько из daysWithData несли неполную сумму (known < total). */
+  /** Сколько из daysWithData несли неполное число. День неполон по двум разным
+      причинам, и обе означают одно: сумма — нижняя граница, а не значение.
+      Первая — неполнота внутри нутриента (known < total): часть позиций дня
+      этого нутриента не знает. Вторая — неполнота дня по приёмам (у дня есть
+      missingSlots): еда была, но в дневник попала не вся, и норма суток
+      требуется с дня, где записан один приём из четырёх. */
   partialDays: number
   /** Норма за daysWithData дней; null — нормы нет или сравнивать нельзя. */
   norm: number | null
@@ -90,8 +108,12 @@ function addDaysLocal(dateStr: string, offsetDays: number): string {
   return utcNoonToLocalDate(localDateToUtcNoon(dateStr) + offsetDays * 86_400_000)
 }
 
+/* День считается записанным по НАЛИЧИЮ ХОТЯ БЫ ОДНОЙ записи, а не по наличию
+   ключа даты в дневнике. Ключ переживает и отмену последней записи в старых
+   хранилищах, и санитизацию, выбросившую все записи дня как битые; день с нулём
+   приёмов, посчитанный записанным, вошёл бы в средние нулём и занизил их. */
 function summarizeDay(date: string, dayLog: DayLog | undefined): DaySummary {
-  if (!dayLog) {
+  if (!dayLog || !SLOTS.some((slot) => dayLog.meals[slot] !== undefined)) {
     return {
       date,
       cycleDay: null,
@@ -130,13 +152,17 @@ export function weekSummary(log: AppState['log'], endDate: string, dayCount = 7)
   const avgKcal = daysWithLog > 0 ? loggedDays.reduce((sum, d) => sum + d.kbju.kcal, 0) / daysWithLog : null
   const avgProteinG = daysWithLog > 0 ? loggedDays.reduce((sum, d) => sum + d.kbju.p, 0) / daysWithLog : null
 
+  const incompleteDays = loggedDays.filter((d) => d.missingSlots.length > 0).length
+  const loggedSlots = loggedDays.reduce((sum, d) => sum + d.loggedSlots.length, 0)
+  const expectedSlots = daysWithLog * SLOTS.length
+
   const nutrients: WeekNutrient[] = NUTRIENT_KEYS.map((key) => {
     let sum = 0
     let daysWithData = 0
     let partialDays = 0
     for (const d of loggedDays) {
       const total = d.nutrients![key]
-      if (total.known > 0) {
+      if (isKnown(total)) {
         sum += total.value
         daysWithData++
         if (total.known < total.total) partialDays++
@@ -150,7 +176,7 @@ export function weekSummary(log: AppState['log'], endDate: string, dayCount = 7)
     }
   })
 
-  return { days, daysWithLog, avgKcal, avgProteinG, nutrients }
+  return { days, daysWithLog, incompleteDays, loggedSlots, expectedSlots, avgKcal, avgProteinG, nutrients }
 }
 
 /** Итоги недели: все позиции NUTRIENT_KEYS, в их порядке, ни одна не пропущена.
@@ -167,10 +193,12 @@ export function weekCoverage(summary: WeekSummary, norms: NutrientNorms): WeekCo
     let partialDays = 0
     for (const d of loggedDays) {
       const total = d.nutrients![key]
-      if (total.known > 0) {
+      if (isKnown(total)) {
         sum += total.value
         daysWithData++
-        if (total.known < total.total) partialDays++
+        // неполнота внутри нутриента и неполнота дня по приёмам — разные причины
+        // одного и того же: показанное число меньше съеденного, см. partialDays.
+        if (total.known < total.total || d.missingSlots.length > 0) partialDays++
       }
     }
 

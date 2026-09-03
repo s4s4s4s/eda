@@ -114,6 +114,31 @@ function ratingChecks(): void {
   group('rateDish: невалидный балл и пустой mealId бросают ошибку с внятным текстом')
 }
 
+// ---- ratedAt не перетирается правкой комментария при том же балле ---------
+
+function ratedAtChecks(): void {
+  const firstAt = '2026-08-30T12:00:00.000Z'
+  const laterAt = '2026-08-30T12:05:00.000Z'
+
+  let prefs = emptyPreferences()
+  prefs = rateDish(prefs, 'oats-classic', 7, 'солоно', firstAt)
+  assert(ratingOf(prefs, 'oats-classic')!.ratedAt === firstAt, 'первая оценка ставит ratedAt = время записи')
+
+  // правка одного комментария при том же балле, позже по времени — ratedAt не двигается.
+  const sameScoreEdited = rateDish(prefs, 'oats-classic', 7, 'солоновато, но съедобно', laterAt)
+  const afterEdit = ratingOf(sameScoreEdited, 'oats-classic')!
+  assert(afterEdit.comment === 'солоновато, но съедобно', 'комментарий обновляется')
+  assert(afterEdit.ratedAt === firstAt, `ratedAt должен остаться прежним при том же балле, получено ${afterEdit.ratedAt}`)
+  group('rateDish: правка комментария при том же балле НЕ двигает ratedAt')
+
+  // балл изменился — ratedAt обязан обновиться.
+  const scoreChanged = rateDish(prefs, 'oats-classic', 9, 'солоновато, но съедобно', laterAt)
+  const afterScoreChange = ratingOf(scoreChanged, 'oats-classic')!
+  assert(afterScoreChange.score === 9, 'балл обновился')
+  assert(afterScoreChange.ratedAt === laterAt, `ratedAt должен обновиться при смене балла, получено ${afterScoreChange.ratedAt}`)
+  group('rateDish: смена балла двигает ratedAt')
+}
+
 // ---- отметки приёма --------------------------------------------------------
 
 function mealStancesChecks(): void {
@@ -144,6 +169,7 @@ function main(): void {
   emptyChecks()
   stanceChecks()
   ratingChecks()
+  ratedAtChecks()
   mealStancesChecks()
   console.log(`\nВсе проверки preferences пройдены (${passed} групп).`)
 }

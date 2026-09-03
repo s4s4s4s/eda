@@ -8,7 +8,7 @@ import { useState } from 'react'
 import {
   BREAKFAST_START_MIN, DINNER_START_MIN, formatDateFull, LUNCH_START_MIN, SNACK_START_MIN
 } from '../core/cycle.ts'
-import { itemGrams } from '../core/nutrition.ts'
+import { addNutrientTotals, itemGrams } from '../core/nutrition.ts'
 import { nutrientCoverage } from '../core/norms.ts'
 import type { NutrientCoverage } from '../core/norms.ts'
 import { formatNutrientAmount, NO_DATA_TEXT } from '../core/export/format.ts'
@@ -31,6 +31,16 @@ export interface DaySlotProgress {
   plannedKcal: number
   eatenKcal: number
   status: MealStatus | undefined
+  /** Доля записанного приёма — та же величина, что и `MealLogEntry.fraction`.
+      Нужна, чтобы строка-подпись под «Микронутриентами» могла написать
+      «обед (½)» так же, как подписаны варианты в панели действий. Пока
+      `status === undefined`, значение не читается. */
+  fraction: number | undefined
+  /** Ревизия справочника, по которой посчитан снапшот этой записи — та же
+      величина, что и `MealLogEntry.productsRevision`. undefined значит либо
+      «слот не записан», либо «запись сделана до появления ревизии» — оба
+      случая читаются одинаково: по каким числам считано, неизвестно. */
+  productsRevision: string | undefined
 }
 
 interface MealScreenProps {
@@ -45,7 +55,10 @@ interface MealScreenProps {
   currentSlot: Slot
   onSelectSlot: (slot: Slot) => void
   meal: Meal | undefined
-  mealKbju: Kbju
+  /** КБЖУ приёма — из меню, если оно есть, иначе из снапшота записи
+      (entry.kbju), иначе undefined. undefined — не «нули», а «нечего
+      показать»: карточка КБЖУ в этом случае не рисуется вовсе. */
+  mealKbju: Kbju | undefined
   /** Сумма нутриентов приёма вместе с полнотой: неизвестное здесь не ноль. */
   mealNutrients: NutrientTotals
   /** Сумма нутриентов за весь день — единственное, с чем можно сравнивать
@@ -60,6 +73,11 @@ interface MealScreenProps {
       ничего не пересчитывает. */
   verdict: MealVerdict
   entry: MealLogEntry | undefined
+  /** Текущая ревизия справочника продуктов (data/products.yaml, поле revision).
+      Сравнивается с `entry.productsRevision`/`DaySlotProgress.productsRevision`:
+      справочник правится, а снапшот записи — нет, и расхождение стоит
+      показать, а не спрятать за одинаково выглядящими числами. */
+  productsRevision: string
   /** Оценка блюда по горячим следам. undefined — «не оценено». Блок оценки
       вообще не рисуется, пока приём не записан или у блюда нет id. */
   rating: DishRating | undefined
@@ -85,6 +103,15 @@ interface MealScreenProps {
   onOpenDayExport: () => void
   /** Открыть книгу предпочтений. */
   onOpenBook: () => void
+  /** Дата первого дня цикла (Settings.cycleStartDate) — баннер первого
+      запуска печатает её словами, а не выдуманным «сегодня — день 1»: дата
+      подставлена при установке и может уже разойтись с сегодня. */
+  cycleStartDate: string
+  /** Подтверждена ли дата первого дня цикла. Пока false, над содержимым
+      висит баннер первого запуска (см. DESIGN.md). */
+  cycleStartConfirmed: boolean
+  /** Кнопка «Всё верно» в баннере первого запуска — дату не трогает. */
+  onConfirmCycleStart: () => void
 }
 
 const FRACTIONS: { value: number; label: string }[] = [
@@ -263,12 +290,56 @@ function DayProtein({ eatenG, targetG }: { eatenG: number; targetG: number }) {
 }
 
 /** Режим списка нутриентов. Нормы суточные, поэтому процент считается только
-    за день; «этот приём» показывает те же строки без полос и процентов. */
-type NutrientsMode = 'day' | 'meal'
+    за день или за проекцию дня; «этот приём» показывает те же строки без
+    полос и процентов.
+    - `day` — сумма записанных в дневник приёмов.
+    - `projected` — та же сумма плюс текущий приём целиком, то есть каким
+      станет день, если его съесть. Существует только пока текущий приём
+      есть в меню и ещё не записан — записанный приём день уже содержит.
+    - `meal` — только текущий приём, без процентов: сравнивать его с
+      суточной нормой было бы враньём. */
+type NutrientsMode = 'day' | 'projected' | 'meal'
 
 const MODE_LABEL: Record<NutrientsMode, string> = {
   day: 'за день',
+  projected: 'с этим приёмом',
   meal: 'этот приём'
+}
+
+/** Доля приёма человеческими словами — тот же словарь долей, что и в
+    панели действий (`FRACTIONS`), чтобы «½» значило одно и то же везде. */
+function fractionLabel(fraction: number): string {
+  return FRACTIONS.find(f => f.value === fraction)?.label ?? String(fraction)
+}
+
+/** Строка-подпись под чипами режимов: что именно вошло в сумму. `day` и
+    `projected` перечисляют записанные слоты дня по порядку `SLOTS`,
+    приём со статусом «съел часть» — с долей; `projected` дописывает
+    текущий приём отдельно, потому что он в дневник ещё не попал.
+
+    Если среди записанных слотов дня есть хоть один со снапшотом по чужой или
+    отсутствующей ревизии справочника, подпись коротко предупреждает об этом:
+    подробности — в meal-revision-note у самой записи (см. `revisionNote`),
+    здесь только флаг, что день считает по смеси справочников. */
+function nutrientsCaption(mode: NutrientsMode, daySlots: DaySlotProgress[], productsRevision: string): string {
+  if (mode === 'meal') return ''
+  const loggedSlots = daySlots.filter(s => s.status !== undefined)
+  const parts = loggedSlots.map(s => {
+    const name = SLOT_TITLE[s.slot].toLowerCase()
+    /* Пропущенный приём в дневнике есть, а в сумме его нет — назвать его
+       просто «записано: обед» значило бы сказать, что обед в числах. */
+    if (s.status === 'skipped') return `${name} (пропущен)`
+    if (s.status === 'partial' && s.fraction !== undefined) return `${name} (${fractionLabel(s.fraction)})`
+    return name
+  })
+  const base = parts.length > 0 ? `записано: ${parts.join(', ')}` : 'за день пока ничего не записано'
+  const withProjected = mode === 'projected' ? `${base} + этот приём (не записан)` : base
+  // Пропущенный приём в сумму дня не входит (см. комментарий выше и
+  // scaleNutrientTotals) — его ревизия справочника не влияет на то, по каким
+  // числам посчитана сама сумма, и не должна включать оговорку о смеси
+  // справочников. Проверяем только слоты, реально вошедшие в сумму.
+  const hasOldRevision = loggedSlots.some(s => s.status !== 'skipped' && s.productsRevision !== productsRevision)
+  return hasOldRevision ? `${withProjected} · часть записей по прежнему справочнику` : withProjected
 }
 
 /** Одна строка покрытия. Что видно и чего не видно в каждом состоянии — таблица
@@ -295,6 +366,11 @@ function NutrientRow({
   const hints: string[] = []
   if (cov.partial) hints.push(`сумма по ${cov.known} из ${cov.total} позиций`)
   if (norm?.note) hints.push(norm.note)
+  /* AI (адекватное потребление) — не то же самое, что RDA: это ориентир там,
+     где источнику не хватило данных на полноценную норму, а не измеренная
+     потребность. Суффикс у процента виден сразу, сноска объясняет его смысл
+     тому, кто нажмёт строку. */
+  if (norm?.basis === 'ai') hints.push('AI — адекватное потребление: ориентир, а не норма; данных на RDA у источника не хватило')
 
   const classes = ['nutrient']
   if (state === 'no-data') classes.push('nutrient--unknown')
@@ -305,7 +381,12 @@ function NutrientRow({
       <span className="nutrient__name">{NUTRIENT_TITLE[key]}</span>
       <span className="nutrient__value">
         {value === null ? NO_DATA_TEXT : `${formatNutrientAmount(value)} ${unit}`}
-        {showBar && <span className="nutrient__pct">{Math.round(ratio * 100)} %</span>}
+        {showBar && (
+          <span className="nutrient__pct">
+            {Math.round(ratio * 100)} %
+            {norm?.basis === 'ai' && <span className="nutrient__basis">AI</span>}
+          </span>
+        )}
         {/* Сравнивать нельзя — вместо выдуманного процента стоит сама норма, а
             причина, по которой процента не будет, раскрыта сноской. */}
         {withCoverage && state === 'not-comparable' && norm !== null && (
@@ -349,22 +430,49 @@ function NutrientRow({
     её значило бы сказать «этого в еде нет», а пустая дорожка читалась бы как
     измеренный ноль, поэтому её там нет вовсе. */
 function NutrientsBlock({
-  dayTotals, mealTotals, norms
+  dayTotals, mealTotals, norms, hasMeal, hasEntry, daySlots, productsRevision
 }: {
   dayTotals: NutrientTotals
   mealTotals: NutrientTotals
   norms: NutrientNorms
+  /** Есть ли блюдо на этот приём в меню — без него нечего проецировать. */
+  hasMeal: boolean
+  /** Записан ли текущий приём в дневник (в том числе «съел часть» — доля
+      уже входит в `dayTotals`, и проекция была бы двойным счётом). */
+  hasEntry: boolean
+  /** Все четыре слота дня — источник строки-подписи «записано: …». */
+  daySlots: DaySlotProgress[]
+  /** Текущая ревизия справочника — нужна подписи, чтобы заметить смесь
+      справочников в записях дня (см. nutrientsCaption). */
+  productsRevision: string
 }) {
   /* Раскрытие держим в состоянии, а не отдаём браузеру: иконка рисуется двумя
      разными путями, и React должен знать, какой из них показывать. */
   const [open, setOpen] = useState(false)
-  const [mode, setMode] = useState<NutrientsMode>('day')
+  /* `projected` существует, только пока приём есть и ещё не записан: тогда
+     день без него ничего не объясняет, и это разумный режим по умолчанию.
+     Записанный приём день уже содержит — по умолчанию открываем `day`. */
+  const showProjected = hasMeal && !hasEntry
+  const [mode, setMode] = useState<NutrientsMode>(showProjected ? 'projected' : 'day')
   /* Сноска, раскрытая или закрытая рукой. Ключа нет — работает правило по
      умолчанию: то, что объясняет видимое прямо сейчас, раскрыто сразу. */
   const [notes, setNotes] = useState<Record<string, boolean>>({})
 
-  const withCoverage = mode === 'day'
-  const rows = nutrientCoverage(withCoverage ? dayTotals : mealTotals, norms)
+  const modes: NutrientsMode[] = showProjected ? ['day', 'projected', 'meal'] : ['day', 'meal']
+  /* Режим мог перестать существовать (приём записали, пока панель была
+     открыта) — родитель пересоздаёт блок через key при смене приёма или дня,
+     но не при смене статуса записи того же приёма, поэтому подстраховка нужна
+     здесь: невозможный режим откатывается на `day`, а не показывает проекцию
+     задним числом. */
+  const effectiveMode: NutrientsMode = modes.includes(mode) ? mode : 'day'
+
+  const withCoverage = effectiveMode === 'day' || effectiveMode === 'projected'
+  const totals = effectiveMode === 'day'
+    ? dayTotals
+    : effectiveMode === 'projected'
+      ? addNutrientTotals(dayTotals, mealTotals)
+      : mealTotals
+  const rows = nutrientCoverage(totals, norms)
 
   const unknown = rows.filter(c => c.state === 'no-data').length
   const partial = rows.filter(c => c.partial).length
@@ -374,7 +482,17 @@ function NutrientsBlock({
   const met = rows.filter(c => c.ratio !== null && c.ratio >= 1).length
 
   const summaryHints: string[] = []
-  if (withCoverage) summaryHints.push(`набрано ${met} из ${comparableNorms}`)
+  if (withCoverage) {
+    /* «Набрано 0 из 26» на дне без единой записи звучит как измеренный ноль —
+       на деле измерять было нечего. `projected` сюда не попадает: приём в
+       проекции уже есть, и unknown === rows.length означал бы, что и он без
+       единого известного нутриента, — тогда доля набранного честна как есть. */
+    if (effectiveMode === 'day' && unknown === rows.length) {
+      summaryHints.push('данных за день нет')
+    } else {
+      summaryHints.push(`набрано ${met} из ${comparableNorms}`)
+    }
+  }
   if (partial > 0) summaryHints.push(`неполных ${partial}`)
   if (unknown > 0) summaryHints.push(`без данных ${unknown}`)
 
@@ -393,12 +511,12 @@ function NutrientsBlock({
       </summary>
 
       <div className="meal-nutrients__modes">
-        {(['day', 'meal'] as NutrientsMode[]).map(m => (
+        {modes.map(m => (
           <button
             key={m}
             type="button"
-            className={`chip chip--tap${m === mode ? ' chip--selected' : ''}`}
-            aria-pressed={m === mode}
+            className={`chip chip--tap${m === effectiveMode ? ' chip--selected' : ''}`}
+            aria-pressed={m === effectiveMode}
             onClick={() => setMode(m)}
           >
             {MODE_LABEL[m]}
@@ -406,9 +524,9 @@ function NutrientsBlock({
         ))}
       </div>
 
-      {!withCoverage && (
-        <p className="meal-nutrients__note">нормы суточные — процент показан только за день</p>
-      )}
+      {effectiveMode === 'meal'
+        ? <p className="meal-nutrients__note">нормы суточные — процент показан только за день</p>
+        : <p className="meal-nutrients__note">{nutrientsCaption(effectiveMode, daySlots, productsRevision)}</p>}
 
       <div className="meal-nutrients__list">
         {NUTRIENT_GROUP_ORDER.map(group => {
@@ -424,7 +542,7 @@ function NutrientsBlock({
                     || (withCoverage && cov.value !== null && cov.norm.cdrr !== undefined
                       && cov.value > cov.norm.cdrr)
                   )
-                  const noteKey = `${mode}:${cov.key}`
+                  const noteKey = `${effectiveMode}:${cov.key}`
                   return (
                     <NutrientRow
                       key={cov.key}
@@ -451,12 +569,19 @@ function productName(id: string, products: ProductIndex): string {
   return products.get(id)?.name ?? id
 }
 
-/** Строка плюса — человеческими словами, без ключей и долей в сыром виде. */
-function plusLabel(plus: MealPlus, products: ProductIndex): string {
+/** Строка плюса — человеческими словами, без ключей и долей в сыром виде.
+    Норма с основанием AI (адекватное потребление) — не суточная норма в
+    строгом смысле, и текст обязан это сказать: «% суточной нормы» для неё
+    было бы враньём того же рода, что «набрано 0 из 26» на пустом дне. */
+function plusLabel(plus: MealPlus, products: ProductIndex, norms: NutrientNorms): string {
   if (plus.kind === 'loved') {
     return `любимое: ${plus.products.map(id => productName(id, products)).join(', ')}`
   }
-  return `${NUTRIENT_TITLE[plus.key]} — ${Math.round(plus.ratio * 100)} % суточной нормы`
+  const pct = Math.round(plus.ratio * 100)
+  const isAi = norms[plus.key]?.basis === 'ai'
+  return isAi
+    ? `${NUTRIENT_TITLE[plus.key]} — ${pct} % ориентира (AI)`
+    : `${NUTRIENT_TITLE[plus.key]} — ${pct} % суточной нормы`
 }
 
 /** Строка минуса. `low-coverage` и `sodium-cdrr` объясняются отдельно — оба
@@ -482,25 +607,54 @@ function minusLabel(minus: MealMinus, products: ProductIndex): string {
 
 /** Плюсы и минусы приёма — DESIGN.md, раздел «Плюсы и минусы приёма». Блок
     рисуется только при наличии, и каждая колонка отдельно: «сказать нечего»
-    и «всё плохо» не имеют права выглядеть одинаково. */
-function MealVerdictBlock({ verdict, products }: { verdict: MealVerdict; products: ProductIndex }) {
+    и «всё плохо» не имеют права выглядеть одинаково.
+
+    Заголовки и сам факт наличия блока зависят от того, что именно посчитано:
+    - приём пропущен (`entry.status === 'skipped'`) — считать нечего вообще
+      (App.tsx отдаёт `verdict` пустым), и вместо колонок одна строка;
+    - «съел часть» — вердикт посчитан по доле снапшота, заголовки называют
+      это прямо («Плюсы съеденного (½)»), а не «Плюсы приёма», который читался
+      бы как весь приём целиком;
+    - «съел целиком» и «ещё не записан» — заголовки как раньше: съеденное
+      целиком неотличимо от приёма, а не начатое — это и есть приём. */
+function MealVerdictBlock({
+  verdict, products, norms, entry
+}: {
+  verdict: MealVerdict
+  products: ProductIndex
+  norms: NutrientNorms
+  entry: MealLogEntry | undefined
+}) {
+  if (entry && entry.status === 'skipped') {
+    return (
+      <section className="meal-verdict">
+        <p className="meal-verdict__skipped">приём пропущен — плюсов и минусов нет</p>
+      </section>
+    )
+  }
+
   const { pros, cons } = verdict
   if (pros.length === 0 && cons.length === 0) return null
+
+  const partialSuffix = entry && entry.status === 'partial' ? ` (${fractionLabel(entry.fraction)})` : ''
+  const prosTitle = partialSuffix ? `Плюсы съеденного${partialSuffix}` : 'Плюсы приёма'
+  const consTitle = partialSuffix ? `Минусы съеденного${partialSuffix}` : 'Минусы приёма'
+
   return (
     <section className="meal-verdict">
       {pros.length > 0 && (
         <div className="meal-verdict__col">
-          <h2 className="meal-verdict__title meal-verdict__title--pro">Плюсы</h2>
+          <h2 className="meal-verdict__title meal-verdict__title--pro">{prosTitle}</h2>
           <ul className="meal-verdict__list">
             {pros.map((p, i) => (
-              <li key={i} className="meal-verdict__item">{plusLabel(p, products)}</li>
+              <li key={i} className="meal-verdict__item">{plusLabel(p, products, norms)}</li>
             ))}
           </ul>
         </div>
       )}
       {cons.length > 0 && (
         <div className="meal-verdict__col">
-          <h2 className="meal-verdict__title meal-verdict__title--con">Минусы</h2>
+          <h2 className="meal-verdict__title meal-verdict__title--con">{consTitle}</h2>
           <ul className="meal-verdict__list">
             {cons.map((c, i) => (
               <li key={i} className="meal-verdict__item">{minusLabel(c, products)}</li>
@@ -515,8 +669,9 @@ function MealVerdictBlock({ verdict, products }: { verdict: MealVerdict; product
 export default function MealScreen({
   date, cycleDayNum, cycleDays, batchDayNum, slot, currentSlot, onSelectSlot,
   meal, mealKbju, mealNutrients, dayNutrients, norms, products, preferences, verdict,
-  entry, rating, onRate, onClearRating, daySlots,
+  entry, productsRevision, rating, onRate, onClearRating, daySlots,
   dayEatenKcal, targetKcal, dayProteinG, targetProteinG, hasDayLog,
+  cycleStartDate, cycleStartConfirmed, onConfirmCycleStart,
   onLog, onUnlog, onOpenSettings, onOpenWeek, onOpenExport, onOpenDayExport, onOpenBook
 }: MealScreenProps) {
   const [pickingFraction, setPickingFraction] = useState(false)
@@ -554,6 +709,27 @@ export default function MealScreen({
         </div>
       </header>
 
+      {!cycleStartConfirmed && (
+        <div className="cycle-start-notice" role="status">
+          <p className="cycle-start-notice__text">
+            {/* Дата подставлена при установке и могла разойтись с сегодня —
+                баннер печатает факт из data, а не застывшую фразу «сегодня —
+                день 1», которая перестаёт быть правдой уже через сутки. */}
+            Дата первого дня цикла подставлена при установке: {formatDateFull(cycleStartDate)}.
+            Сегодня по ней — день {cycleDayNum} из {cycleDays}.
+            Если цикл начался в другой день — поправь дату.
+          </p>
+          <div className="cycle-start-notice__actions">
+            <button type="button" className="btn btn--secondary" onClick={onOpenSettings}>
+              Открыть настройки
+            </button>
+            <button type="button" className="btn btn--primary" onClick={onConfirmCycleStart}>
+              Всё верно
+            </button>
+          </div>
+        </div>
+      )}
+
       <nav className="slot-switch">
         {SLOTS.map(s => (
           <button
@@ -572,7 +748,7 @@ export default function MealScreen({
       </nav>
 
       <div className="meal-title">
-        <h1 className="meal-title__name">{meal ? meal.title : SLOT_TITLE[slot]}</h1>
+        <h1 className="meal-title__name">{meal ? meal.title : (entry ? entry.title : SLOT_TITLE[slot])}</h1>
         <div className="meal-title__meta">
           <span className="meal-title__time nums">{SLOT_TIME_RANGE[slot]}</span>
           {isCurrentSlot
@@ -584,6 +760,10 @@ export default function MealScreen({
                 вернуться к текущему
               </button>
             )}
+          {/* Меню на приём пропало (правка меню, перенос блюда), а запись в
+              дневнике осталась — заголовок правдив, но не из меню, и это
+              стоит сказать явно. */}
+          {!meal && entry && <span className="meal-title__now">из записи в дневнике</span>}
         </div>
       </div>
 
@@ -622,14 +802,34 @@ export default function MealScreen({
         </>
       )}
 
-      <MealVerdictBlock verdict={verdict} products={products} />
+      <MealVerdictBlock verdict={verdict} products={products} norms={norms} entry={entry} />
 
-      <div className="meal-kbju card">
-        <div className="meal-kbju__kcal nums">{round(mealKbju.kcal)} ккал</div>
-        <div className="meal-kbju__bju nums">
-          Б {round(mealKbju.p)} · Ж {round(mealKbju.f)} · У {round(mealKbju.c)}
+      {/* Ни меню, ни записи на этот приём нет — карточке взяться неоткуда,
+          рисовать нули под видом чисел нельзя (см. DESIGN.md, «Честность»). */}
+      {mealKbju && (
+        <div className="meal-kbju card">
+          <div className="meal-kbju__kcal nums">{round(mealKbju.kcal)} ккал</div>
+          <div className="meal-kbju__bju nums">
+            Б {round(mealKbju.p)} · Ж {round(mealKbju.f)} · У {round(mealKbju.c)}
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Справочник продуктов правится (смена fdcId, новые нутриенты), а
+          снапшот записи — нет: числа записи и живого меню посчитаны по
+          разным справочникам, и это стоит сказать рядом с числами записи, а
+          не молчать под видом одинаковых цифр. Совпадает ревизия — строки
+          нет вовсе. */}
+      {entry && entry.productsRevision !== productsRevision && (
+        <p className="meal-revision-note">
+          {entry.productsRevision === undefined
+            ? 'Запись сделана до того, как приложение стало помечать ревизию справочника; '
+              + 'по каким числам она посчитана — неизвестно.'
+            : `Запись от ${formatDateFull(date)} посчитана по справочнику от `
+              + `${formatDateFull(entry.productsRevision)}; сейчас справочник от `
+              + `${formatDateFull(productsRevision)}. Записанное не пересчитывается.`}
+        </p>
+      )}
 
       <section className="day-progress">
         <div className="day-progress__head">
@@ -646,7 +846,15 @@ export default function MealScreen({
         <DayProtein eatenG={dayProteinG} targetG={targetProteinG} />
       </section>
 
-      <NutrientsBlock dayTotals={dayNutrients} mealTotals={mealNutrients} norms={norms} />
+      <NutrientsBlock
+        dayTotals={dayNutrients}
+        mealTotals={mealNutrients}
+        norms={norms}
+        hasMeal={meal !== undefined}
+        hasEntry={entry !== undefined}
+        daySlots={daySlots}
+        productsRevision={productsRevision}
+      />
 
       {(meal || entry) && (
         <div className="meal-actions">

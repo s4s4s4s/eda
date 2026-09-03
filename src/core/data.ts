@@ -63,7 +63,31 @@ function parseMicro(raw: unknown, id: string): Nutrients {
 
 interface RawProductsFile {
   source: string
+  /** Дата последней правки содержимого справочника — читает parseProductsRevision,
+      не parseProducts (см. её комментарий). Здесь только для типа: поле есть
+      на верхнем уровне рядом с products, и parseProducts обязан его игнорировать
+      как не-продукт — что он и делает, читая только raw.products. */
+  revision?: string
   products: Record<string, RawProduct>
+}
+
+/** Дата последней правки СОДЕРЖИМОГО справочника — поле revision (данные, не
+    комментарий, см. шапку data/products.yaml). Отдельная функция, а не поле
+    внутри parseProducts: сигнатура parseProducts не должна меняться — на неё
+    завязаны все текущие вызывающие (тесты, scripts/check-menu.ts), а revision
+    нужен только там, где записывается снапшот дневника (см. коммент к
+    MealLogEntry.productsRevision в types.ts). */
+const PRODUCTS_REVISION_RE = /^\d{4}-\d{2}-\d{2}$/
+
+export function parseProductsRevision(yamlText: string): string {
+  const raw = yaml.load(yamlText) as { revision?: unknown } | undefined
+  if (!raw || typeof raw !== 'object') {
+    throw new Error('Файл продуктов: не удалось разобрать')
+  }
+  if (typeof raw.revision !== 'string' || !PRODUCTS_REVISION_RE.test(raw.revision)) {
+    throw new Error(`Файл продуктов: revision должен быть датой вида ГГГГ-ММ-ДД, получено ${JSON.stringify(raw.revision)}`)
+  }
+  return raw.revision
 }
 
 export function parseProducts(yamlText: string): ProductIndex {

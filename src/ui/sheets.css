@@ -440,6 +440,16 @@
   padding: 0;
 }
 
+/* Оговорка про неполные дни над «Итогами недели» — приглушённая строка,
+   как и соседние подписи (.week-day__meals, .export-nutrient__hint): это
+   уточнение к цифрам, а не сама цифра. */
+.week-section__caveat {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-13);
+  line-height: var(--lh-text);
+  color: var(--fg-dim);
+}
+
 .week-no-data {
   margin: 0;
   padding-top: var(--space-3);

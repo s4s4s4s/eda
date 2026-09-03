@@ -75,10 +75,6 @@ function sumTagGrams(meal: Meal, products: ProductIndex, tag: string, exclude?: 
     .reduce((acc, { item }) => acc + itemGrams(item, products), 0)
 }
 
-function sumTagPieces(meal: Meal, products: ProductIndex, tag: string): number {
-  return itemsWithTag(meal, products, tag).reduce((acc, { item }) => acc + (item.pieces ?? 0), 0)
-}
-
 function mealScope(day: number, slot: Slot): Violation['scope'] {
   return { kind: 'meal', day, slot }
 }
@@ -114,14 +110,33 @@ function checkRangeGrams(
   }
 }
 
-function checkExactPieces(meal: Meal, day: number, products: ProductIndex, tag: string, norm: number, rule: string): Violation | null {
-  const actual = sumTagPieces(meal, products, tag)
-  if (itemsWithTag(meal, products, tag).length === 0) return null
-  if (Math.abs(actual - norm) <= LIMITS.gramsTolerance) return null
+/** Норма бразильского ореха задана диетологом в штуках, но позиция в меню
+    может быть записана и в штуках, и в граммах (`item.g`) — то же самое, что
+    уже сделано для льна/чиа/масла (см. LIMITS.flaxG/chiaG/dayOilG): единица
+    записи не свойство еды. Читать только `item.pieces`, как раньше, значило
+    бы видеть «0 шт.» у позиции, заданной граммами, хотя орех в приёме есть.
+    Считаем через `itemGrams` (граммы — общий знаменатель для g/pieces/tbsp),
+    норму переводим в граммы через pieceG САМОГО продукта, а не константой в
+    коде: pieceG живёт в data/products.yaml и может отличаться от 5 г, если
+    справочник поправят. Сообщение печатает и граммы, и штуки — так его можно
+    сверить с тем, что написано в меню, независимо от того, как задана позиция. */
+function checkBrazilNut(meal: Meal, day: number, products: ProductIndex): Violation | null {
+  const items = itemsWithTag(meal, products, 'brazil')
+  if (items.length === 0) return null
+
+  const pieceG = items[0].product.pieceG
+  if (pieceG === undefined) {
+    throw new Error(`Продукт «${items[0].product.name}»: не задан pieceG, а норма бразильского ореха задаётся в штуках`)
+  }
+  const normG = LIMITS.brazilPieces * pieceG
+  const actualG = items.reduce((acc, { item }) => acc + itemGrams(item, products), 0)
+  if (Math.abs(actualG - normG) <= LIMITS.gramsTolerance) return null
+
   return {
-    rule,
+    rule: 'portion.brazil',
     scope: mealScope(day, meal.slot),
-    message: `День ${day}, ${SLOT_TITLE[meal.slot]}: ${label(tag)} ${round(actual)} шт., норма ${norm} шт.`
+    message: `День ${day}, ${SLOT_TITLE[meal.slot]}: ${label('brazil')} ${round(actualG)} г `
+      + `(${round(actualG / pieceG)} шт.), норма ${round(normG)} г (${LIMITS.brazilPieces} шт.)`
   }
 }
 
@@ -150,7 +165,7 @@ function checkMeal(meal: Meal, day: number, products: ProductIndex): Violation[]
   const nuts = checkExactGrams(meal, day, products, 'nuts', LIMITS.portionG.nuts, 'portion.nuts', 'brazil')
   if (nuts) violations.push(nuts)
 
-  const brazil = checkExactPieces(meal, day, products, 'brazil', LIMITS.brazilPieces, 'portion.brazil')
+  const brazil = checkBrazilNut(meal, day, products)
   if (brazil) violations.push(brazil)
 
   const flax = checkExactGrams(meal, day, products, 'flax', LIMITS.flaxG, 'portion.flax')

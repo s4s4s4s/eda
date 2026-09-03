@@ -56,6 +56,34 @@ function daysDative(n: number): string {
   return n % 10 === 1 && n % 100 !== 11 ? 'дню' : 'дням'
 }
 
+/** Русское склонение слова «приём» по числу (приём/приёма/приёмов) — та же
+    таблица правил, что у daysWord, только другой корень: нужна для подписи
+    «N приёмов из M» у неполных дней. */
+function mealsWord(n: number): string {
+  const mod100 = n % 100
+  if (mod100 >= 11 && mod100 <= 14) return 'приёмов'
+  switch (n % 10) {
+    case 1: return 'приём'
+    case 2:
+    case 3:
+    case 4: return 'приёма'
+    default: return 'приёмов'
+  }
+}
+
+/** Согласование глагола с числом дней: «1 день записан», «2 дня записаны». */
+function loggedWord(n: number): string {
+  return n % 10 === 1 && n % 100 !== 11 ? 'записан' : 'записаны'
+}
+
+/** Краткая форма прилагательного «неполный» по числу — согласуется с числом
+    неполных дней («1 неполный», но «2 неполных» и «5 неполных»: у числительных
+    2–4 в современном русском прилагательное тоже стоит в родительном падеже
+    множественного числа, а не в форме двойственного числа). */
+function incompleteWord(n: number): string {
+  return n % 10 === 1 && n % 100 !== 11 ? 'неполный' : 'неполных'
+}
+
 /** «2026-08-30» -> «пн, 30.08». Дата уже локальная (см. core/week.ts), поэтому
     день недели читается тем же способом, каким день собирался: локальной датой,
     без прохода через UTC. */
@@ -112,11 +140,13 @@ function SummarySection({
   const avgProteinG = summary.avgProteinG as number
   const kcalPct = targetKcal > 0 ? round((avgKcal / targetKcal) * 100) : null
   const proteinPct = targetProteinG > 0 ? round((avgProteinG / targetProteinG) * 100) : null
+  const { incompleteDays } = summary
 
   return (
     <div className="week-summary">
       <p className="week-summary__line">
         В среднем за {n} {daysWord(n)} с записями: {round(avgKcal)} ккал, {round(avgProteinG)} г белка
+        {incompleteDays > 0 && ` (из них ${incompleteDays} ${loggedWord(incompleteDays)} не полностью)`}
       </p>
       {(kcalPct !== null || proteinPct !== null) && (
         <p className="week-summary__ratio">
@@ -228,6 +258,7 @@ function WeekCoverageRow({ cov }: { cov: WeekCoverage }) {
           за всю неделю (DESIGN.md, «Итоги недели»). */}
       <span className="nutrient__hint">
         по {daysWithData} {daysDative(daysWithData)} из {dayCount}
+        {partialDays > 0 && `, из них ${partialDays} ${incompleteWord(partialDays)}`}
       </span>
       {overUl && ul !== null && (
         <span className="nutrient__hint">
@@ -244,10 +275,29 @@ function WeekCoverageRow({ cov }: { cov: WeekCoverage }) {
   )
 }
 
-function WeekCoverageSection({ coverage }: { coverage: WeekCoverage[] }) {
+function WeekCoverageSection({
+  coverage,
+  incompleteDays,
+  loggedSlots,
+  expectedSlots
+}: {
+  coverage: WeekCoverage[]
+  incompleteDays: number
+  loggedSlots: number
+  expectedSlots: number
+}) {
   return (
     <section className="week-section">
       <h2 className="week-section__title">Итоги недели</h2>
+      {/* Оговорка одна на весь раздел, а не на каждую строку: неполные дни бьют
+          по всем нутриентам разом, повторять её в каждой строке было бы шумом
+          поверх того же nutrient--partial. */}
+      {incompleteDays > 0 && (
+        <p className="week-section__caveat">
+          {incompleteDays} {daysWord(incompleteDays)} {loggedWord(incompleteDays)} не полностью
+          ({loggedSlots} {mealsWord(loggedSlots)} из {expectedSlots}) — числа по ним нижняя граница, не значение
+        </p>
+      )}
       <div className="week-coverage">
         {NUTRIENT_GROUP_ORDER.map((group) => {
           const rows = coverage.filter((c) => NUTRIENT_GROUP[c.key] === group)
@@ -301,8 +351,12 @@ export default function WeekSheet({ log, today, targetKcal, targetProteinG, norm
                     <span className="nutrient__pct">{round(row.ratio * 100)}%</span>
                   </span>
                   <CoverageBar ratio={row.ratio} />
+                  {/* Знаменатель — dayCount (дни окна, «из 7»), тот же, что и в разделе
+                      «Итоги недели» ниже: два раздела считают одно и то же число
+                      дней с данными по нутриенту, и оба меряют его от окна, а не
+                      от числа записанных дней (DESIGN.md, «Итоги недели»). */}
                   <span className="nutrient__hint">
-                    по {row.daysWithData} {daysDative(row.daysWithData)} из {summary.daysWithLog}
+                    по {row.daysWithData} {daysDative(row.daysWithData)} из {summary.days.length}
                   </span>
                 </li>
               ))}
@@ -314,7 +368,14 @@ export default function WeekSheet({ log, today, targetKcal, targetProteinG, norm
           <p className="week-no-data">Нет данных: {noDataTitles.join(', ')}</p>
         )}
 
-        {summary.daysWithLog > 0 && <WeekCoverageSection coverage={coverage} />}
+        {summary.daysWithLog > 0 && (
+          <WeekCoverageSection
+            coverage={coverage}
+            incompleteDays={summary.incompleteDays}
+            loggedSlots={summary.loggedSlots}
+            expectedSlots={summary.expectedSlots}
+          />
+        )}
       </div>
     </Sheet>
   )

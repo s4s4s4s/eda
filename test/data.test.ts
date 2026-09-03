@@ -4,7 +4,7 @@
  * агента и может ещё не существовать. Гоняются node-ом после сборки esbuild:
  * `npm run test:data`.
  */
-import { parseMenu, parseProducts } from '../src/core/data'
+import { parseMenu, parseProducts, parseProductsRevision } from '../src/core/data'
 import type { ProductIndex } from '../src/core/types'
 
 let passed = 0
@@ -106,6 +106,38 @@ products:
   const p = idx.get('cottage-cheese')!
   assert(p.substitute === 'русского творога в SR Legacy нет; заменён американским cottage cheese', 'substitute должен сохраняться как есть')
   group('parseProducts: поле substitute сохраняется в структуру')
+}
+
+// ---- parseProductsRevision: дата последней правки справочника ----------------
+
+function productsRevisionChecks(): void {
+  const withRevision = `
+revision: "2026-09-03"
+products:
+  salmon:
+    name: лосось
+    fdcId: 175167
+    fdcDescription: "Fish, salmon, Atlantic, farmed, raw"
+    tags: [fish]
+    per100g: { kcal: 208, protein: 20.42, fat: 13.42, carbs: 0 }
+`
+  assert(parseProductsRevision(withRevision) === '2026-09-03',
+    `revision должен разбираться из верхнего уровня, получено «${parseProductsRevision(withRevision)}»`)
+
+  // ключ revision — не продукт: parseProducts обязан пройти мимо него и
+  // не создать запись с id «revision»
+  const idx = parseProducts(withRevision)
+  assert(idx.size === 1 && !idx.has('revision'),
+    `parseProducts не должен превращать revision в продукт, получено ${idx.size} записей: ${[...idx.keys()].join(', ')}`)
+
+  assertThrows(() => parseProductsRevision(PRODUCTS_YAML), ['revision'],
+    'parseProductsRevision: без поля revision — ошибка')
+
+  const badFormat = withRevision.replace('"2026-09-03"', '"03.09.2026"')
+  assertThrows(() => parseProductsRevision(badFormat), ['revision'],
+    'parseProductsRevision: кривой формат даты (не ГГГГ-ММ-ДД) — ошибка')
+
+  group('parseProductsRevision: разбирает ГГГГ-ММ-ДД, ошибка без поля и при кривом формате; parseProducts игнорирует revision как не-продукт')
 }
 
 // ---- меню: редакции -------------------------------------------------------------
@@ -723,6 +755,7 @@ function main(): void {
   console.log('data — парсер продуктов и меню')
   parseProductsChecks()
   substituteChecks()
+  productsRevisionChecks()
   microChecks()
   microErrorChecks()
   parseMenuValidChecks()
