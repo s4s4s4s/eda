@@ -364,6 +364,10 @@ button:disabled:active,
 }
 
 .nutrient__fill {
+  /* Заливку рисуют и как span (MealScreen), и как div (WeekSheet). Инлайновый
+     span игнорирует width и height, и полоса при любом проценте оставалась
+     пустой — display задан здесь, в примитиве, чтобы вид не зависел от тега. */
+  display: block;
   height: 100%;
   border-radius: inherit;
   background: var(--accent);

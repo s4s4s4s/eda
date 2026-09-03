@@ -120,6 +120,7 @@ dropped }`, `source: StateSource` = `'stored' | 'default' | 'newer-version' | 'c
 | `build-products.mjs` | собирает `products.yaml` из офлайн-выгрузки USDA SR Legacy; `npm run products` |
 | `check-menu.ts` | **проверка меню до закупки поваром**; `npm run check-menu` |
 | `make-icons.mjs` | иконки PWA и 12 стартовых экранов iOS из одного силуэта-миски; `npm run icons` |
+| `shots.mjs` | снимки экранов headless-Chrome через DevTools-протокол без библиотек (телефонная ширина, сценарий «обед наполовину, ужин целиком», все шторки) и проверка, что полосы покрытия не пустые; `npm run shots -- [url] [каталог]` при поднятом dev-сервере, Chrome через env `CHROME` |
 
 **Два уровня строгости проверки меню.** Без флага (локально, гейт перед закупкой) любое
 нарушение даёт `exit 1`. С `--warn-only` (в выкатке) сломанный файл меню по-прежнему

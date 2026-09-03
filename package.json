@@ -10,6 +10,7 @@
     "check-menu": "esbuild scripts/check-menu.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/eda/check-menu.mjs && node node_modules/.cache/eda/check-menu.mjs",
     "products": "node scripts/build-products.mjs",
     "icons": "node scripts/make-icons.mjs",
+    "shots": "node scripts/shots.mjs",
     "test": "npm run test:data && npm run test:menu && npm run test:cycle && npm run test:nutrition && npm run test:rules && npm run test:log && npm run test:storage && npm run test:export && npm run test:norms && npm run test:week && npm run test:preferences && npm run test:verdict",
     "test:menu": "esbuild test/menu.test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/eda/menu.mjs && node node_modules/.cache/eda/menu.mjs",
     "test:cycle": "esbuild test/cycle.test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/eda/cycle.mjs && node node_modules/.cache/eda/cycle.mjs",
