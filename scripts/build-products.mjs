@@ -165,6 +165,11 @@ const TAGS_BY_KEY = {
   lemon: ['fruit'],
   cocoa: [],
   cinnamon: [],
+  'wheat-flour': [],
+  butter: [],
+  cream: [],
+  'dark-chocolate': [],
+  greens: [],
 };
 
 // ---------------------------------------------------------------------------
@@ -186,17 +191,20 @@ const PRODUCTS = [
   { key: 'egg', fdcId: 171287, name: 'яйцо куриное целое' },
 
   // Молочное
-  { key: 'milk', fdcId: 171265, name: 'молоко коровье питьевое' },
+  { key: 'milk', fdcId: 171267, name: 'молоко коровье питьевое, 2% жирности' },
+  { key: 'cream', fdcId: 170857, name: 'сливки питьевые (~19% жирности)' },
+  { key: 'butter', fdcId: 173430, name: 'масло сливочное несолёное' },
   {
     key: 'tvorog',
-    fdcId: 172182,
+    fdcId: 172179,
     name: 'творог',
     substitute:
-      'русского творога в SR Legacy нет; заменён американским cottage cheese, 2% жирности (lowfat) — ближайший аналог по жирности, но текстура иная (влажный зернёный творог, а не сухой)',
+      'русского творога в SR Legacy нет; заменён американским cottage cheese, creamed (~4.3% жирности) — ближайший аналог по жирности к творогу 5%, но текстура иная (влажный зернёный творог, а не сухой)',
   },
   { key: 'greek-yogurt', fdcId: 170903, name: 'греческий йогурт натуральный' },
 
   // Крупы (сухие)
+  { key: 'wheat-flour', fdcId: 169761, name: 'мука пшеничная высшего сорта' },
   { key: 'oats', fdcId: 173904, name: 'овсяные хлопья' },
   { key: 'quinoa', fdcId: 168874, name: 'киноа' },
   { key: 'bulgur', fdcId: 170688, name: 'булгур' },
@@ -237,6 +245,7 @@ const PRODUCTS = [
   { key: 'tomato', fdcId: 170457, name: 'томаты' },
   { key: 'shiitake', fdcId: 169242, name: 'шиитаке' },
   { key: 'oyster-mushroom', fdcId: 168580, name: 'вешенки' },
+  { key: 'greens', fdcId: 170416, name: 'зелень (петрушка)' },
 
   // Фрукты и ягоды
   { key: 'peach', fdcId: 169928, name: 'персик' },
@@ -251,6 +260,7 @@ const PRODUCTS = [
 
   // Прочее
   { key: 'cocoa', fdcId: 169593, name: 'какао-порошок несладкий' },
+  { key: 'dark-chocolate', fdcId: 170273, name: 'шоколад тёмный, 70-85% какао' },
   { key: 'cinnamon', fdcId: 171320, name: 'корица молотая' },
 ];
 

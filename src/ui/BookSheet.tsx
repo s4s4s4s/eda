@@ -9,9 +9,11 @@
    диагноз (DESIGN.md, «Честность — часть дизайна»). */
 
 import { useMemo, useState } from 'react'
+import { allMeals } from '../core/menu.ts'
+import type { MealEntry, MealPlace } from '../core/menu.ts'
 import { ratingOf, stanceOf } from '../core/preferences.ts'
 import { SLOT_TITLE } from '../core/types.ts'
-import type { IngredientStance, Menu, Preferences, Product, ProductIndex, Slot } from '../core/types.ts'
+import type { IngredientStance, Menu, Preferences, Product, ProductIndex } from '../core/types.ts'
 import RatingEditor from './RatingEditor.tsx'
 import Sheet from './Sheet.tsx'
 
@@ -27,35 +29,13 @@ interface BookSheetProps {
 
 type Section = 'dishes' | 'ingredients'
 
-interface DishOccurrence {
-  day: number
-  slot: Slot
-}
-
-interface DishRow {
-  id: string
-  title: string
-  occurrences: DishOccurrence[]
-}
-
-/** Блюдо может стоять в нескольких днях под одним id — это одна строка книги
-    с одной оценкой, а не несколько (DESIGN.md, раздел «Книга предпочтений»).
-    Порядок строк — порядок первого появления в меню: он не зависит от того,
-    что человек уже оценил, и потому не прыгает под пальцем. */
-function buildDishRows(menu: Menu): DishRow[] {
-  const byId = new Map<string, DishRow>()
-  for (const day of menu.days) {
-    for (const meal of day.meals) {
-      let row = byId.get(meal.id)
-      if (!row) {
-        row = { id: meal.id, title: meal.title, occurrences: [] }
-        byId.set(meal.id, row)
-      }
-      row.occurrences.push({ day: day.day, slot: meal.slot })
-    }
-  }
-  return [...byId.values()]
-}
+/* Список блюд книги собирает core/menu.ts (allMeals): одно блюдо — одна
+   строка с одной оценкой, даже если оно стоит в нескольких днях и в
+   нескольких присланных редакциях (DESIGN.md, раздел «Книга предпочтений»).
+   Правило склейки живёт в ядре, а не здесь: второе его место рано или поздно
+   разошлось бы с первым. Порядок строк — порядок первого появления блюда в
+   меню: он не зависит от того, что человек уже оценил, и потому не прыгает
+   под пальцем. */
 
 /** Продукты справочника по алфавиту имени. Ключ сортировки — имя, не
     отметка: отмеченный продукт не перескакивает по списку. */
@@ -63,8 +43,8 @@ function buildIngredientRows(products: ProductIndex): Product[] {
   return [...products.values()].sort((a, b) => a.name.localeCompare(b.name, 'ru'))
 }
 
-function occurrenceLabel(occ: DishOccurrence): string {
-  return `день ${occ.day}, ${SLOT_TITLE[occ.slot].toLowerCase()}`
+function placeLabel(place: MealPlace): string {
+  return `день ${place.day}, ${SLOT_TITLE[place.slot].toLowerCase()}`
 }
 
 function DishRowView({
@@ -75,15 +55,15 @@ function DishRowView({
   onRate,
   onClearRating
 }: {
-  row: DishRow
+  row: MealEntry
   preferences: Preferences
   expanded: boolean
   onToggle: () => void
   onRate: (mealId: string, score: number, comment: string) => void
   onClearRating: (mealId: string) => void
 }) {
-  const rating = ratingOf(preferences, row.id)
-  const meta = row.occurrences.map(occurrenceLabel).join(' · ')
+  const rating = ratingOf(preferences, row.meal.id)
+  const meta = row.places.map(placeLabel).join(' · ')
 
   return (
     <li className="book-dish">
@@ -93,7 +73,7 @@ function DishRowView({
         aria-expanded={expanded}
         onClick={onToggle}
       >
-        <span className="book-dish__title">{row.title}</span>
+        <span className="book-dish__title">{row.meal.title}</span>
         <span className="book-dish__meta">{meta}</span>
         {rating === undefined ? (
           <span className="book-dish__rating book-dish__rating--empty">не оценено</span>
@@ -108,8 +88,8 @@ function DishRowView({
         <div className="book-dish__editor">
           <RatingEditor
             rating={rating}
-            onChange={(score, comment) => onRate(row.id, score, comment)}
-            onClear={() => onClearRating(row.id)}
+            onChange={(score, comment) => onRate(row.meal.id, score, comment)}
+            onClear={() => onClearRating(row.meal.id)}
           />
         </div>
       )}
@@ -166,7 +146,7 @@ export default function BookSheet({ menu, products, preferences, onSetStance, on
   const [expandedMealId, setExpandedMealId] = useState<string | null>(null)
   const [filter, setFilter] = useState('')
 
-  const dishRows = useMemo(() => buildDishRows(menu), [menu])
+  const dishRows = useMemo(() => allMeals(menu), [menu])
   const ingredientRows = useMemo(() => buildIngredientRows(products), [products])
 
   const filterNeedle = filter.trim().toLowerCase()
@@ -200,11 +180,11 @@ export default function BookSheet({ menu, products, preferences, onSetStance, on
           <ul className="book-list">
             {dishRows.map(row => (
               <DishRowView
-                key={row.id}
+                key={row.meal.id}
                 row={row}
                 preferences={preferences}
-                expanded={expandedMealId === row.id}
-                onToggle={() => setExpandedMealId(prev => (prev === row.id ? null : row.id))}
+                expanded={expandedMealId === row.meal.id}
+                onToggle={() => setExpandedMealId(prev => (prev === row.meal.id ? null : row.meal.id))}
                 onRate={onRate}
                 onClearRating={onClearRating}
               />

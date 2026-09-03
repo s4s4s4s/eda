@@ -51,3 +51,24 @@ export function todayLocal(now: Date): string {
   const d = String(now.getDate()).padStart(2, '0')
   return `${y}-${m}-${d}`
 }
+
+/** Названия дней недели, индекс — как у Date#getUTCDay() (0 = воскресенье). */
+export const WEEKDAY_NAMES = [
+  'воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'
+]
+
+/** Названия месяцев в родительном падеже («4 сентября»), индекс — месяц-1. */
+export const MONTH_NAMES_GENITIVE = [
+  'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
+  'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'
+]
+
+/** Дата вида «пятница, 4 сентября» из ISO-строки YYYY-MM-DD. Без Date.now(),
+    без Intl и без локалей — день недели считаем через localDateToUtcNoon,
+    чтобы разница не плавала на переходах DST/полуночи. */
+export function formatDateFull(dateISO: string): string {
+  const [, m, d] = dateISO.split('-').map(Number)
+  const weekday = WEEKDAY_NAMES[new Date(localDateToUtcNoon(dateISO)).getUTCDay()]
+  const month = MONTH_NAMES_GENITIVE[m - 1]
+  return `${weekday}, ${d} ${month}`
+}

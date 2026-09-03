@@ -7,6 +7,7 @@ import { batchDay, currentSlot, cycleDay, todayLocal } from '../core/cycle.ts'
 import { buildChannels } from '../core/export/index.ts'
 import type { ExportPayload } from '../core/export/index.ts'
 import { clearLog, dayNutrientTotals, dayTotal, logMeal, unlogMeal } from '../core/log.ts'
+import { menuDayFor } from '../core/menu.ts'
 import { emptyNutrientTotals, mealKbju, mealNutrients } from '../core/nutrition.ts'
 import { clearRating, rateDish, ratingOf, setStance } from '../core/preferences.ts'
 import { mealVerdict } from '../core/verdict.ts'
@@ -134,7 +135,10 @@ export default function App() {
     setManualSlot({ slot: next, pinnedTo: autoSlot })
   }, [autoSlot])
 
-  const menuDay = useMemo(() => menu.days.find(d => d.day === cycleDayNum), [menu, cycleDayNum])
+  /* Какая редакция меню действует на этот день, решает core/menu.ts: экран не
+     перебирает редакции сам, иначе правило выбора разъехалось бы по копиям. */
+  const menuToday = useMemo(() => menuDayFor(menu, today, cycleDayNum), [menu, today, cycleDayNum])
+  const menuDay = menuToday?.day
   const meal: Meal | undefined = useMemo(() => menuDay?.meals.find(m => m.slot === slot), [menuDay, slot])
   const currentMealKbju = useMemo(() => (meal ? mealKbju(meal, products) : ZERO_KBJU), [meal, products])
   const currentMealNutrients = useMemo(
@@ -265,6 +269,7 @@ export default function App() {
     <>
       {saveError && <div className="save-error" role="alert">{saveError}</div>}
       <MealScreen
+        date={today}
         cycleDayNum={cycleDayNum}
         cycleDays={menu.cycleDays}
         batchDayNum={batchDayNum}

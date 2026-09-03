@@ -25,7 +25,7 @@ import path from 'node:path'
 
 import { parseMenu, parseProducts } from '../src/core/data'
 import { dayKbju, mealKbju } from '../src/core/nutrition'
-import { checkMenu } from '../src/core/rules'
+import { checkEdition } from '../src/core/rules'
 import { SLOT_TITLE, SLOTS } from '../src/core/types'
 import type { Kbju, Menu, MenuDay, ProductIndex, Violation } from '../src/core/types'
 
@@ -89,6 +89,49 @@ function printDay(day: MenuDay, products: ProductIndex, dayViolations: Violation
   console.log('')
 }
 
+/* Нарушения одной редакции печатаются двумя списками, и это не косметика.
+   Правило, сработавшее больше чем в половине дней редакции, — не поломка
+   данных, а другой замысел: диетолог прислал неделю, построенную иначе, и
+   пятьдесят одинаковых строк про крупу 80 г вместо 130 не сообщают ничего
+   сверх одной. Правило, сработавшее в одном-двух днях на фоне остальных, —
+   ровно наоборот, кандидат в опечатку, и его надо видеть поимённо. Ни одно
+   нарушение при этом не пропадает: систематические свёрнуты со счётчиком,
+   а общий итог считается по всем. */
+function printViolations(violations: Violation[], daysInEdition: number): void {
+  const byRule = new Map<string, { days: Set<number>; items: Violation[] }>()
+  for (const v of violations) {
+    const entry = byRule.get(v.rule) ?? { days: new Set<number>(), items: [] }
+    entry.days.add(v.scope.day)
+    entry.items.push(v)
+    byRule.set(v.rule, entry)
+  }
+
+  const systematic: { rule: string; days: number; items: Violation[] }[] = []
+  const singular: Violation[] = []
+  for (const [rule, entry] of byRule) {
+    if (entry.days.size * 2 > daysInEdition) {
+      systematic.push({ rule, days: entry.days.size, items: entry.items })
+    } else {
+      singular.push(...entry.items)
+    }
+  }
+  singular.sort((a, b) => a.scope.day - b.scope.day)
+
+  if (systematic.length > 0) {
+    const total = systematic.reduce((acc, s) => acc + s.items.length, 0)
+    console.log(`  Так устроена вся редакция — не опечатка, а другой замысел (${total}):`)
+    for (const s of systematic) {
+      console.log(`    - ${s.rule}: ${s.days} дн. из ${daysInEdition}, например «${s.items[0].message}»`)
+    }
+  }
+  if (singular.length > 0) {
+    console.log(`  Выбивается из редакции — проверить (${singular.length}):`)
+    for (const v of singular) {
+      console.log(`    - ${v.message}`)
+    }
+  }
+}
+
 function main(): void {
   const args = process.argv.slice(2)
   const warnOnly = args.includes('--warn-only')
@@ -109,30 +152,40 @@ function main(): void {
     fail(err instanceof Error ? err.message : String(err))
   }
 
-  const violations = checkMenu(menu, products)
-  const violationsByDay = new Map<number, Violation[]>()
-  for (const v of violations) {
-    const list = violationsByDay.get(v.scope.day) ?? []
-    list.push(v)
-    violationsByDay.set(v.scope.day, list)
-  }
+  /* Печатаем и считаем по редакциям, а не по номерам дней: день 4 есть в
+     каждой присланной неделе, и свалить их в одну корзину значило бы приписать
+     нарушения новой недели прежней. */
+  let violations: Violation[] = []
+  let daysChecked = 0
+  for (const edition of menu.editions) {
+    const editionViolations = checkEdition(edition, products)
+    violations = violations.concat(editionViolations)
+    daysChecked += edition.days.length
 
-  for (const day of menu.days) {
-    printDay(day, products, violationsByDay.get(day.day) ?? [])
-  }
+    const since = edition.from === undefined ? 'действовала с самого начала' : `действует с ${edition.from}`
+    console.log('='.repeat(72))
+    console.log(`РЕДАКЦИЯ: ${edition.title} (${since}); дней: ${edition.days.length} из ${menu.cycleDays}`)
+    console.log('='.repeat(72))
+    console.log('')
 
-  console.log('Нарушения:')
-  if (violations.length === 0) {
-    console.log('  нет')
-  } else {
-    for (const v of violations) {
-      console.log(`  - ${v.message}`)
+    const byDay = new Map<number, Violation[]>()
+    for (const v of editionViolations) {
+      const list = byDay.get(v.scope.day) ?? []
+      list.push(v)
+      byDay.set(v.scope.day, list)
     }
+    for (const day of edition.days) {
+      printDay(day, products, byDay.get(day.day) ?? [])
+    }
+
+    console.log(`Нарушений в редакции «${edition.title}»: ${editionViolations.length}`)
+    printViolations(editionViolations, edition.days.length)
+    console.log('')
   }
-  console.log('')
 
   const verdict = violations.length === 0 ? 'ЧИСТО' : `ЕСТЬ НАРУШЕНИЯ (${violations.length})`
-  console.log(`Дней проверено: ${menu.days.length}`)
+  console.log(`Редакций проверено: ${menu.editions.length}`)
+  console.log(`Дней проверено: ${daysChecked}`)
   console.log(`Нарушений: ${violations.length}`)
   console.log(`Вердикт: ${verdict}`)
 

@@ -3,7 +3,7 @@
  * приём по времени суток. Гоняются node-ом после сборки esbuild:
  * `npm run test:cycle`.
  */
-import { batchDay, currentSlot, cycleDay, todayLocal } from '../src/core/cycle'
+import { batchDay, currentSlot, cycleDay, formatDateFull, todayLocal } from '../src/core/cycle'
 
 let passed = 0
 function assert(cond: boolean, msg: string): void {
@@ -76,12 +76,46 @@ function todayLocalChecks(): void {
   group('todayLocal: локальная дата YYYY-MM-DD по локальным полям Date')
 }
 
+// ---- formatDateFull -------------------------------------------------------------
+
+function formatDateFullChecks(): void {
+  // семь дней подряд одной известной недели (проверено по календарю)
+  const week: [string, string][] = [
+    ['2026-08-31', 'понедельник, 31 августа'],
+    ['2026-09-01', 'вторник, 1 сентября'],
+    ['2026-09-02', 'среда, 2 сентября'],
+    ['2026-09-03', 'четверг, 3 сентября'],
+    ['2026-09-04', 'пятница, 4 сентября'],
+    ['2026-09-05', 'суббота, 5 сентября'],
+    ['2026-09-06', 'воскресенье, 6 сентября']
+  ]
+  for (const [iso, expected] of week) {
+    const got = formatDateFull(iso)
+    assert(got === expected, `formatDateFull(${iso}) ожидалось "${expected}", получено "${got}"`)
+  }
+
+  // первое и последнее число месяца, без ведущего нуля у дня
+  assert(formatDateFull('2026-09-01') === 'вторник, 1 сентября', '1 сентября — без ведущего нуля')
+  assert(formatDateFull('2026-09-30') === 'среда, 30 сентября', '30 сентября — последний день месяца')
+
+  // граница года
+  assert(formatDateFull('2026-12-31') === 'четверг, 31 декабря', '31 декабря 2026')
+  assert(formatDateFull('2027-01-01') === 'пятница, 1 января', '1 января 2027, следующий день после 31.12')
+
+  // високосный год, 29 февраля
+  assert(formatDateFull('2028-02-29') === 'вторник, 29 февраля', '29 февраля 2028 (високосный год)')
+  assert(formatDateFull('2028-03-01') === 'среда, 1 марта', '1 марта 2028, день после 29 февраля')
+
+  group('formatDateFull: неделя подряд, границы месяца/года, високосное 29 февраля')
+}
+
 function main(): void {
   console.log('cycle — день цикла, партия готовки, текущий приём')
   cycleDayChecks()
   batchDayChecks()
   currentSlotChecks()
   todayLocalChecks()
+  formatDateFullChecks()
   console.log(`\nВсе проверки cycle пройдены (${passed} групп).`)
 }
 

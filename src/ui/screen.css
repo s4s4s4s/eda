@@ -32,25 +32,45 @@
   flex: none;
 }
 
-/* ---- 1. шапка: день цикла и день партии, настройки ---- */
+/* ---- 1. шапка: дата, день цикла и день партии, настройки ---- */
 
 .screen__header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-2);
 }
 
+.screen__header-lines {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+/* Дата — главная строка шапки: какой сегодня день недели и число. Крупнее и
+   ярче строки цикла, но не герой экрана — тот остаётся за названием приёма. */
+.screen__date-line {
+  font-size: var(--text-17);
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.screen__date-line::first-letter {
+  text-transform: uppercase;
+}
+
 /* Строка дня переносится только по разделителю, а не посреди фразы: с тремя
    кнопками-иконками справа места на одну строку уже не хватает, и «партия:
-   день 1 / из 4» читалось бы как обрывок. */
+   день 1 / из 4» читалось бы как обрывок. Вторична по отношению к дате —
+   приглушённый цвет, мелкий кегль. */
 .screen__day-line {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   min-width: 0;
-  font-size: var(--text-15);
-  color: var(--fg-dim);
+  font-size: var(--text-13);
+  color: var(--fg-faint);
 }
 
 .screen__day-line > span {

@@ -108,13 +108,33 @@ products:
   group('parseProducts: поле substitute сохраняется в структуру')
 }
 
-// ---- валидное меню -------------------------------------------------------------
+// ---- меню: редакции -------------------------------------------------------------
+
+/** Сдвигает каждую непустую строку текста на заданное число пробелов —
+    используется, чтобы вложить блок дней внутрь «- title: …\n  days:», не
+    переписывая вручную отступы во всех фикстурах. */
+function indent(text: string, spaces: number): string {
+  const pad = ' '.repeat(spaces)
+  return text.split('\n').map(line => (line.length > 0 ? pad + line : line)).join('\n')
+}
+
+/** Собирает YAML одной редакции — элемент списка editions. daysContent — тот
+    же текст, что раньше шёл прямо под корневым `days:` (начинается с
+    «  - day: N»), просто вложенный на 4 пробела глубже. */
+function edition(title: string, daysContent: string, from?: string): string {
+  const header = from !== undefined
+    ? `  - from: "${from}"\n    title: ${title}\n    days:\n`
+    : `  - title: ${title}\n    days:\n`
+  return header + indent(daysContent, 4)
+}
+
+/** Собирает файл меню целиком из cycleDays и готовых блоков редакций (edition()). */
+function menuYaml(cycleDays: number, editions: string[]): string {
+  return `\ncycleDays: ${cycleDays}\neditions:\n${editions.join('\n')}\n`
+}
 
 function validMenuYaml(): string {
-  return `
-cycleDays: 2
-days:
-  - day: 1
+  return menuYaml(2, [edition('неделя без изменений, дни 1 и 2', `  - day: 1
     meals:
       - id: fixture-meal-1
         slot: breakfast
@@ -167,20 +187,22 @@ days:
         title: Лён
         steps: []
         items:
-          - { product: flaxseed, tbsp: 1, where: packet }
-`
+          - { product: flaxseed, tbsp: 1, where: packet }`)])
 }
 
 function parseMenuValidChecks(): void {
   const products = baseProducts()
   const menu = parseMenu(validMenuYaml(), products)
   assert(menu.cycleDays === 2, `cycleDays ожидалось 2, получено ${menu.cycleDays}`)
-  assert(menu.days.length === 2, `дней ожидалось 2, получено ${menu.days.length}`)
-  assert(menu.days[0].day === 1 && menu.days[1].day === 2, 'дни отсортированы по номеру')
-  const breakfast = menu.days[0].meals.find(m => m.slot === 'breakfast')!
+  assert(menu.editions.length === 1, `редакций ожидалось 1, получено ${menu.editions.length}`)
+  assert(menu.editions[0].from === undefined, 'единственная редакция — базовая, from не задан')
+  const days = menu.editions[0].days
+  assert(days.length === 2, `дней ожидалось 2, получено ${days.length}`)
+  assert(days[0].day === 1 && days[1].day === 2, 'дни отсортированы по номеру')
+  const breakfast = days[0].meals.find(m => m.slot === 'breakfast')!
   assert(breakfast.items.length === 3, `в завтраке дня 1 ожидалось 3 позиции, получено ${breakfast.items.length}`)
   assert(breakfast.items[1].pieces === 2, 'позиция бразильского ореха задана в pieces')
-  group('parseMenu: валидная фикстура разбирается в ожидаемую структуру')
+  group('parseMenu: валидная фикстура (одна редакция) разбирается в ожидаемую структуру')
 }
 
 // ---- кривые случаи --------------------------------------------------------------
@@ -189,10 +211,7 @@ function brokenMenuChecks(): void {
   const products = baseProducts()
 
   // 1. ссылка на несуществующий продукт
-  assertThrows(() => parseMenu(`
-cycleDays: 1
-days:
-  - day: 1
+  assertThrows(() => parseMenu(menuYaml(1, [edition('ссылка на несуществующий продукт', `  - day: 1
     meals:
       - id: fixture-meal-9
         slot: breakfast
@@ -213,8 +232,7 @@ days:
         slot: snack
         title: t
         steps: []
-        items: [{ product: flaxseed, tbsp: 1, where: packet }]
-`, products), ['День 1', 'unicorn-meat'], 'несуществующий продукт')
+        items: [{ product: flaxseed, tbsp: 1, where: packet }]`)]), products), ['День 1', 'unicorn-meat'], 'несуществующий продукт')
 
   // 2. два количества сразу
   assertThrows(() => parseMenu(dayWithItem({ product: 'salmon', g: 100, pieces: 1, where: 'container' }), products),
@@ -232,47 +250,29 @@ days:
   assertThrows(() => parseMenu(dayWithItem({ product: 'salmon', tbsp: 1, where: 'container' }), products),
     ['День 1', 'tbspG'], 'tbsp у продукта без tbspG')
 
-  // 6. число дней не равно cycleDays
-  assertThrows(() => parseMenu(`
-cycleDays: 2
-days:
-${validDayBlock(1)}
-`, products), ['cycleDays'], 'число дней не совпадает с cycleDays')
+  // 6. первая редакция описывает не весь цикл
+  assertThrows(() => parseMenu(menuYaml(2, [edition('только день 1 из двух', validDayBlock(1))]), products),
+    ['первая редакция', 'не весь цикл', 'нет дней 2 из 2'], 'первая редакция не описывает весь цикл')
 
   // 7. номера дней не 1..cycleDays без пропусков (пропуск)
-  assertThrows(() => parseMenu(`
-cycleDays: 2
-days:
-${validDayBlock(1)}
-${validDayBlock(3)}
-`, products), ['День 3'], 'номер дня вне диапазона 1..cycleDays')
+  assertThrows(() => parseMenu(menuYaml(2, [edition('день вне диапазона', `${validDayBlock(1)}\n${validDayBlock(3)}`)]), products),
+    ['День 3'], 'номер дня вне диапазона 1..cycleDays')
 
   // 7b. дубль номера дня
-  assertThrows(() => parseMenu(`
-cycleDays: 2
-days:
-${validDayBlock(1)}
-${validDayBlock(1)}
-`, products), ['День 1', 'повторяется'], 'дубль номера дня')
+  assertThrows(() => parseMenu(menuYaml(2, [edition('дубль номера дня', `${validDayBlock(1)}\n${validDayBlock(1)}`)]), products),
+    ['День 1', 'повторяется'], 'дубль номера дня')
 
   // 8. не все четыре приёма в дне
-  assertThrows(() => parseMenu(`
-cycleDays: 1
-days:
-  - day: 1
+  assertThrows(() => parseMenu(menuYaml(1, [edition('не хватает приёмов', `  - day: 1
     meals:
       - id: fixture-meal-13
         slot: breakfast
         title: t
         steps: []
-        items: [{ product: salmon, g: 170, where: container }]
-`, products), ['День 1', 'не хватает'], 'в дне не все четыре приёма')
+        items: [{ product: salmon, g: 170, where: container }]`)]), products), ['День 1', 'не хватает'], 'в дне не все четыре приёма')
 
   // 8b. дубль slot в дне
-  assertThrows(() => parseMenu(`
-cycleDays: 1
-days:
-  - day: 1
+  assertThrows(() => parseMenu(menuYaml(1, [edition('дубль slot', `  - day: 1
     meals:
       - id: fixture-meal-14
         slot: breakfast
@@ -298,24 +298,19 @@ days:
         slot: snack
         title: t
         steps: []
-        items: [{ product: salmon, g: 170, where: container }]
-`, products), ['День 1', 'дважды'], 'дубль slot в дне')
+        items: [{ product: salmon, g: 170, where: container }]`)]), products), ['День 1', 'дважды'], 'дубль slot в дне')
 
   // 9. отсутствует where
   assertThrows(() => parseMenu(dayWithItem({ product: 'salmon', g: 100 } as never), products),
     ['День 1', 'where'], 'отсутствует where')
 
   // 10. неизвестное значение slot
-  assertThrows(() => parseMenu(`
-cycleDays: 1
-days:
-  - day: 1
+  assertThrows(() => parseMenu(menuYaml(1, [edition('неизвестный slot', `  - day: 1
     meals:
       - slot: brunch
         title: t
         steps: []
-        items: [{ product: salmon, g: 170, where: container }]
-`, products), ['День 1', 'brunch'], 'неизвестное значение slot')
+        items: [{ product: salmon, g: 170, where: container }]`)]), products), ['День 1', 'brunch'], 'неизвестное значение slot')
 
   // 11. неизвестное значение where
   assertThrows(() => parseMenu(dayWithItem({ product: 'salmon', g: 100, where: 'fridge' }), products),
@@ -330,12 +325,9 @@ days:
     ['День 1', 'положительным'], 'нулевое количество')
 }
 
-/** Мини-меню из одного дня с одним «сломанным» item в завтраке (остальные приёмы валидны). */
+/** Мини-меню из одной редакции с одним «сломанным» item в завтраке (остальные приёмы валидны). */
 function dayWithItem(item: Record<string, unknown>): string {
-  return `
-cycleDays: 1
-days:
-  - day: 1
+  const daysContent = `  - day: 1
     meals:
       - id: fixture-meal-19
         slot: breakfast
@@ -356,8 +348,8 @@ days:
         slot: snack
         title: t
         steps: []
-        items: [{ product: flaxseed, tbsp: 1, where: packet }]
-`
+        items: [{ product: flaxseed, tbsp: 1, where: packet }]`
+  return menuYaml(1, [edition('позиция с проверяемым набором полей', daysContent)])
 }
 
 function yamlInlineItem(item: Record<string, unknown>): string {
@@ -389,6 +381,109 @@ function validDayBlock(day: number): string {
         title: t
         steps: []
         items: [{ product: flaxseed, tbsp: 1, where: packet }]`
+}
+
+// ---- редакции: правила формата и порядка --------------------------------------
+
+function editionRulesChecks(): void {
+  const products = baseProducts()
+
+  // вторая редакция без from — запрещена
+  assertThrows(() => parseMenu(menuYaml(2, [
+    edition('первая редакция — весь цикл', `${validDayBlock(1)}\n${validDayBlock(2)}`),
+    edition('вторая редакция без даты', validDayBlock(2))
+  ]), products), ['идёт не первой', 'обязана задать from'], 'вторая редакция без from — запрещена')
+
+  // from не в формате ГГГГ-ММ-ДД
+  assertThrows(() => parseMenu(menuYaml(2, [
+    edition('первая редакция — весь цикл', `${validDayBlock(1)}\n${validDayBlock(2)}`),
+    edition('вторая редакция с кривой датой', validDayBlock(2), '04.09.2026')
+  ]), products), ['from', 'ГГГГ-ММ-ДД'], 'from не в формате ГГГГ-ММ-ДД — запрещён')
+
+  // редакции идут не по возрастанию даты
+  assertThrows(() => parseMenu(menuYaml(2, [
+    edition('первая редакция — весь цикл', `${validDayBlock(1)}\n${validDayBlock(2)}`),
+    edition('редакция от 4 сентября', validDayBlock(1), '2026-09-04'),
+    edition('редакция от 2 сентября — раньше предыдущей', validDayBlock(1), '2026-09-02')
+  ]), products), ['не по возрастанию даты'], 'редакции идут не по возрастанию даты — запрещено')
+
+  // редакция без title
+  assertThrows(() => parseMenu(`
+cycleDays: 1
+editions:
+  - days:
+${indent(validDayBlock(1), 4)}
+`, products), ['не задан title'], 'редакция без title — запрещена')
+
+  // редакция с пустым days: []
+  assertThrows(() => parseMenu(`
+cycleDays: 1
+editions:
+  - title: пустая редакция
+    days: []
+`, products), ['не заданы дни'], 'редакция с пустым days: [] — запрещена')
+
+  // editions: [] — запрещено
+  assertThrows(() => parseMenu(`
+cycleDays: 1
+editions: []
+`, products), ['список редакций пуст'], 'editions: [] — запрещено')
+
+  // файл без editions вовсе — запрещён
+  assertThrows(() => parseMenu(`
+cycleDays: 1
+`, products), ['cycleDays', 'editions'], 'файл без editions вовсе — запрещён')
+
+  // позитив: вторая редакция вправе описывать подмножество дней
+  const menu = parseMenu(menuYaml(2, [
+    edition('первая редакция — весь цикл', `${validDayBlock(1)}\n${validDayBlock(2)}`),
+    edition('вторая редакция — только изменённый день 2', validDayBlock(2), '2026-09-04')
+  ]), products)
+  assert(menu.editions.length === 2, `редакций ожидалось 2, получено ${menu.editions.length}`)
+  assert(menu.editions[1].from === '2026-09-04', 'вторая редакция несёт заданную дату from')
+  assert(menu.editions[1].days.length === 1 && menu.editions[1].days[0].day === 2,
+    'вторая редакция вправе описывать подмножество дней цикла (только изменённый день)')
+
+  group('parseMenu: правила редакций — from обязателен со второй, формат даты, порядок возрастания, title и days обязательны, editions не может быть пуст или отсутствовать, подмножество дней разрешено')
+}
+
+/** Один и тот же id блюда в разных редакциях допустим намеренно — это то же
+    блюдо с новой раскладкой. Внутри одной редакции такой дубль по-прежнему
+    запрещён (см. mealIdChecks, проверка 4). */
+function crossEditionMealIdChecks(): void {
+  const products = baseProducts()
+
+  const dayWithId = (id: string, title: string): string => `  - day: 1
+    meals:
+      - id: ${id}
+        slot: breakfast
+        title: ${title}
+        steps: []
+        items: [{ product: oats, g: 90, where: container }]
+      - id: fixture-meal-cross-lunch
+        slot: lunch
+        title: t
+        steps: []
+        items: [{ product: salmon, g: 170, where: container }]
+      - id: fixture-meal-cross-dinner
+        slot: dinner
+        title: t
+        steps: []
+        items: [{ product: salmon, g: 170, where: container }]
+      - id: fixture-meal-cross-snack
+        slot: snack
+        title: t
+        steps: []
+        items: [{ product: flaxseed, tbsp: 1, where: packet }]`
+
+  const menu = parseMenu(menuYaml(1, [
+    edition('первая редакция', dayWithId('cross-edition-dish', 'Овсянка')),
+    edition('вторая редакция — новая раскладка того же блюда', dayWithId('cross-edition-dish', 'Овсянка с орехами'), '2026-09-04')
+  ]), products)
+
+  assert(menu.editions[0].days[0].meals[0].id === 'cross-edition-dish', 'id блюда сохранён в первой редакции')
+  assert(menu.editions[1].days[0].meals[0].id === 'cross-edition-dish', 'тот же id допустим в другой редакции с иной раскладкой')
+  group('parseMenu: один и тот же id блюда в разных редакциях допустим (новая раскладка того же блюда)')
 }
 
 // ---- parseProducts: micro100g ------------------------------------------------
@@ -457,10 +552,7 @@ function mealIdChecks(): void {
   const products = baseProducts()
 
   // 1. id отсутствует
-  assertThrows(() => parseMenu(`
-cycleDays: 1
-days:
-  - day: 1
+  assertThrows(() => parseMenu(menuYaml(1, [edition('без id у приёма', `  - day: 1
     meals:
       - slot: breakfast
         title: t
@@ -480,14 +572,10 @@ days:
         slot: snack
         title: t
         steps: []
-        items: [{ product: flaxseed, tbsp: 1, where: packet }]
-`, products), ['День 1', 'id'], 'у приёма не задан id')
+        items: [{ product: flaxseed, tbsp: 1, where: packet }]`)]), products), ['День 1', 'id'], 'у приёма не задан id')
 
   // 2. id с заглавными буквами
-  assertThrows(() => parseMenu(`
-cycleDays: 1
-days:
-  - day: 1
+  assertThrows(() => parseMenu(menuYaml(1, [edition('id с заглавными буквами', `  - day: 1
     meals:
       - id: Fixture-Id
         slot: breakfast
@@ -508,14 +596,10 @@ days:
         slot: snack
         title: t
         steps: []
-        items: [{ product: flaxseed, tbsp: 1, where: packet }]
-`, products), ['День 1', 'Fixture-Id'], 'id с заглавными буквами — ошибка формата')
+        items: [{ product: flaxseed, tbsp: 1, where: packet }]`)]), products), ['День 1', 'Fixture-Id'], 'id с заглавными буквами — ошибка формата')
 
   // 3. id кириллицей
-  assertThrows(() => parseMenu(`
-cycleDays: 1
-days:
-  - day: 1
+  assertThrows(() => parseMenu(menuYaml(1, [edition('id кириллицей', `  - day: 1
     meals:
       - id: "овсянка"
         slot: breakfast
@@ -536,14 +620,10 @@ days:
         slot: snack
         title: t
         steps: []
-        items: [{ product: flaxseed, tbsp: 1, where: packet }]
-`, products), ['День 1', 'овсянка'], 'id кириллицей — ошибка формата')
+        items: [{ product: flaxseed, tbsp: 1, where: packet }]`)]), products), ['День 1', 'овсянка'], 'id кириллицей — ошибка формата')
 
-  // 4. один и тот же id у двух РАЗНЫХ по составу блюд — ошибка
-  assertThrows(() => parseMenu(`
-cycleDays: 2
-days:
-  - day: 1
+  // 4. один и тот же id у двух РАЗНЫХ по составу блюд внутри одной редакции — ошибка
+  assertThrows(() => parseMenu(menuYaml(2, [edition('дубль id при разном составе', `  - day: 1
     meals:
       - id: shared-id
         slot: breakfast
@@ -586,14 +666,10 @@ days:
         slot: snack
         title: t
         steps: []
-        items: [{ product: flaxseed, tbsp: 1, where: packet }]
-`, products), ['shared-id', 'День 2'], 'один id у двух разных по составу блюд — ошибка')
+        items: [{ product: flaxseed, tbsp: 1, where: packet }]`)]), products), ['shared-id', 'День 2'], 'один id у двух разных по составу блюд внутри одной редакции — ошибка')
 
-  // 5. один и тот же id у ДВУХ ОДИНАКОВЫХ по составу блюд в разных днях — допустимо
-  const reusedIdMenu = parseMenu(`
-cycleDays: 2
-days:
-  - day: 1
+  // 5. один и тот же id у ДВУХ ОДИНАКОВЫХ по составу блюд в разных днях одной редакции — допустимо
+  const reusedIdMenu = parseMenu(menuYaml(2, [edition('повтор id при одинаковом составе', `  - day: 1
     meals:
       - id: same-dish
         slot: breakfast
@@ -636,10 +712,10 @@ days:
         slot: snack
         title: t
         steps: []
-        items: [{ product: flaxseed, tbsp: 1, where: packet }]
-`, products)
-  assert(reusedIdMenu.days[0].meals[0].id === 'same-dish' && reusedIdMenu.days[1].meals[0].id === 'same-dish',
-    'id одного и того же блюда, повторённого буквально в другом дне, допустим без ошибки')
+        items: [{ product: flaxseed, tbsp: 1, where: packet }]`)]), products)
+  const reusedDays = reusedIdMenu.editions[0].days
+  assert(reusedDays[0].meals[0].id === 'same-dish' && reusedDays[1].meals[0].id === 'same-dish',
+    'id одного и того же блюда, повторённого буквально в другом дне одной редакции, допустим без ошибки')
   group('parseMenu: id обязателен, формат ^[a-z0-9-]+$, дубль id при разном составе — ошибка, при одинаковом — допустим')
 }
 
@@ -651,6 +727,8 @@ function main(): void {
   microErrorChecks()
   parseMenuValidChecks()
   brokenMenuChecks()
+  editionRulesChecks()
+  crossEditionMealIdChecks()
   mealIdChecks()
   console.log(`\nВсе проверки data пройдены (${passed} групп).`)
 }

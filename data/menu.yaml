@@ -1,495 +1,844 @@
+# Меню восьмидневного цикла. Приходит от диетолога порциями — неделя за неделей,
+# и присланное НЕ переписывает прежнее: каждая порция ложится отдельной
+# РЕДАКЦИЕЙ со своей датой вступления в силу, а прошлые остаются здесь же. По
+# ним человек ел, и заглянуть в прошлый день должно быть можно.
+#
+# Как выбирается блюдо на конкретную дату: берутся редакции, у которых from не
+# позже этой даты, и среди них — самая свежая ИЗ ТЕХ, что описывает нужный день
+# цикла. Редакция вправе описывать не все восемь дней: диетолог прислал дни 4-8,
+# значит дни 1-3 продолжают браться из прежней редакции. Обязательство одно и
+# проверяется при разборе: ПЕРВАЯ редакция описывает все дни цикла — иначе
+# нашёлся бы день, на который меню не существует вовсе.
+#
+# Поле from у первой редакции не задано намеренно: когда именно она вступила в
+# силу, никто не записал, и выдуманная дата была бы враньём. Такая редакция
+# может быть только одна и только первой; у всех остальных from обязателен и
+# строго возрастает.
+#
+# Идентификатор блюда (id) уникален ВНУТРИ редакции. Один и тот же id в разных
+# редакциях — это намеренно: то же блюдо с новой раскладкой, и оценка, которую
+# человек когда-то ему поставил, остаётся с ним. Блюдо, у которого поменялся
+# состав, а не граммовка, получает новый id.
 cycleDays: 8
-days:
-  - day: 1
-    meals:
-      - id: ovsyanka-persik-omlet-yagody
-        slot: breakfast
-        title: Овсянка с персиком, омлет, ягоды
-        steps:
-          - Разогреть кашу и омлет
-          - Досыпать пакетик
-          - Полить маслом
-          - Ягоды отдельно
-        items:
-          - { product: oats, g: 75, where: container }
-          - { product: milk, g: 180, where: container }
-          - { product: peach, g: 100, where: container }
-          - { product: egg, pieces: 2, where: container }
-          - { product: blueberry, g: 125, where: container }
-          - { product: olive-oil, tbsp: 1, where: packet }
-          - { product: cashew, g: 40, where: packet }
-          - { product: brazil-nut, pieces: 2, where: packet }
-          - { product: flaxseed, tbsp: 1, where: packet }
-      - id: losos-kinoa-shpinat-brokkoli-perets
-        slot: lunch
-        title: Стейк лосося, киноа со шпинатом, брокколи и перец
-        steps:
-          - Разогреть лосось и киноа с овощами
-          - Полить маслом
-        items:
-          - { product: salmon, g: 170, where: container }
-          - { product: quinoa, g: 130, where: container }
-          - { product: spinach, g: 80, where: container }
-          - { product: garlic, g: 5, where: container }
-          - { product: broccoli, g: 150, where: container }
-          - { product: bell-pepper, g: 100, where: container }
-          - { product: olive-oil, tbsp: 1, where: packet }
-      - id: indeyka-bedro-bulgur-kapusta-morkov
-        slot: dinner
-        title: Бедро индейки, булгур с зеленью, салат из капусты с морковью
-        steps:
-          - Разогреть индейку и булгур
-          - Полить маслом
-          - Салат отдельно
-        items:
-          - { product: turkey-thigh, g: 170, where: container }
-          - { product: bulgur, g: 130, where: container }
-          - { product: spinach, g: 20, where: container }
-          - { product: cabbage, g: 120, where: container }
-          - { product: carrot, g: 60, where: container }
-          - { product: olive-oil, tbsp: 1, where: packet }
-      - id: chia-puding-banan-pyure
-        slot: snack
-        title: Чиа-пудинг с банановым пюре
-        steps:
-          - Размять банан
-          - Смешать с молоком
-          - Досыпать чиа
-        items:
-          - { product: milk, g: 200, where: container }
-          - { product: banana, g: 150, where: container }
-          - { product: chia, tbsp: 2, where: packet }
 
-  - day: 2
-    meals:
-      - id: syrniki-yagody-grecheskiy-yogurt-glazunya
-        slot: breakfast
-        title: Сырники с ягодами и греческим йогуртом, глазунья на оливковом
-        steps:
-          - Разогреть сырники и глазунью
-          - Досыпать пакетик
-          - Полить маслом
-          - Йогурт и ягоды отдельно
-        items:
-          - { product: tvorog, g: 150, where: container }
-          - { product: egg, pieces: 1, where: container }
-          - { product: greek-yogurt, g: 200, where: container }
-          - { product: blueberry, g: 125, where: container }
-          - { product: egg, pieces: 2, where: container }
-          - { product: hazelnut, g: 40, where: packet }
-          - { product: brazil-nut, pieces: 2, where: packet }
-          - { product: flaxseed, tbsp: 1, where: packet }
-          - { product: olive-oil, tbsp: 1, where: packet }
-      - id: forel-bulgur-morkov-zelen-tsukini-perets
-        slot: lunch
-        title: Запечённая форель, булгур с запечённой морковью и зеленью, цукини и сладкий перец
-        steps:
-          - Разогреть форель и булгур с овощами
-          - Полить маслом
-        items:
-          - { product: trout, g: 170, where: container }
-          - { product: bulgur, g: 130, where: container }
-          - { product: carrot, g: 80, where: container }
-          - { product: spinach, g: 20, where: container }
-          - { product: zucchini, g: 150, where: container }
-          - { product: bell-pepper, g: 100, where: container }
-          - { product: olive-oil, tbsp: 1, where: packet }
-      - id: chechevitsa-perets-chesnok-limon-kale
-        slot: dinner
-        title: Чечевица с запечённым перцем, чесноком и зеленью, лимон, салат из кале
-        steps:
-          - Разогреть чечевицу с перцем и чесноком
-          - Полить маслом
-          - Сбрызнуть лимоном
-          - Салат из кале отдельно
-        items:
-          - { product: lentils, g: 120, where: container }
-          - { product: bell-pepper, g: 180, where: container }
-          - { product: garlic, g: 5, where: container }
-          - { product: spinach, g: 25, where: container }
-          - { product: lemon, g: 15, where: container }
-          - { product: kale, g: 130, where: container }
-          - { product: olive-oil, tbsp: 1, where: packet }
-      - id: tvorozhnaya-zapekanka-kakao-banan-finiki
-        slot: snack
-        title: Творожная запеканка с какао, бананом и финиками
-        steps:
-          - Разогреть запеканку
-          - Финики нарезать сверху
-        items:
-          - { product: tvorog, g: 150, where: container }
-          - { product: egg, pieces: 1, where: container }
-          - { product: cocoa, g: 12, where: container }
-          - { product: banana, g: 150, where: container }
-          - { product: dates, g: 60, where: container }
+editions:
+  - title: неделя до 4 сентября
+    days:
+      - day: 1
+        meals:
+          - id: ovsyanka-persik-omlet-yagody
+            slot: breakfast
+            title: Овсянка с персиком, омлет, ягоды
+            steps:
+              - Разогреть кашу и омлет
+              - Досыпать пакетик
+              - Полить маслом
+              - Ягоды отдельно
+            items:
+              - { product: oats, g: 75, where: container }
+              - { product: milk, g: 180, where: container }
+              - { product: peach, g: 100, where: container }
+              - { product: egg, pieces: 2, where: container }
+              - { product: blueberry, g: 125, where: container }
+              - { product: olive-oil, tbsp: 1, where: packet }
+              - { product: cashew, g: 40, where: packet }
+              - { product: brazil-nut, pieces: 2, where: packet }
+              - { product: flaxseed, tbsp: 1, where: packet }
+          - id: losos-kinoa-shpinat-brokkoli-perets
+            slot: lunch
+            title: Стейк лосося, киноа со шпинатом, брокколи и перец
+            steps:
+              - Разогреть лосось и киноа с овощами
+              - Полить маслом
+            items:
+              - { product: salmon, g: 170, where: container }
+              - { product: quinoa, g: 130, where: container }
+              - { product: spinach, g: 80, where: container }
+              - { product: garlic, g: 5, where: container }
+              - { product: broccoli, g: 150, where: container }
+              - { product: bell-pepper, g: 100, where: container }
+              - { product: olive-oil, tbsp: 1, where: packet }
+          - id: indeyka-bedro-bulgur-kapusta-morkov
+            slot: dinner
+            title: Бедро индейки, булгур с зеленью, салат из капусты с морковью
+            steps:
+              - Разогреть индейку и булгур
+              - Полить маслом
+              - Салат отдельно
+            items:
+              - { product: turkey-thigh, g: 170, where: container }
+              - { product: bulgur, g: 130, where: container }
+              - { product: spinach, g: 20, where: container }
+              - { product: cabbage, g: 120, where: container }
+              - { product: carrot, g: 60, where: container }
+              - { product: olive-oil, tbsp: 1, where: packet }
+          - id: chia-puding-banan-pyure
+            slot: snack
+            title: Чиа-пудинг с банановым пюре
+            steps:
+              - Размять банан
+              - Смешать с молоком
+              - Досыпать чиа
+            items:
+              - { product: milk, g: 200, where: container }
+              - { product: banana, g: 150, where: container }
+              - { product: chia, tbsp: 2, where: packet }
 
-  - day: 3
-    meals:
-      - id: kinoa-moloko-yagody-skrembl
-        slot: breakfast
-        title: Киноа на молоке с ягодами, скрэмбл
-        steps:
-          - Разогреть кашу и скрэмбл
-          - Досыпать пакетик
-          - Полить маслом
-          - Ягоды отдельно
-        items:
-          - { product: quinoa, g: 50, where: container }
-          - { product: milk, g: 200, where: container }
-          - { product: blueberry, g: 125, where: container }
-          - { product: egg, pieces: 2, where: container }
-          - { product: almond, g: 40, where: packet }
-          - { product: brazil-nut, pieces: 2, where: packet }
-          - { product: flaxseed, tbsp: 1, where: packet }
-          - { product: olive-oil, tbsp: 1, where: packet }
-      - id: govyadina-shiitake-bulgur-batat-brokkoli
-        slot: lunch
-        title: Тушёная говядина с шиитаке, булгур с бататом и зеленью, запечённая брокколи
-        steps:
-          - Разогреть говядину с шиитаке
-          - Разогреть булгур с бататом
-          - Полить маслом
-        items:
-          - { product: beef, g: 190, where: container }
-          - { product: shiitake, g: 80, where: container }
-          - { product: bulgur, g: 130, where: container }
-          - { product: sweet-potato, g: 100, where: container }
-          - { product: spinach, g: 20, where: container }
-          - { product: broccoli, g: 150, where: container }
-          - { product: olive-oil, tbsp: 1, where: packet }
-      - id: kurinaya-grudka-grechka-shpinat-chesnok-ovoshchi
-        slot: dinner
-        title: Куриная грудка, гречка со шпинатом и чесноком, запечённые овощи
-        steps:
-          - Разогреть грудку и гречку
-          - Разогреть овощи
-          - Полить маслом
-        items:
-          - { product: chicken-breast, g: 170, where: container }
-          - { product: buckwheat, g: 130, where: container }
-          - { product: spinach, g: 30, where: container }
-          - { product: garlic, g: 5, where: container }
-          - { product: zucchini, g: 100, where: container }
-          - { product: bell-pepper, g: 100, where: container }
-          - { product: olive-oil, tbsp: 1, where: packet }
-      - id: shokoladnyy-muss-yogurt-nut
-        slot: snack
-        title: Шоколадный мусс на греческом йогурте плюс жареный нут
-        steps:
-          - Смешать йогурт с какао
-          - Нут отдельно
-        items:
-          - { product: greek-yogurt, g: 200, where: container }
-          - { product: cocoa, g: 10, where: container }
-          - { product: chickpeas, g: 100, where: container }
+      - day: 2
+        meals:
+          - id: syrniki-yagody-grecheskiy-yogurt-glazunya
+            slot: breakfast
+            title: Сырники с ягодами и греческим йогуртом, глазунья на оливковом
+            steps:
+              - Разогреть сырники и глазунью
+              - Досыпать пакетик
+              - Полить маслом
+              - Йогурт и ягоды отдельно
+            items:
+              - { product: tvorog, g: 150, where: container }
+              - { product: egg, pieces: 1, where: container }
+              - { product: greek-yogurt, g: 200, where: container }
+              - { product: blueberry, g: 125, where: container }
+              - { product: egg, pieces: 2, where: container }
+              - { product: hazelnut, g: 40, where: packet }
+              - { product: brazil-nut, pieces: 2, where: packet }
+              - { product: flaxseed, tbsp: 1, where: packet }
+              - { product: olive-oil, tbsp: 1, where: packet }
+          - id: forel-bulgur-morkov-zelen-tsukini-perets
+            slot: lunch
+            title: Запечённая форель, булгур с запечённой морковью и зеленью, цукини и сладкий перец
+            steps:
+              - Разогреть форель и булгур с овощами
+              - Полить маслом
+            items:
+              - { product: trout, g: 170, where: container }
+              - { product: bulgur, g: 130, where: container }
+              - { product: carrot, g: 80, where: container }
+              - { product: spinach, g: 20, where: container }
+              - { product: zucchini, g: 150, where: container }
+              - { product: bell-pepper, g: 100, where: container }
+              - { product: olive-oil, tbsp: 1, where: packet }
+          - id: chechevitsa-perets-chesnok-limon-kale
+            slot: dinner
+            title: Чечевица с запечённым перцем, чесноком и зеленью, лимон, салат из кале
+            steps:
+              - Разогреть чечевицу с перцем и чесноком
+              - Полить маслом
+              - Сбрызнуть лимоном
+              - Салат из кале отдельно
+            items:
+              - { product: lentils, g: 120, where: container }
+              - { product: bell-pepper, g: 180, where: container }
+              - { product: garlic, g: 5, where: container }
+              - { product: spinach, g: 25, where: container }
+              - { product: lemon, g: 15, where: container }
+              - { product: kale, g: 130, where: container }
+              - { product: olive-oil, tbsp: 1, where: packet }
+          - id: tvorozhnaya-zapekanka-kakao-banan-finiki
+            slot: snack
+            title: Творожная запеканка с какао, бананом и финиками
+            steps:
+              - Разогреть запеканку
+              - Финики нарезать сверху
+            items:
+              - { product: tvorog, g: 150, where: container }
+              - { product: egg, pieces: 1, where: container }
+              - { product: cocoa, g: 12, where: container }
+              - { product: banana, g: 150, where: container }
+              - { product: dates, g: 60, where: container }
 
-  - day: 4
-    meals:
-      - id: ovsyanka-yabloko-koritsa-izyum-omlet
-        slot: breakfast
-        title: Овсянка на молоке с яблоком, корицей и изюмом, омлет
-        steps:
-          - Разогреть кашу и омлет
-          - Досыпать пакетик
-          - Полить маслом
-          - Изюм сверху
-        items:
-          - { product: oats, g: 90, where: container }
-          - { product: milk, g: 250, where: container }
-          - { product: apple, g: 150, where: container }
-          - { product: cinnamon, g: 2, where: container }
-          - { product: raisins, g: 30, where: container }
-          - { product: egg, pieces: 2, where: container }
-          - { product: cashew, g: 40, where: packet }
-          - { product: brazil-nut, pieces: 2, where: packet }
-          - { product: flaxseed, tbsp: 1, where: packet }
-          - { product: olive-oil, tbsp: 1, where: packet }
-      - id: ragu-fasol-tomaty-perets-shpinat
-        slot: lunch
-        title: Рагу из фасоли с томатами, перцем и шпинатом
-        steps:
-          - Разогреть рагу
-          - Полить маслом
-        items:
-          - { product: white-beans, g: 120, where: container }
-          - { product: tomato, g: 150, where: container }
-          - { product: bell-pepper, g: 120, where: container }
-          - { product: spinach, g: 40, where: container }
-          - { product: olive-oil, tbsp: 1, where: packet }
-      - id: indeyka-perlovka-tykva-tsukini-mangold
-        slot: dinner
-        title: Филе бедра индейки, перловка с зеленью, запечённая тыква и цукини, салат из мангольда
-        steps:
-          - Разогреть индейку и перловку
-          - Разогреть тыкву и цукини
-          - Полить маслом
-          - Салат отдельно
-        items:
-          - { product: turkey-thigh, g: 170, where: container }
-          - { product: pearl-barley, g: 130, where: container }
-          - { product: spinach, g: 30, where: container }
-          - { product: pumpkin, g: 150, where: container }
-          - { product: zucchini, g: 150, where: container }
-          - { product: chard, g: 120, where: container }
-          - { product: olive-oil, tbsp: 1, where: packet }
-      - id: pechenye-yabloki-koritsa-orekhi-tvorog
-        slot: snack
-        title: Печёные яблоки с корицей и орехами, творог
-        steps:
-          - Разогреть печёное яблоко
-          - Досыпать пакетик
-          - Творог отдельно
-        items:
-          - { product: apple, g: 150, where: container }
-          - { product: cinnamon, g: 2, where: container }
-          - { product: tvorog, g: 150, where: container }
-          - { product: almond, g: 40, where: packet }
+      - day: 3
+        meals:
+          - id: kinoa-moloko-yagody-skrembl
+            slot: breakfast
+            title: Киноа на молоке с ягодами, скрэмбл
+            steps:
+              - Разогреть кашу и скрэмбл
+              - Досыпать пакетик
+              - Полить маслом
+              - Ягоды отдельно
+            items:
+              - { product: quinoa, g: 50, where: container }
+              - { product: milk, g: 200, where: container }
+              - { product: blueberry, g: 125, where: container }
+              - { product: egg, pieces: 2, where: container }
+              - { product: almond, g: 40, where: packet }
+              - { product: brazil-nut, pieces: 2, where: packet }
+              - { product: flaxseed, tbsp: 1, where: packet }
+              - { product: olive-oil, tbsp: 1, where: packet }
+          - id: govyadina-shiitake-bulgur-batat-brokkoli
+            slot: lunch
+            title: Тушёная говядина с шиитаке, булгур с бататом и зеленью, запечённая брокколи
+            steps:
+              - Разогреть говядину с шиитаке
+              - Разогреть булгур с бататом
+              - Полить маслом
+            items:
+              - { product: beef, g: 190, where: container }
+              - { product: shiitake, g: 80, where: container }
+              - { product: bulgur, g: 130, where: container }
+              - { product: sweet-potato, g: 100, where: container }
+              - { product: spinach, g: 20, where: container }
+              - { product: broccoli, g: 150, where: container }
+              - { product: olive-oil, tbsp: 1, where: packet }
+          - id: kurinaya-grudka-grechka-shpinat-chesnok-ovoshchi
+            slot: dinner
+            title: Куриная грудка, гречка со шпинатом и чесноком, запечённые овощи
+            steps:
+              - Разогреть грудку и гречку
+              - Разогреть овощи
+              - Полить маслом
+            items:
+              - { product: chicken-breast, g: 170, where: container }
+              - { product: buckwheat, g: 130, where: container }
+              - { product: spinach, g: 30, where: container }
+              - { product: garlic, g: 5, where: container }
+              - { product: zucchini, g: 100, where: container }
+              - { product: bell-pepper, g: 100, where: container }
+              - { product: olive-oil, tbsp: 1, where: packet }
+          - id: shokoladnyy-muss-yogurt-nut
+            slot: snack
+            title: Шоколадный мусс на греческом йогурте плюс жареный нут
+            steps:
+              - Смешать йогурт с какао
+              - Нут отдельно
+            items:
+              - { product: greek-yogurt, g: 200, where: container }
+              - { product: cocoa, g: 10, where: container }
+              - { product: chickpeas, g: 100, where: container }
 
-  - day: 5
-    meals:
-      - id: tvorozhnye-oladyi-grecheskiy-yogurt-yagody-omlet
-        slot: breakfast
-        title: Творожные оладьи на оливковом, греческий йогурт, ягоды, омлет
-        steps:
-          - Разогреть оладьи и омлет
-          - Досыпать пакетик
-          - Полить маслом
-          - Йогурт и ягоды отдельно
-        items:
-          - { product: tvorog, g: 150, where: container }
-          - { product: egg, pieces: 1, where: container }
-          - { product: greek-yogurt, g: 200, where: container }
-          - { product: blueberry, g: 125, where: container }
-          - { product: egg, pieces: 2, where: container }
-          - { product: almond, g: 40, where: packet }
-          - { product: brazil-nut, pieces: 2, where: packet }
-          - { product: flaxseed, tbsp: 1, where: packet }
-          - { product: olive-oil, tbsp: 1, where: packet }
-      - id: losos-bulgur-shpinat-batat-brokkoli
-        slot: lunch
-        title: Стейк из лосося, булгур со шпинатом и зеленью, запечённый батат и брокколи
-        steps:
-          - Разогреть лосось и булгур
-          - Разогреть батат и брокколи
-          - Полить маслом
-        items:
-          - { product: salmon, g: 170, where: container }
-          - { product: bulgur, g: 130, where: container }
-          - { product: spinach, g: 40, where: container }
-          - { product: sweet-potato, g: 120, where: container }
-          - { product: broccoli, g: 150, where: container }
-          - { product: olive-oil, tbsp: 1, where: packet }
-      - id: nut-ovoshchi-chesnok-kapusta
-        slot: dinner
-        title: Нут с запечёнными овощами, чесноком и зеленью, салат из капусты
-        steps:
-          - Разогреть нут с овощами и чесноком
-          - Полить маслом
-          - Салат из капусты отдельно
-        items:
-          - { product: chickpeas, g: 120, where: container }
-          - { product: bell-pepper, g: 150, where: container }
-          - { product: zucchini, g: 100, where: container }
-          - { product: garlic, g: 5, where: container }
-          - { product: spinach, g: 20, where: container }
-          - { product: cabbage, g: 120, where: container }
-          - { product: olive-oil, tbsp: 1, where: packet }
-      - id: chia-puding-banan-finiki
-        slot: snack
-        title: Чиа-пудинг с бананом и финиками
-        steps:
-          - Размять банан с финиками
-          - Смешать с молоком
-          - Досыпать чиа
-        items:
-          - { product: milk, g: 200, where: container }
-          - { product: banana, g: 130, where: container }
-          - { product: dates, g: 40, where: container }
-          - { product: chia, tbsp: 2, where: packet }
+      - day: 4
+        meals:
+          - id: ovsyanka-yabloko-koritsa-izyum-omlet
+            slot: breakfast
+            title: Овсянка на молоке с яблоком, корицей и изюмом, омлет
+            steps:
+              - Разогреть кашу и омлет
+              - Досыпать пакетик
+              - Полить маслом
+              - Изюм сверху
+            items:
+              - { product: oats, g: 90, where: container }
+              - { product: milk, g: 250, where: container }
+              - { product: apple, g: 150, where: container }
+              - { product: cinnamon, g: 2, where: container }
+              - { product: raisins, g: 30, where: container }
+              - { product: egg, pieces: 2, where: container }
+              - { product: cashew, g: 40, where: packet }
+              - { product: brazil-nut, pieces: 2, where: packet }
+              - { product: flaxseed, tbsp: 1, where: packet }
+              - { product: olive-oil, tbsp: 1, where: packet }
+          - id: ragu-fasol-tomaty-perets-shpinat
+            slot: lunch
+            title: Рагу из фасоли с томатами, перцем и шпинатом
+            steps:
+              - Разогреть рагу
+              - Полить маслом
+            items:
+              - { product: white-beans, g: 120, where: container }
+              - { product: tomato, g: 150, where: container }
+              - { product: bell-pepper, g: 120, where: container }
+              - { product: spinach, g: 40, where: container }
+              - { product: olive-oil, tbsp: 1, where: packet }
+          - id: indeyka-perlovka-tykva-tsukini-mangold
+            slot: dinner
+            title: Филе бедра индейки, перловка с зеленью, запечённая тыква и цукини, салат из мангольда
+            steps:
+              - Разогреть индейку и перловку
+              - Разогреть тыкву и цукини
+              - Полить маслом
+              - Салат отдельно
+            items:
+              - { product: turkey-thigh, g: 170, where: container }
+              - { product: pearl-barley, g: 130, where: container }
+              - { product: spinach, g: 30, where: container }
+              - { product: pumpkin, g: 150, where: container }
+              - { product: zucchini, g: 150, where: container }
+              - { product: chard, g: 120, where: container }
+              - { product: olive-oil, tbsp: 1, where: packet }
+          - id: pechenye-yabloki-koritsa-orekhi-tvorog
+            slot: snack
+            title: Печёные яблоки с корицей и орехами, творог
+            steps:
+              - Разогреть печёное яблоко
+              - Досыпать пакетик
+              - Творог отдельно
+            items:
+              - { product: apple, g: 150, where: container }
+              - { product: cinnamon, g: 2, where: container }
+              - { product: tvorog, g: 150, where: container }
+              - { product: almond, g: 40, where: packet }
 
-  - day: 6
-    meals:
-      - id: ovsyanka-persik-skrembl-yagody
-        slot: breakfast
-        title: Овсянка на молоке с персиком, скрэмбл, ягоды
-        steps:
-          - Разогреть кашу и скрэмбл
-          - Досыпать пакетик
-          - Полить маслом
-          - Ягоды отдельно
-        items:
-          - { product: oats, g: 75, where: container }
-          - { product: milk, g: 200, where: container }
-          - { product: peach, g: 110, where: container }
-          - { product: egg, pieces: 2, where: container }
-          - { product: blueberry, g: 125, where: container }
-          - { product: hazelnut, g: 40, where: packet }
-          - { product: brazil-nut, pieces: 2, where: packet }
-          - { product: flaxseed, tbsp: 1, where: packet }
-          - { product: olive-oil, tbsp: 1, where: packet }
-      - id: forel-kinoa-morkov-perets-tsukini
-        slot: lunch
-        title: Запечённая форель, киноа с запечённой морковью и перцем, цукини
-        steps:
-          - Разогреть форель и киноа с овощами
-          - Полить маслом
-        items:
-          - { product: trout, g: 170, where: container }
-          - { product: quinoa, g: 130, where: container }
-          - { product: carrot, g: 80, where: container }
-          - { product: bell-pepper, g: 100, where: container }
-          - { product: zucchini, g: 100, where: container }
-          - { product: olive-oil, tbsp: 1, where: packet }
-      - id: kurinye-serdechki-luk-perlovka-mangold-kapusta
-        slot: dinner
-        title: Куриные сердечки с луком и зеленью, перловка, салат из мангольда с капустой
-        steps:
-          - Разогреть сердечки с луком
-          - Разогреть перловку
-          - Полить маслом
-          - Салат отдельно
-        items:
-          - { product: chicken-hearts, g: 170, where: container }
-          - { product: onion, g: 60, where: container }
-          - { product: spinach, g: 20, where: container }
-          - { product: pearl-barley, g: 130, where: container }
-          - { product: chard, g: 80, where: container }
-          - { product: cabbage, g: 80, where: container }
-          - { product: olive-oil, tbsp: 1, where: packet }
-      - id: tvorozhnaya-zapekanka-granat
-        slot: snack
-        title: Творожная запеканка с зёрнами граната
-        steps:
-          - Разогреть запеканку
-          - Гранат сверху
-        items:
-          - { product: tvorog, g: 150, where: container }
-          - { product: egg, pieces: 2, where: container }
-          - { product: pomegranate, g: 150, where: container }
+      - day: 5
+        meals:
+          - id: tvorozhnye-oladyi-grecheskiy-yogurt-yagody-omlet
+            slot: breakfast
+            title: Творожные оладьи на оливковом, греческий йогурт, ягоды, омлет
+            steps:
+              - Разогреть оладьи и омлет
+              - Досыпать пакетик
+              - Полить маслом
+              - Йогурт и ягоды отдельно
+            items:
+              - { product: tvorog, g: 150, where: container }
+              - { product: egg, pieces: 1, where: container }
+              - { product: greek-yogurt, g: 200, where: container }
+              - { product: blueberry, g: 125, where: container }
+              - { product: egg, pieces: 2, where: container }
+              - { product: almond, g: 40, where: packet }
+              - { product: brazil-nut, pieces: 2, where: packet }
+              - { product: flaxseed, tbsp: 1, where: packet }
+              - { product: olive-oil, tbsp: 1, where: packet }
+          - id: losos-bulgur-shpinat-batat-brokkoli
+            slot: lunch
+            title: Стейк из лосося, булгур со шпинатом и зеленью, запечённый батат и брокколи
+            steps:
+              - Разогреть лосось и булгур
+              - Разогреть батат и брокколи
+              - Полить маслом
+            items:
+              - { product: salmon, g: 170, where: container }
+              - { product: bulgur, g: 130, where: container }
+              - { product: spinach, g: 40, where: container }
+              - { product: sweet-potato, g: 120, where: container }
+              - { product: broccoli, g: 150, where: container }
+              - { product: olive-oil, tbsp: 1, where: packet }
+          - id: nut-ovoshchi-chesnok-kapusta
+            slot: dinner
+            title: Нут с запечёнными овощами, чесноком и зеленью, салат из капусты
+            steps:
+              - Разогреть нут с овощами и чесноком
+              - Полить маслом
+              - Салат из капусты отдельно
+            items:
+              - { product: chickpeas, g: 120, where: container }
+              - { product: bell-pepper, g: 150, where: container }
+              - { product: zucchini, g: 100, where: container }
+              - { product: garlic, g: 5, where: container }
+              - { product: spinach, g: 20, where: container }
+              - { product: cabbage, g: 120, where: container }
+              - { product: olive-oil, tbsp: 1, where: packet }
+          - id: chia-puding-banan-finiki
+            slot: snack
+            title: Чиа-пудинг с бананом и финиками
+            steps:
+              - Размять банан с финиками
+              - Смешать с молоком
+              - Досыпать чиа
+            items:
+              - { product: milk, g: 200, where: container }
+              - { product: banana, g: 130, where: container }
+              - { product: dates, g: 40, where: container }
+              - { product: chia, tbsp: 2, where: packet }
 
-  - day: 7
-    meals:
-      - id: syrniki-yagody-glazunya
-        slot: breakfast
-        title: Сырники с ягодами, глазунья
-        steps:
-          - Разогреть сырники и глазунью
-          - Досыпать пакетик
-          - Полить маслом
-          - Ягоды отдельно
-        items:
-          - { product: tvorog, g: 150, where: container }
-          - { product: egg, pieces: 1, where: container }
-          - { product: blueberry, g: 125, where: container }
-          - { product: egg, pieces: 2, where: container }
-          - { product: cashew, g: 40, where: packet }
-          - { product: brazil-nut, pieces: 2, where: packet }
-          - { product: flaxseed, tbsp: 1, where: packet }
-          - { product: olive-oil, tbsp: 1, where: packet }
-      - id: govyadina-veshenki-kinoa-shpinat-chesnok-brokkoli-batat
-        slot: lunch
-        title: Тушёная говядина с вешенками, киноа со шпинатом и чесноком, брокколи и батат
-        steps:
-          - Разогреть говядину с вешенками
-          - Разогреть киноа с овощами
-          - Полить маслом
-        items:
-          - { product: beef, g: 190, where: container }
-          - { product: oyster-mushroom, g: 80, where: container }
-          - { product: quinoa, g: 130, where: container }
-          - { product: spinach, g: 30, where: container }
-          - { product: garlic, g: 5, where: container }
-          - { product: broccoli, g: 100, where: container }
-          - { product: sweet-potato, g: 100, where: container }
-          - { product: olive-oil, tbsp: 1, where: packet }
-      - id: kurinaya-grudka-bulgur-kapusta-morkov
-        slot: dinner
-        title: Куриная грудка, булгур с зеленью, витаминный салат из капусты с морковью
-        steps:
-          - Разогреть грудку и булгур
-          - Полить маслом
-          - Салат отдельно
-        items:
-          - { product: chicken-breast, g: 170, where: container }
-          - { product: bulgur, g: 130, where: container }
-          - { product: spinach, g: 20, where: container }
-          - { product: cabbage, g: 100, where: container }
-          - { product: carrot, g: 60, where: container }
-          - { product: olive-oil, tbsp: 1, where: packet }
-      - id: pechenye-grushi-koritsa-orekhi-tvorog
-        slot: snack
-        title: Печёные груши с корицей и орехами, творог
-        steps:
-          - Разогреть печёную грушу
-          - Досыпать пакетик
-          - Творог отдельно
-        items:
-          - { product: pear, g: 150, where: container }
-          - { product: cinnamon, g: 2, where: container }
-          - { product: tvorog, g: 150, where: container }
-          - { product: almond, g: 40, where: packet }
+      - day: 6
+        meals:
+          - id: ovsyanka-persik-skrembl-yagody
+            slot: breakfast
+            title: Овсянка на молоке с персиком, скрэмбл, ягоды
+            steps:
+              - Разогреть кашу и скрэмбл
+              - Досыпать пакетик
+              - Полить маслом
+              - Ягоды отдельно
+            items:
+              - { product: oats, g: 75, where: container }
+              - { product: milk, g: 200, where: container }
+              - { product: peach, g: 110, where: container }
+              - { product: egg, pieces: 2, where: container }
+              - { product: blueberry, g: 125, where: container }
+              - { product: hazelnut, g: 40, where: packet }
+              - { product: brazil-nut, pieces: 2, where: packet }
+              - { product: flaxseed, tbsp: 1, where: packet }
+              - { product: olive-oil, tbsp: 1, where: packet }
+          - id: forel-kinoa-morkov-perets-tsukini
+            slot: lunch
+            title: Запечённая форель, киноа с запечённой морковью и перцем, цукини
+            steps:
+              - Разогреть форель и киноа с овощами
+              - Полить маслом
+            items:
+              - { product: trout, g: 170, where: container }
+              - { product: quinoa, g: 130, where: container }
+              - { product: carrot, g: 80, where: container }
+              - { product: bell-pepper, g: 100, where: container }
+              - { product: zucchini, g: 100, where: container }
+              - { product: olive-oil, tbsp: 1, where: packet }
+          - id: kurinye-serdechki-luk-perlovka-mangold-kapusta
+            slot: dinner
+            title: Куриные сердечки с луком и зеленью, перловка, салат из мангольда с капустой
+            steps:
+              - Разогреть сердечки с луком
+              - Разогреть перловку
+              - Полить маслом
+              - Салат отдельно
+            items:
+              - { product: chicken-hearts, g: 170, where: container }
+              - { product: onion, g: 60, where: container }
+              - { product: spinach, g: 20, where: container }
+              - { product: pearl-barley, g: 130, where: container }
+              - { product: chard, g: 80, where: container }
+              - { product: cabbage, g: 80, where: container }
+              - { product: olive-oil, tbsp: 1, where: packet }
+          - id: tvorozhnaya-zapekanka-granat
+            slot: snack
+            title: Творожная запеканка с зёрнами граната
+            steps:
+              - Разогреть запеканку
+              - Гранат сверху
+            items:
+              - { product: tvorog, g: 150, where: container }
+              - { product: egg, pieces: 2, where: container }
+              - { product: pomegranate, g: 150, where: container }
 
-  - day: 8
-    meals:
-      - id: kinoa-yabloko-koritsa-omlet-yagody
-        slot: breakfast
-        title: Киноа на молоке с яблоком и корицей, омлет, ягоды
-        steps:
-          - Разогреть кашу и омлет
-          - Досыпать пакетик
-          - Полить маслом
-          - Ягоды отдельно
-        items:
-          - { product: quinoa, g: 60, where: container }
-          - { product: milk, g: 200, where: container }
-          - { product: apple, g: 120, where: container }
-          - { product: cinnamon, g: 2, where: container }
-          - { product: egg, pieces: 2, where: container }
-          - { product: blueberry, g: 125, where: container }
-          - { product: almond, g: 40, where: packet }
-          - { product: brazil-nut, pieces: 2, where: packet }
-          - { product: flaxseed, tbsp: 1, where: packet }
-          - { product: olive-oil, tbsp: 1, where: packet }
-      - id: skumbriya-perlovka-morkov-perets-baklazhany
-        slot: lunch
-        title: Скумбрия, перловка с запечённой морковью и перцем, запечённые баклажаны
-        steps:
-          - Разогреть скумбрию и перловку
-          - Разогреть баклажаны
-          - Полить маслом
-        items:
-          - { product: mackerel, g: 170, where: container }
-          - { product: pearl-barley, g: 130, where: container }
-          - { product: carrot, g: 80, where: container }
-          - { product: bell-pepper, g: 100, where: container }
-          - { product: eggplant, g: 100, where: container }
-          - { product: olive-oil, tbsp: 1, where: packet }
-      - id: fasol-tomaty-perets-kabachki-brokkoli-kale
-        slot: dinner
-        title: Фасоль с томатами и зеленью, запечённые перец, кабачки и брокколи, салат из кале
-        steps:
-          - Разогреть фасоль с томатами
-          - Разогреть перец, кабачки и брокколи
-          - Полить маслом
-          - Салат из кале отдельно
-        items:
-          - { product: red-beans, g: 120, where: container }
-          - { product: tomato, g: 150, where: container }
-          - { product: spinach, g: 20, where: container }
-          - { product: bell-pepper, g: 120, where: container }
-          - { product: zucchini, g: 100, where: container }
-          - { product: broccoli, g: 100, where: container }
-          - { product: kale, g: 100, where: container }
-          - { product: olive-oil, tbsp: 1, where: packet }
-      - id: chia-puding-kakao-banan
-        slot: snack
-        title: Чиа-пудинг с какао и бананом
-        steps:
-          - Смешать молоко с какао
-          - Размять банан
-          - Досыпать чиа
-        items:
-          - { product: milk, g: 200, where: container }
-          - { product: cocoa, g: 12, where: container }
-          - { product: banana, g: 150, where: container }
-          - { product: chia, tbsp: 2, where: packet }
+      - day: 7
+        meals:
+          - id: syrniki-yagody-glazunya
+            slot: breakfast
+            title: Сырники с ягодами, глазунья
+            steps:
+              - Разогреть сырники и глазунью
+              - Досыпать пакетик
+              - Полить маслом
+              - Ягоды отдельно
+            items:
+              - { product: tvorog, g: 150, where: container }
+              - { product: egg, pieces: 1, where: container }
+              - { product: blueberry, g: 125, where: container }
+              - { product: egg, pieces: 2, where: container }
+              - { product: cashew, g: 40, where: packet }
+              - { product: brazil-nut, pieces: 2, where: packet }
+              - { product: flaxseed, tbsp: 1, where: packet }
+              - { product: olive-oil, tbsp: 1, where: packet }
+          - id: govyadina-veshenki-kinoa-shpinat-chesnok-brokkoli-batat
+            slot: lunch
+            title: Тушёная говядина с вешенками, киноа со шпинатом и чесноком, брокколи и батат
+            steps:
+              - Разогреть говядину с вешенками
+              - Разогреть киноа с овощами
+              - Полить маслом
+            items:
+              - { product: beef, g: 190, where: container }
+              - { product: oyster-mushroom, g: 80, where: container }
+              - { product: quinoa, g: 130, where: container }
+              - { product: spinach, g: 30, where: container }
+              - { product: garlic, g: 5, where: container }
+              - { product: broccoli, g: 100, where: container }
+              - { product: sweet-potato, g: 100, where: container }
+              - { product: olive-oil, tbsp: 1, where: packet }
+          - id: kurinaya-grudka-bulgur-kapusta-morkov
+            slot: dinner
+            title: Куриная грудка, булгур с зеленью, витаминный салат из капусты с морковью
+            steps:
+              - Разогреть грудку и булгур
+              - Полить маслом
+              - Салат отдельно
+            items:
+              - { product: chicken-breast, g: 170, where: container }
+              - { product: bulgur, g: 130, where: container }
+              - { product: spinach, g: 20, where: container }
+              - { product: cabbage, g: 100, where: container }
+              - { product: carrot, g: 60, where: container }
+              - { product: olive-oil, tbsp: 1, where: packet }
+          - id: pechenye-grushi-koritsa-orekhi-tvorog
+            slot: snack
+            title: Печёные груши с корицей и орехами, творог
+            steps:
+              - Разогреть печёную грушу
+              - Досыпать пакетик
+              - Творог отдельно
+            items:
+              - { product: pear, g: 150, where: container }
+              - { product: cinnamon, g: 2, where: container }
+              - { product: tvorog, g: 150, where: container }
+              - { product: almond, g: 40, where: packet }
+
+      - day: 8
+        meals:
+          - id: kinoa-yabloko-koritsa-omlet-yagody
+            slot: breakfast
+            title: Киноа на молоке с яблоком и корицей, омлет, ягоды
+            steps:
+              - Разогреть кашу и омлет
+              - Досыпать пакетик
+              - Полить маслом
+              - Ягоды отдельно
+            items:
+              - { product: quinoa, g: 60, where: container }
+              - { product: milk, g: 200, where: container }
+              - { product: apple, g: 120, where: container }
+              - { product: cinnamon, g: 2, where: container }
+              - { product: egg, pieces: 2, where: container }
+              - { product: blueberry, g: 125, where: container }
+              - { product: almond, g: 40, where: packet }
+              - { product: brazil-nut, pieces: 2, where: packet }
+              - { product: flaxseed, tbsp: 1, where: packet }
+              - { product: olive-oil, tbsp: 1, where: packet }
+          - id: skumbriya-perlovka-morkov-perets-baklazhany
+            slot: lunch
+            title: Скумбрия, перловка с запечённой морковью и перцем, запечённые баклажаны
+            steps:
+              - Разогреть скумбрию и перловку
+              - Разогреть баклажаны
+              - Полить маслом
+            items:
+              - { product: mackerel, g: 170, where: container }
+              - { product: pearl-barley, g: 130, where: container }
+              - { product: carrot, g: 80, where: container }
+              - { product: bell-pepper, g: 100, where: container }
+              - { product: eggplant, g: 100, where: container }
+              - { product: olive-oil, tbsp: 1, where: packet }
+          - id: fasol-tomaty-perets-kabachki-brokkoli-kale
+            slot: dinner
+            title: Фасоль с томатами и зеленью, запечённые перец, кабачки и брокколи, салат из кале
+            steps:
+              - Разогреть фасоль с томатами
+              - Разогреть перец, кабачки и брокколи
+              - Полить маслом
+              - Салат из кале отдельно
+            items:
+              - { product: red-beans, g: 120, where: container }
+              - { product: tomato, g: 150, where: container }
+              - { product: spinach, g: 20, where: container }
+              - { product: bell-pepper, g: 120, where: container }
+              - { product: zucchini, g: 100, where: container }
+              - { product: broccoli, g: 100, where: container }
+              - { product: kale, g: 100, where: container }
+              - { product: olive-oil, tbsp: 1, where: packet }
+          - id: chia-puding-kakao-banan
+            slot: snack
+            title: Чиа-пудинг с какао и бананом
+            steps:
+              - Смешать молоко с какао
+              - Размять банан
+              - Досыпать чиа
+            items:
+              - { product: milk, g: 200, where: container }
+              - { product: cocoa, g: 12, where: container }
+              - { product: banana, g: 150, where: container }
+              - { product: chia, tbsp: 2, where: packet }
+
+  # Неделя от 4 сентября 2026. Прислана Сергеем Чесноковым 30.08.2026, дни 4-8.
+  # Дни 1-3 этой недели не присылались — до их прихода они берутся из редакции
+  # выше, и это видно в проверке меню, а не спрятано.
+  #
+  # Как читался исходный текст, одним правилом на всю редакцию:
+  #   - where говорит, ГДЕ еда лежит в момент еды, а не под каким заголовком её
+  #     назвал Сергей. В packet идёт весь «Пакетик на крышку», а с ним орехи,
+  #     которые досыпают сверху, и шоколад «на сладкое» — их Александр кладёт
+  #     сам. Масло для жарки и заправка салата — container: они прошли через
+  #     готовку вместе с блюдом и отдельно уже не существуют;
+  #   - крупы и бобовые записаны в СУХОМ весе, как их и даёт Сергей, — справочник
+  #     тоже считает их сухими (fdcDescription: raw / dry);
+  #   - масло, названное в нескольких блюдах одного приёма, сложено в одну
+  #     строку: приём — это один контейнер, а не три тарелки;
+  #   - «зелень» — отдельный продукт greens (петрушка), а не шпинат: раньше её
+  #     молча подставляли шпинатом, и в этой редакции такого больше нет;
+  #   - «3 яйца (~165 г)» записаны граммами, а не штуками: штука в справочнике
+  #     50 г, и три штуки дали бы 150 г вместо присланных 165.
+  - from: "2026-09-04"
+    title: неделя от 4 сентября
+    days:
+      - day: 4
+        meals:
+          - id: ovsyanka-yabloko-izyum-omlet-yagody
+            slot: breakfast
+            title: Овсянка на молоке с яблоком и изюмом, омлет, ягоды
+            steps:
+              - Разогреть кашу и омлет
+              - Досыпать пакетик, чиа вмешать в кашу
+              - Ягоды отдельно
+            items:
+              - { product: oats, g: 60, where: container }
+              - { product: milk, g: 200, where: container }
+              - { product: apple, g: 150, where: container }
+              - { product: raisins, g: 20, where: container }
+              - { product: egg, g: 165, where: container }
+              - { product: olive-oil, g: 12, where: container }
+              - { product: blueberry, g: 250, where: container }
+              - { product: cashew, g: 40, where: packet }
+              - { product: brazil-nut, pieces: 2, where: packet }
+              - { product: flaxseed, g: 10, where: packet }
+              - { product: chia, g: 20, where: packet }
+          - id: ragu-fasol-tomaty-perets-shpinat
+            slot: lunch
+            title: Рагу из фасоли с томатами, перцем и шпинатом
+            steps:
+              - Разогреть рагу
+            items:
+              - { product: white-beans, g: 90, where: container }
+              - { product: tomato, g: 150, where: container }
+              - { product: bell-pepper, g: 100, where: container }
+              - { product: spinach, g: 50, where: container }
+              - { product: olive-oil, g: 18, where: container }
+          - id: indeyka-perlovka-tykva-tsukini-mangold
+            slot: dinner
+            title: Филе бедра индейки, перловка с зеленью, тыква и цукини, салат из мангольда
+            steps:
+              - Разогреть индейку и перловку
+              - Разогреть тыкву и цукини
+              - Салат из мангольда отдельно
+            items:
+              - { product: turkey-thigh, g: 170, where: container }
+              - { product: pearl-barley, g: 80, where: container }
+              - { product: greens, g: 20, where: container }
+              - { product: pumpkin, g: 100, where: container }
+              - { product: zucchini, g: 100, where: container }
+              - { product: chard, g: 100, where: container }
+              - { product: olive-oil, g: 40, where: container }
+          - id: pechenye-yabloki-orekhi-tvorog-shokolad
+            slot: snack
+            title: Печёные яблоки с орехами и творогом, тёмный шоколад
+            steps:
+              - Разогреть печёные яблоки
+              - Досыпать орехи
+              - Творог отдельно
+            items:
+              - { product: apple, g: 200, where: container }
+              - { product: cinnamon, g: 2, where: container }
+              - { product: tvorog, g: 250, where: container }
+              - { product: almond, g: 25, where: packet }
+              - { product: dark-chocolate, g: 20, where: packet }
+
+      - day: 5
+        meals:
+          - id: tvorozhnye-oladyi-grecheskiy-yogurt-yagody-omlet
+            slot: breakfast
+            title: Творожные оладьи с греческим йогуртом, омлет, ягоды
+            steps:
+              - Разогреть оладьи и омлет
+              - Досыпать пакетик, чиа вмешать в оладьи
+              - Йогурт и ягоды отдельно
+            items:
+              - { product: tvorog, g: 250, where: container }
+              - { product: egg, g: 50, where: container }
+              - { product: wheat-flour, g: 30, where: container }
+              - { product: greek-yogurt, g: 50, where: container }
+              - { product: egg, g: 165, where: container }
+              - { product: olive-oil, g: 20, where: container }
+              - { product: blueberry, g: 250, where: container }
+              - { product: almond, g: 40, where: packet }
+              - { product: brazil-nut, pieces: 2, where: packet }
+              - { product: flaxseed, g: 10, where: packet }
+              - { product: chia, g: 20, where: packet }
+          - id: losos-bulgur-shpinat-batat-brokkoli
+            slot: lunch
+            title: Стейк из лосося, булгур со шпинатом и зеленью, батат и брокколи
+            steps:
+              - Разогреть лосось и булгур
+              - Разогреть батат и брокколи
+            items:
+              - { product: salmon, g: 170, where: container }
+              - { product: bulgur, g: 80, where: container }
+              - { product: spinach, g: 50, where: container }
+              - { product: greens, g: 15, where: container }
+              - { product: sweet-potato, g: 100, where: container }
+              - { product: broccoli, g: 150, where: container }
+              - { product: olive-oil, g: 29, where: container }
+          - id: nut-ovoshchi-chesnok-kapusta
+            slot: dinner
+            title: Нут с запечёнными овощами, чесноком и зеленью, салат из капусты
+            steps:
+              - Разогреть нут с овощами
+              - Салат из капусты отдельно
+            items:
+              - { product: chickpeas, g: 70, where: container }
+              - { product: bell-pepper, g: 100, where: container }
+              - { product: zucchini, g: 100, where: container }
+              - { product: garlic, g: 5, where: container }
+              - { product: greens, g: 15, where: container }
+              - { product: cabbage, g: 150, where: container }
+              - { product: olive-oil, g: 25, where: container }
+          - id: chia-puding-banan-finiki
+            slot: snack
+            title: Чиа-пудинг на йогурте с бананом и финиками
+            steps:
+              - Пудинг готов, размешать перед едой
+            items:
+              - { product: chia, g: 20, where: container }
+              - { product: greek-yogurt, g: 200, where: container }
+              - { product: banana, g: 120, where: container }
+              - { product: dates, g: 30, where: container }
+
+      - day: 6
+        meals:
+          - id: ovsyanka-persik-skrembl-yagody
+            slot: breakfast
+            title: Овсянка на молоке с персиком, скрэмбл, ягоды
+            steps:
+              - Разогреть кашу и скрэмбл
+              - Досыпать пакетик, чиа вмешать в кашу
+              - Ягоды отдельно
+            items:
+              - { product: oats, g: 60, where: container }
+              - { product: milk, g: 200, where: container }
+              - { product: peach, g: 150, where: container }
+              - { product: egg, g: 165, where: container }
+              - { product: butter, g: 10, where: container }
+              - { product: cream, g: 30, where: container }
+              - { product: blueberry, g: 250, where: container }
+              - { product: hazelnut, g: 40, where: packet }
+              - { product: brazil-nut, pieces: 2, where: packet }
+              - { product: flaxseed, g: 10, where: packet }
+              - { product: chia, g: 20, where: packet }
+          - id: forel-kinoa-morkov-perets-tsukini
+            slot: lunch
+            title: Запечённая форель, киноа с морковью и перцем, цукини
+            steps:
+              - Разогреть форель и киноа с овощами
+              - Разогреть цукини
+            items:
+              - { product: trout, g: 170, where: container }
+              - { product: quinoa, g: 80, where: container }
+              - { product: carrot, g: 60, where: container }
+              - { product: bell-pepper, g: 80, where: container }
+              - { product: zucchini, g: 150, where: container }
+              - { product: olive-oil, g: 27, where: container }
+          - id: kurinye-serdechki-luk-perlovka-mangold-kapusta
+            slot: dinner
+            title: Куриные сердечки с луком и зеленью, перловка, салат из мангольда с капустой
+            steps:
+              - Разогреть сердечки с луком
+              - Разогреть перловку
+              - Салат отдельно
+            items:
+              - { product: chicken-hearts, g: 170, where: container }
+              - { product: onion, g: 50, where: container }
+              - { product: greens, g: 15, where: container }
+              - { product: pearl-barley, g: 80, where: container }
+              - { product: chard, g: 80, where: container }
+              - { product: cabbage, g: 80, where: container }
+              - { product: olive-oil, g: 32, where: container }
+          - id: tvorozhnaya-zapekanka-granat
+            slot: snack
+            title: Творожная запеканка с зёрнами граната
+            steps:
+              - Разогреть запеканку
+              - Гранат сверху
+            items:
+              - { product: tvorog, g: 250, where: container }
+              - { product: egg, g: 50, where: container }
+              - { product: wheat-flour, g: 25, where: container }
+              - { product: pomegranate, g: 50, where: container }
+
+      - day: 7
+        meals:
+          - id: syrniki-yagody-glazunya
+            slot: breakfast
+            title: Сырники с ванилью, глазунья, ягоды
+            steps:
+              - Разогреть сырники и глазунью
+              - Досыпать пакетик, чиа вмешать в сырники
+              - Ягоды отдельно
+            items:
+              - { product: tvorog, g: 250, where: container }
+              - { product: egg, g: 50, where: container }
+              - { product: wheat-flour, g: 30, where: container }
+              - { product: egg, g: 165, where: container }
+              - { product: olive-oil, g: 8, where: container }
+              - { product: blueberry, g: 250, where: container }
+              - { product: cashew, g: 40, where: packet }
+              - { product: brazil-nut, pieces: 2, where: packet }
+              - { product: flaxseed, g: 10, where: packet }
+              - { product: chia, g: 20, where: packet }
+          - id: govyadina-veshenki-kinoa-shpinat-chesnok-brokkoli-batat
+            slot: lunch
+            title: Тушёная говядина с вешенками, киноа со шпинатом и чесноком, брокколи и батат
+            steps:
+              - Разогреть говядину с вешенками
+              - Разогреть киноа и овощи
+            items:
+              - { product: beef, g: 190, where: container }
+              - { product: oyster-mushroom, g: 50, where: container }
+              - { product: quinoa, g: 70, where: container }
+              - { product: spinach, g: 50, where: container }
+              - { product: garlic, g: 5, where: container }
+              - { product: broccoli, g: 100, where: container }
+              - { product: sweet-potato, g: 60, where: container }
+              - { product: olive-oil, g: 24, where: container }
+          - id: kurinaya-grudka-bulgur-kapusta-morkov
+            slot: dinner
+            title: Куриная грудка, булгур с зеленью, витаминный салат из капусты с морковью
+            steps:
+              - Разогреть грудку и булгур
+              - Салат отдельно
+            items:
+              - { product: chicken-breast, g: 170, where: container }
+              - { product: bulgur, g: 70, where: container }
+              - { product: greens, g: 15, where: container }
+              - { product: cabbage, g: 130, where: container }
+              - { product: carrot, g: 50, where: container }
+              - { product: olive-oil, g: 24, where: container }
+          - id: pechenye-grushi-orekhi-tvorog
+            slot: snack
+            title: Печёные груши с орехами и творогом
+            steps:
+              - Разогреть печёные груши
+              - Досыпать орехи
+              - Творог отдельно
+            items:
+              - { product: pear, g: 180, where: container }
+              - { product: tvorog, g: 180, where: container }
+              - { product: almond, g: 15, where: packet }
+
+      - day: 8
+        meals:
+          - id: kinoa-yabloko-omlet-yagody
+            slot: breakfast
+            title: Киноа на молоке с яблоком, омлет, ягоды
+            steps:
+              - Разогреть кашу и омлет
+              - Досыпать пакетик, чиа вмешать в кашу
+              - Ягоды отдельно
+            items:
+              - { product: quinoa, g: 60, where: container }
+              - { product: milk, g: 200, where: container }
+              - { product: apple, g: 150, where: container }
+              - { product: egg, g: 165, where: container }
+              - { product: olive-oil, g: 10, where: container }
+              - { product: blueberry, g: 250, where: container }
+              - { product: almond, g: 40, where: packet }
+              - { product: brazil-nut, pieces: 2, where: packet }
+              - { product: flaxseed, g: 10, where: packet }
+              - { product: chia, g: 20, where: packet }
+          - id: losos-perlovka-morkov-perets-baklazhany
+            slot: lunch
+            title: Стейк из лосося, перловка с морковью и перцем, баклажаны
+            steps:
+              - Разогреть лосось и перловку с овощами
+              - Разогреть баклажаны
+            items:
+              - { product: salmon, g: 170, where: container }
+              - { product: pearl-barley, g: 80, where: container }
+              - { product: carrot, g: 60, where: container }
+              - { product: bell-pepper, g: 80, where: container }
+              - { product: eggplant, g: 150, where: container }
+              - { product: olive-oil, g: 27, where: container }
+          - id: fasol-tomaty-perets-kabachki-brokkoli-kale
+            slot: dinner
+            title: Фасоль с томатами и зеленью, запечённые перец, кабачки и брокколи, салат из кале
+            steps:
+              - Разогреть фасоль с томатами
+              - Разогреть перец, кабачки и брокколи
+              - Салат из кале отдельно
+            items:
+              - { product: red-beans, g: 85, where: container }
+              - { product: tomato, g: 150, where: container }
+              - { product: greens, g: 15, where: container }
+              - { product: bell-pepper, g: 80, where: container }
+              - { product: zucchini, g: 80, where: container }
+              - { product: broccoli, g: 80, where: container }
+              - { product: kale, g: 80, where: container }
+              - { product: olive-oil, g: 33, where: container }
+          - id: chia-puding-kakao-banan-shokolad
+            slot: snack
+            title: Чиа-пудинг на йогурте с какао и бананом, тёмный шоколад
+            steps:
+              - Пудинг готов, размешать перед едой
+              - Шоколад отдельно
+            items:
+              - { product: chia, g: 20, where: container }
+              - { product: greek-yogurt, g: 200, where: container }
+              - { product: cocoa, g: 10, where: container }
+              - { product: banana, g: 130, where: container }
+              - { product: dark-chocolate, g: 30, where: packet }

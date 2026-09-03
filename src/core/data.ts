@@ -6,7 +6,7 @@
 
 import yaml from 'js-yaml'
 import { NUTRIENT_KEYS, NUTRIENT_TITLE, NUTRIENT_UNIT, SLOTS, SLOT_TITLE } from './types'
-import type { Item, Meal, Menu, MenuDay, NormBasis, NutrientKey, NutrientNorm, NutrientNorms, Nutrients, Product, ProductIndex, Slot, Where } from './types'
+import type { Item, Meal, Menu, MenuDay, MenuEdition, NormBasis, NutrientKey, NutrientNorm, NutrientNorms, Nutrients, Product, ProductIndex, Slot, Where } from './types'
 
 const WHERES: readonly Where[] = ['container', 'packet']
 const NORM_BASES: readonly NormBasis[] = ['rda', 'ai']
@@ -139,10 +139,20 @@ interface RawDay {
   meals: RawMeal[]
 }
 
+interface RawEdition {
+  from?: unknown
+  title?: unknown
+  days?: unknown
+}
+
 interface RawMenu {
   cycleDays: number
-  days: RawDay[]
+  editions: RawEdition[]
 }
+
+/** Дата редакции: только YYYY-MM-DD. Сравнение дат в приложении строковое, и
+    любой другой формат сломал бы порядок молча, а не с ошибкой. */
+const EDITION_DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
 function checkPositive(value: number, label: string): void {
   if (typeof value !== 'number' || Number.isNaN(value) || !(value > 0)) {
@@ -280,23 +290,83 @@ function parseDay(rawDay: RawDay, cycleDays: number, products: ProductIndex, see
   return { day, meals }
 }
 
-export function parseMenu(yamlText: string, products: ProductIndex): Menu {
-  const raw = yaml.load(yamlText) as RawMenu | undefined
-  if (!raw || typeof raw !== 'object' || typeof raw.cycleDays !== 'number' || !Array.isArray(raw.days)) {
-    throw new Error('Файл меню: не заданы cycleDays или days')
+/** Разбирает одну редакцию. Уникальность id блюда действует ВНУТРИ редакции:
+    тот же id в следующей редакции — намеренно то же блюдо с новой раскладкой,
+    и поставленная ему оценка остаётся с ним. */
+function parseEdition(rawEdition: RawEdition, index: number, cycleDays: number, products: ProductIndex): MenuEdition {
+  const position = `Редакция №${index + 1}`
+  if (!rawEdition || typeof rawEdition !== 'object') {
+    throw new Error(`${position}: должна быть объектом`)
   }
-  const cycleDays = raw.cycleDays
+  if (typeof rawEdition.title !== 'string' || !rawEdition.title) {
+    throw new Error(`${position}: не задан title — имя редакции видно человеку на экране`)
+  }
+  const title = rawEdition.title
+  const label = `Редакция «${title}»`
 
-  if (raw.days.length !== cycleDays) {
-    throw new Error(`Меню: число дней (${raw.days.length}) не совпадает с cycleDays (${cycleDays})`)
+  let from: string | undefined
+  if (rawEdition.from !== undefined) {
+    if (typeof rawEdition.from !== 'string' || !EDITION_DATE_RE.test(rawEdition.from)) {
+      throw new Error(`${label}: from должно быть датой вида ГГГГ-ММ-ДД, получено ${JSON.stringify(rawEdition.from)}`)
+    }
+    from = rawEdition.from
+  }
+
+  if (!Array.isArray(rawEdition.days) || rawEdition.days.length === 0) {
+    throw new Error(`${label}: не заданы дни (days)`)
   }
 
   const seenDays = new Set<number>()
   const seenMealIds = new Map<string, { day: number; fingerprint: string }>()
-  const days = raw.days.map(rawDay => parseDay(rawDay, cycleDays, products, seenDays, seenMealIds))
+  let days: MenuDay[]
+  try {
+    days = (rawEdition.days as RawDay[]).map(rawDay => parseDay(rawDay, cycleDays, products, seenDays, seenMealIds))
+  } catch (error) {
+    throw new Error(`${label}: ${error instanceof Error ? error.message : String(error)}`)
+  }
   days.sort((a, b) => a.day - b.day)
 
-  return { cycleDays, days }
+  return from === undefined ? { title, days } : { from, title, days }
+}
+
+export function parseMenu(yamlText: string, products: ProductIndex): Menu {
+  const raw = yaml.load(yamlText) as RawMenu | undefined
+  if (!raw || typeof raw !== 'object' || typeof raw.cycleDays !== 'number' || !Array.isArray(raw.editions)) {
+    throw new Error('Файл меню: не заданы cycleDays или editions')
+  }
+  const cycleDays = raw.cycleDays
+  if (raw.editions.length === 0) {
+    throw new Error('Файл меню: список редакций пуст')
+  }
+
+  const editions = raw.editions.map((rawEdition, index) => parseEdition(rawEdition, index, cycleDays, products))
+
+  /* Базовая редакция (без from) допустима только одна и только первой: вторая
+     такая означала бы «действует всегда», и порядок применения стал бы
+     неопределённым — а меню обязано быть однозначным на любую дату. */
+  for (let i = 1; i < editions.length; i++) {
+    if (editions[i].from === undefined) {
+      throw new Error(`Меню: редакция «${editions[i].title}» идёт не первой, поэтому обязана задать from`)
+    }
+    const previous = editions[i - 1].from
+    if (previous !== undefined && !(editions[i].from! > previous)) {
+      throw new Error(`Меню: редакции идут не по возрастанию даты — «${editions[i].title}» (${editions[i].from}) не позже «${editions[i - 1].title}» (${previous})`)
+    }
+  }
+
+  /* Первая редакция обязана описывать весь цикл. Иначе нашёлся бы день, на
+     который меню не существует вовсе, и экран остался бы пустым не из-за
+     ошибки в коде, а из-за дыры в данных, которую никто не заметил. */
+  const base = editions[0]
+  const missing: number[] = []
+  for (let day = 1; day <= cycleDays; day++) {
+    if (!base.days.some(d => d.day === day)) missing.push(day)
+  }
+  if (missing.length > 0) {
+    throw new Error(`Меню: первая редакция «${base.title}» описывает не весь цикл — нет дней ${missing.join(', ')} из ${cycleDays}`)
+  }
+
+  return { cycleDays, editions }
 }
 
 /* ---- norms.yaml ---- */

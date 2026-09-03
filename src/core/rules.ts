@@ -5,7 +5,7 @@
 
 import { dayKbju, itemGrams, mealKbju } from './nutrition'
 import { SLOT_TITLE } from './types'
-import type { Item, Meal, Menu, MenuDay, Product, ProductIndex, Slot, Violation } from './types'
+import type { Item, Meal, Menu, MenuDay, MenuEdition, Product, ProductIndex, Slot, Violation } from './types'
 
 export const LIMITS = {
   /** Ровные нормы порций по тегу продукта, граммы. */
@@ -21,9 +21,15 @@ export const LIMITS = {
   } as Record<string, number>,
   legumesG: { min: 100, max: 120 },
   brazilPieces: 2,
-  flaxTbsp: 1,
-  chiaTbsp: 2,
-  dayOilTbsp: 3,
+  /* Лён, чиа и масло сравниваются в ГРАММАХ, а не в ложках, хотя нормы заданы
+     диетологом ложками. Ложка — мера записи, а не свойство еды: то же масло
+     можно записать и «1 ст. л.», и «13.5 г», и проверка, считающая только поле
+     tbsp, на втором варианте молча увидела бы ноль и отрапортовала «масла нет».
+     Числа ниже — те же нормы, переведённые по мерам самого справочника:
+     лён 1 ст. л. = 7 г, чиа 2 ст. л. = 12 г каждая, масло 3 ст. л. = 13.5 г каждая. */
+  flaxG: 7,
+  chiaG: 24,
+  dayOilG: 40.5,
   dayBerriesG: 125,
   dayKcal: { min: 3050, max: 3350, target: 3200 },
   mealKcalMin: { breakfast: 800, lunch: 800, dinner: 800, snack: 350 } as Record<Slot, number>,
@@ -73,10 +79,6 @@ function sumTagPieces(meal: Meal, products: ProductIndex, tag: string): number {
   return itemsWithTag(meal, products, tag).reduce((acc, { item }) => acc + (item.pieces ?? 0), 0)
 }
 
-function sumTagTbsp(meal: Meal, products: ProductIndex, tag: string): number {
-  return itemsWithTag(meal, products, tag).reduce((acc, { item }) => acc + (item.tbsp ?? 0), 0)
-}
-
 function mealScope(day: number, slot: Slot): Violation['scope'] {
   return { kind: 'meal', day, slot }
 }
@@ -123,17 +125,6 @@ function checkExactPieces(meal: Meal, day: number, products: ProductIndex, tag: 
   }
 }
 
-function checkExactTbsp(meal: Meal, day: number, products: ProductIndex, tag: string, norm: number, rule: string): Violation | null {
-  const actual = sumTagTbsp(meal, products, tag)
-  if (itemsWithTag(meal, products, tag).length === 0) return null
-  if (Math.abs(actual - norm) <= LIMITS.gramsTolerance) return null
-  return {
-    rule,
-    scope: mealScope(day, meal.slot),
-    message: `День ${day}, ${SLOT_TITLE[meal.slot]}: ${label(tag)} ${round(actual)} ст. л., норма ${norm} ст. л.`
-  }
-}
-
 function round(n: number): number {
   return Math.round(n * 100) / 100
 }
@@ -162,10 +153,10 @@ function checkMeal(meal: Meal, day: number, products: ProductIndex): Violation[]
   const brazil = checkExactPieces(meal, day, products, 'brazil', LIMITS.brazilPieces, 'portion.brazil')
   if (brazil) violations.push(brazil)
 
-  const flax = checkExactTbsp(meal, day, products, 'flax', LIMITS.flaxTbsp, 'portion.flax')
+  const flax = checkExactGrams(meal, day, products, 'flax', LIMITS.flaxG, 'portion.flax')
   if (flax) violations.push(flax)
 
-  const chia = checkExactTbsp(meal, day, products, 'chia', LIMITS.chiaTbsp, 'portion.chia')
+  const chia = checkExactGrams(meal, day, products, 'chia', LIMITS.chiaG, 'portion.chia')
   if (chia) violations.push(chia)
 
   return violations
@@ -185,12 +176,12 @@ function checkMealCalories(meal: Meal, day: number, products: ProductIndex): Vio
 }
 
 function checkDayOil(day: MenuDay, products: ProductIndex): Violation[] {
-  const total = day.meals.reduce((acc, meal) => acc + sumTagTbsp(meal, products, 'oil'), 0)
-  if (Math.abs(total - LIMITS.dayOilTbsp) <= LIMITS.gramsTolerance) return []
+  const total = day.meals.reduce((acc, meal) => acc + sumTagGrams(meal, products, 'oil'), 0)
+  if (Math.abs(total - LIMITS.dayOilG) <= LIMITS.gramsTolerance) return []
   return [{
     rule: 'day.oil',
     scope: dayScope(day.day),
-    message: `День ${day.day}: масло ${round(total)} ст. л. за день, норма ${LIMITS.dayOilTbsp} ст. л.`
+    message: `День ${day.day}: масло ${round(total)} г за день, норма ${LIMITS.dayOilG} г`
   }]
 }
 
@@ -263,6 +254,15 @@ export function checkDay(day: MenuDay, products: ProductIndex): Violation[] {
   return violations
 }
 
+/** Проверяет одну редакцию меню. Редакция — это то, что диетолог прислал одной
+    порцией, и разбирать нарушения имеет смысл именно по ней: «в новой неделе
+    крупа 80 г вместо 130» — сообщение о неделе, а не о дне вообще. */
+export function checkEdition(edition: MenuEdition, products: ProductIndex): Violation[] {
+  return edition.days.flatMap(day => checkDay(day, products))
+}
+
+/** Проверяет все редакции подряд. Дни с одинаковым номером из разных редакций
+    проверяются каждый сам по себе: они и есть разные раскладки одного дня. */
 export function checkMenu(menu: Menu, products: ProductIndex): Violation[] {
-  return menu.days.flatMap(day => checkDay(day, products))
+  return menu.editions.flatMap(edition => checkEdition(edition, products))
 }

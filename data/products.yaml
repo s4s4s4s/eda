@@ -460,111 +460,213 @@ products:
     pieceG: 50
     pieceSource: fdc
   milk:
-    name: молоко коровье питьевое
-    fdcId: 171265
-    fdcDescription: Milk, whole, 3.25% milkfat, with added vitamin D
+    name: молоко коровье питьевое, 2% жирности
+    fdcId: 171267
+    fdcDescription: Milk, reduced fat, fluid, 2% milkfat, with added vitamin A and vitamin D
     per100g:
-      kcal: 61
-      protein: 3.15
-      fat: 3.25
+      kcal: 50
+      protein: 3.3
+      fat: 1.98
       carbs: 4.8
     tags:
       - dairy
     micro100g:
       fiber: 0
-      sugar: 5.05
-      satFat: 1.865
-      monoFat: 0.812
-      polyFat: 0.195
-      cholesterol: 10
-      linoleic: 0.12
-      ala: 0.075
+      sugar: 5.06
+      satFat: 1.257
+      monoFat: 0.56
+      polyFat: 0.073
+      cholesterol: 8
+      linoleic: 0.062
+      ala: 0.008
       epa: 0
       dha: 0
-      calcium: 113
-      iron: 0.03
-      magnesium: 10
-      phosphorus: 84
-      potassium: 132
-      sodium: 43
-      zinc: 0.37
-      copper: 0.025
-      manganese: 0.004
-      selenium: 3.7
-      vitA: 46
-      retinol: 45
-      vitC: 0
-      vitD: 1.3
-      vitE: 0.07
-      vitK: 0.3
-      thiamin: 0.046
-      riboflavin: 0.169
-      niacin: 0.089
-      vitB6: 0.036
+      calcium: 120
+      iron: 0.02
+      magnesium: 11
+      phosphorus: 92
+      potassium: 140
+      sodium: 47
+      zinc: 0.48
+      copper: 0.006
+      manganese: 0.014
+      selenium: 2.5
+      vitA: 55
+      retinol: 55
+      vitC: 0.2
+      vitD: 1.2
+      vitE: 0.03
+      vitK: 0.2
+      thiamin: 0.039
+      riboflavin: 0.185
+      niacin: 0.092
+      vitB6: 0.038
       folate: 5
-      vitB12: 0.45
-      pantothenic: 0.373
-      choline: 14.3
-      betaCarotene: 7
+      vitB12: 0.53
+      pantothenic: 0.356
+      choline: 16.4
+      betaCarotene: 4
       alphaCarotene: 0
       betaCryptoxanthin: 0
       lycopene: 0
       luteinZeaxanthin: 0
-      water: 88.13
+      water: 89.21
+  cream:
+    name: сливки питьевые (~19% жирности)
+    fdcId: 170857
+    fdcDescription: Cream, fluid, light (coffee cream or table cream)
+    per100g:
+      kcal: 195
+      protein: 2.96
+      fat: 19.1
+      carbs: 3.66
+    tags: []
+    micro100g:
+      fiber: 0
+      sugar: 3.67
+      satFat: 10.176
+      monoFat: 4.525
+      polyFat: 0.789
+      cholesterol: 59
+      linoleic: 0.654
+      ala: 0.064
+      epa: 0.005
+      dha: 0
+      calcium: 91
+      iron: 0.05
+      magnesium: 9
+      phosphorus: 92
+      potassium: 136
+      sodium: 72
+      zinc: 0.32
+      copper: 0.012
+      manganese: 0.005
+      selenium: 4.6
+      vitA: 120
+      retinol: 117
+      vitC: 0.8
+      vitD: 1.1
+      vitE: 0.12
+      vitK: 1.7
+      thiamin: 0.023
+      riboflavin: 0.19
+      niacin: 0.09
+      vitB6: 0.044
+      folate: 2
+      vitB12: 0.14
+      pantothenic: 0.44
+      choline: 17.4
+      betaCarotene: 37
+      alphaCarotene: 0
+      betaCryptoxanthin: 0
+      lycopene: 0
+      luteinZeaxanthin: 0
+      water: 73.75
+  butter:
+    name: масло сливочное несолёное
+    fdcId: 173430
+    fdcDescription: Butter, without salt
+    per100g:
+      kcal: 717
+      protein: 0.85
+      fat: 81.11
+      carbs: 0.06
+    tags: []
+    micro100g:
+      fiber: 0
+      sugar: 0.06
+      satFat: 50.489
+      monoFat: 23.43
+      polyFat: 3.01
+      cholesterol: 215
+      linoleic: 1.83
+      ala: 1.18
+      epa: 0
+      dha: 0
+      calcium: 24
+      iron: 0.02
+      magnesium: 2
+      phosphorus: 24
+      potassium: 24
+      sodium: 11
+      zinc: 0.09
+      copper: 0.016
+      manganese: 0.004
+      selenium: 1
+      vitA: 684
+      retinol: 671
+      vitC: 0
+      vitD: 0
+      vitE: 2.32
+      vitK: 7
+      thiamin: 0.005
+      riboflavin: 0.034
+      niacin: 0.042
+      vitB6: 0.003
+      folate: 3
+      vitB12: 0.17
+      pantothenic: 0.11
+      choline: 18.8
+      betaCarotene: 158
+      alphaCarotene: 0
+      betaCryptoxanthin: 0
+      lycopene: 0
+      luteinZeaxanthin: 0
+      water: 16.17
   tvorog:
     name: творог
-    fdcId: 172182
-    fdcDescription: Cheese, cottage, lowfat, 2% milkfat
+    fdcId: 172179
+    fdcDescription: Cheese, cottage, creamed, large or small curd
     per100g:
-      kcal: 81
-      protein: 10.45
-      fat: 2.27
-      carbs: 4.76
+      kcal: 98
+      protein: 11.12
+      fat: 4.3
+      carbs: 3.38
     tags:
       - dairy
       - tvorog
-    substitute: русского творога в SR Legacy нет; заменён американским cottage cheese, 2% жирности (lowfat) — ближайший аналог по жирности, но текстура иная (влажный зернёный творог, а не сухой)
+    substitute: русского творога в SR Legacy нет; заменён американским cottage cheese, creamed (~4.3% жирности) — ближайший аналог по жирности к творогу 5%, но текстура иная (влажный зернёный творог, а не сухой)
     micro100g:
       fiber: 0
-      sugar: 4
-      satFat: 1.235
-      monoFat: 0.516
-      polyFat: 0.083
-      cholesterol: 12
-      linoleic: 0.07
-      ala: 0.007
-      epa: 0.001
+      sugar: 2.67
+      satFat: 1.718
+      monoFat: 0.778
+      polyFat: 0.123
+      cholesterol: 17
+      linoleic: 0.105
+      ala: 0.017
+      epa: 0
       dha: 0
-      calcium: 111
-      iron: 0.13
-      magnesium: 9
-      phosphorus: 150
-      potassium: 125
-      sodium: 308
-      zinc: 0.51
-      copper: 0.033
-      manganese: 0.015
-      selenium: 11.9
-      vitA: 68
-      retinol: 68
+      calcium: 83
+      iron: 0.07
+      magnesium: 8
+      phosphorus: 159
+      potassium: 104
+      sodium: 315
+      zinc: 0.4
+      copper: 0.029
+      manganese: 0.002
+      selenium: 9.7
+      vitA: 37
+      retinol: 36
       vitC: 0
-      vitD: 0
+      vitD: 0.1
       vitE: 0.08
       vitK: 0
-      thiamin: 0.02
-      riboflavin: 0.251
-      niacin: 0.103
-      vitB6: 0.057
-      folate: 8
-      vitB12: 0.47
-      pantothenic: 0.524
-      choline: 16.3
-      betaCarotene: 6
+      thiamin: 0.027
+      riboflavin: 0.163
+      niacin: 0.099
+      vitB6: 0.046
+      folate: 12
+      vitB12: 0.43
+      pantothenic: 0.557
+      choline: 18.4
+      betaCarotene: 12
       alphaCarotene: 0
       betaCryptoxanthin: 0
       lycopene: 0
       luteinZeaxanthin: 0
-      water: 81.24
+      water: 79.79
   greek-yogurt:
     name: греческий йогурт натуральный
     fdcId: 170903
@@ -618,6 +720,57 @@ products:
       lycopene: 0
       luteinZeaxanthin: 1
       water: 83.56
+  wheat-flour:
+    name: мука пшеничная высшего сорта
+    fdcId: 169761
+    fdcDescription: Wheat flour, white, all-purpose, unenriched
+    per100g:
+      kcal: 364
+      protein: 10.33
+      fat: 0.98
+      carbs: 76.31
+    tags: []
+    micro100g:
+      fiber: 2.7
+      sugar: 0.27
+      satFat: 0.155
+      monoFat: 0.087
+      polyFat: 0.413
+      cholesterol: 0
+      linoleic: 0.391
+      ala: 0.022
+      epa: 0
+      dha: 0
+      calcium: 15
+      iron: 1.17
+      magnesium: 22
+      phosphorus: 108
+      potassium: 107
+      sodium: 2
+      zinc: 0.7
+      copper: 0.144
+      manganese: 0.682
+      selenium: 33.9
+      vitA: 0
+      retinol: 0
+      vitC: 0
+      vitD: 0
+      vitE: 0.06
+      vitK: 0.3
+      thiamin: 0.12
+      riboflavin: 0.04
+      niacin: 1.25
+      vitB6: 0.044
+      folate: 26
+      vitB12: 0
+      pantothenic: 0.438
+      choline: 10.4
+      betaCarotene: 0
+      alphaCarotene: 0
+      betaCryptoxanthin: 0
+      lycopene: 0
+      luteinZeaxanthin: 18
+      water: 11.92
   oats:
     name: овсяные хлопья
     fdcId: 173904
@@ -2239,6 +2392,57 @@ products:
       lycopene: 0
       luteinZeaxanthin: 0
       water: 89.18
+  greens:
+    name: зелень (петрушка)
+    fdcId: 170416
+    fdcDescription: Parsley, fresh
+    per100g:
+      kcal: 36
+      protein: 2.97
+      fat: 0.79
+      carbs: 6.33
+    tags: []
+    micro100g:
+      fiber: 3.3
+      sugar: 0.85
+      satFat: 0.132
+      monoFat: 0.295
+      polyFat: 0.124
+      cholesterol: 0
+      linoleic: 0.115
+      ala: 0.008
+      epa: 0
+      dha: 0
+      calcium: 138
+      iron: 6.2
+      magnesium: 50
+      phosphorus: 58
+      potassium: 554
+      sodium: 56
+      zinc: 1.07
+      copper: 0.149
+      manganese: 0.16
+      selenium: 0.1
+      vitA: 421
+      retinol: 0
+      vitC: 133
+      vitD: 0
+      vitE: 0.75
+      vitK: 1640
+      thiamin: 0.086
+      riboflavin: 0.098
+      niacin: 1.313
+      vitB6: 0.09
+      folate: 152
+      vitB12: 0
+      pantothenic: 0.4
+      choline: 12.8
+      betaCarotene: 5054
+      alphaCarotene: 0
+      betaCryptoxanthin: 0
+      lycopene: 0
+      luteinZeaxanthin: 5561
+      water: 87.71
   peach:
     name: персик
     fdcId: 169928
@@ -2603,7 +2807,7 @@ products:
       luteinZeaxanthin: 0
       water: 77.93
   blueberry:
-    name: черника
+    name: голубика
     fdcId: 171711
     fdcDescription: Blueberries, raw
     per100g:
@@ -2757,6 +2961,52 @@ products:
       lycopene: 0
       luteinZeaxanthin: 38
       water: 3
+  dark-chocolate:
+    name: шоколад тёмный, 70-85% какао
+    fdcId: 170273
+    fdcDescription: Chocolate, dark, 70-85% cacao solids
+    per100g:
+      kcal: 598
+      protein: 7.79
+      fat: 42.63
+      carbs: 45.9
+    tags: []
+    micro100g:
+      fiber: 10.9
+      sugar: 23.99
+      satFat: 24.489
+      monoFat: 12.781
+      polyFat: 1.257
+      cholesterol: 3
+      linoleic: 1.217
+      ala: 0.034
+      epa: 0
+      dha: 0
+      calcium: 73
+      iron: 11.9
+      magnesium: 228
+      phosphorus: 308
+      potassium: 715
+      sodium: 20
+      zinc: 3.31
+      copper: 1.766
+      manganese: 1.948
+      selenium: 6.8
+      vitA: 2
+      vitE: 0.59
+      vitK: 7.3
+      thiamin: 0.034
+      riboflavin: 0.078
+      niacin: 1.054
+      vitB6: 0.038
+      vitB12: 0.28
+      pantothenic: 0.418
+      betaCarotene: 19
+      alphaCarotene: 7
+      betaCryptoxanthin: 1
+      lycopene: 0
+      luteinZeaxanthin: 27
+      water: 1.37
   cinnamon:
     name: корица молотая
     fdcId: 171320

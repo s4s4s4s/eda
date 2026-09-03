@@ -6,7 +6,7 @@
 
 import { useState } from 'react'
 import {
-  BREAKFAST_START_MIN, DINNER_START_MIN, LUNCH_START_MIN, SNACK_START_MIN
+  BREAKFAST_START_MIN, DINNER_START_MIN, formatDateFull, LUNCH_START_MIN, SNACK_START_MIN
 } from '../core/cycle.ts'
 import { itemGrams } from '../core/nutrition.ts'
 import { nutrientCoverage } from '../core/norms.ts'
@@ -34,6 +34,8 @@ export interface DaySlotProgress {
 }
 
 interface MealScreenProps {
+  /** ISO-дата показываемого дня (YYYY-MM-DD) — шапка выводит её словами. */
+  date: string
   cycleDayNum: number
   cycleDays: number
   batchDayNum: number
@@ -511,7 +513,7 @@ function MealVerdictBlock({ verdict, products }: { verdict: MealVerdict; product
 }
 
 export default function MealScreen({
-  cycleDayNum, cycleDays, batchDayNum, slot, currentSlot, onSelectSlot,
+  date, cycleDayNum, cycleDays, batchDayNum, slot, currentSlot, onSelectSlot,
   meal, mealKbju, mealNutrients, dayNutrients, norms, products, preferences, verdict,
   entry, rating, onRate, onClearRating, daySlots,
   dayEatenKcal, targetKcal, dayProteinG, targetProteinG, hasDayLog,
@@ -531,10 +533,13 @@ export default function MealScreen({
   return (
     <div className="screen">
       <header className="screen__header">
-        <div className="screen__day-line nums">
-          <span>День {cycleDayNum} из {cycleDays}</span>
-          <span className="screen__day-line-sep">·</span>
-          <span>партия: день {batchDayNum} из 4</span>
+        <div className="screen__header-lines">
+          <div className="screen__date-line">{formatDateFull(date)}</div>
+          <div className="screen__day-line nums">
+            <span>День {cycleDayNum} из {cycleDays}</span>
+            <span className="screen__day-line-sep">·</span>
+            <span>партия: день {batchDayNum} из 4</span>
+          </div>
         </div>
         <div className="screen__header-actions">
           <button type="button" className="screen__icon-btn" onClick={onOpenWeek} aria-label="Неделя">

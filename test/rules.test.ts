@@ -52,9 +52,9 @@ const P = idx(
   product('yogurt', { kcal: 59, p: 10, f: 0.4, c: 3.6 }, ['greek-yogurt']),
   product('nuts', { kcal: 600, p: 20, f: 50, c: 20 }, ['nuts']),
   product('brazil', { kcal: 659, p: 14, f: 67, c: 12 }, ['nuts', 'brazil'], { pieceG: 5 }),
-  product('flax', { kcal: 534, p: 18, f: 42, c: 29 }, ['flax'], { tbspG: 10 }),
+  product('flax', { kcal: 534, p: 18, f: 42, c: 29 }, ['flax'], { tbspG: 7 }),
   product('chia', { kcal: 486, p: 17, f: 31, c: 42 }, ['chia'], { tbspG: 12 }),
-  product('oil', { kcal: 884, p: 0, f: 100, c: 0 }, ['oil'], { tbspG: 14 }),
+  product('oil', { kcal: 884, p: 0, f: 100, c: 0 }, ['oil'], { tbspG: 13.5 }),
   product('berries', { kcal: 57, p: 0.7, f: 0.3, c: 14 }, ['berries']),
   product('filler', { kcal: 200, p: 5, f: 5, c: 25 }, [])
 )
@@ -62,15 +62,17 @@ const P = idx(
 // ---- валидный день: все правила должны молчать --------------------------------
 
 /*
+ * Меры льна и масла — из справочника (лён 1 ст.л. = 7г, масло 1 ст.л. = 13.5г),
+ * поэтому вклады пересчитаны от прежних (заниженных ложкой в 10г и 14г) чисел.
  * Фиксированные (не-филлерные) вклады по приёмам:
- *   завтрак: творог 150г (165) + бразильский орех 2шт (65.9) + лён 1 ст.л. (53.4) = 284.3
- *   обед:    рыба 170г (340) + масло 1 ст.л. (123.76) = 463.76
- *   ужин:    говядина 190г (475) + бобовые 110г (374) + ягоды 125г (71.25) + масло 1 ст.л. (123.76) = 1044.01
- *   перекус: йогурт 200г (118) + орехи 40г (240) + чиа 2 ст.л. (116.64) + масло 1 ст.л. (123.76) = 598.4
+ *   завтрак: творог 150г (165) + бразильский орех 2шт (65.9) + лён 1 ст.л. = 7г (37.38) = 268.28
+ *   обед:    рыба 170г (340) + масло 1 ст.л. = 13.5г (119.34) = 459.34
+ *   ужин:    говядина 190г (475) + бобовые 110г (374) + ягоды 125г (71.25) + масло 1 ст.л. = 13.5г (119.34) = 1039.59
+ *   перекус: йогурт 200г (118) + орехи 40г (240) + чиа 2 ст.л. = 24г (116.64) + масло 1 ст.л. = 13.5г (119.34) = 593.98
  * Филлер (без тегов, kcal=200/100г) добивает основные приёмы до >=800 ккал:
- *   завтрак +260г (520) = 804.3;  обед +170г (340) = 803.76
- * Итог дня: 804.3 + 803.76 + 1044.01 + 598.4 = 3250.47 — внутри коридора 3050-3350.
- * Масло за день: 1+1+1 = 3 ст.л. Ягоды — только в ужине (один приём), 125г.
+ *   завтрак +270г (540) = 808.28;  обед +175г (350) = 809.34
+ * Итог дня: 808.28 + 809.34 + 1039.59 + 593.98 = 3251.19 — внутри коридора 3050-3350.
+ * Масло за день: 13.5+13.5+13.5 = 40.5г, ровно норма LIMITS.dayOilG. Ягоды — только в ужине (один приём), 125г.
  */
 function validDay(): MenuDay {
   return day(1, [
@@ -78,12 +80,12 @@ function validDay(): MenuDay {
       item('tvorog', { g: 150 }),
       item('brazil', { pieces: 2 }, 'packet'),
       item('flax', { tbsp: 1 }, 'packet'),
-      item('filler', { g: 260 })
+      item('filler', { g: 270 })
     ]),
     meal('lunch', [
       item('fish', { g: 170 }),
       item('oil', { tbsp: 1 }, 'packet'),
-      item('filler', { g: 170 })
+      item('filler', { g: 175 })
     ]),
     meal('dinner', [
       item('beef', { g: 190 }),
@@ -194,6 +196,57 @@ function brokenOilChecks(): void {
   group('day.oil: срабатывает при отклонении от 3 ст.л. в сумме за день')
 }
 
+/** Ловит корневую ошибку, которую чинили в rules.ts: тот же продукт, записанный
+    граммами вместо ложек, обязан проверяться так же, как если бы он был записан
+    ложками — иначе правило молча видит нуль там, где норма выдержана или нарушена. */
+function brokenOilGramsChecks(): void {
+  const base = validDay()
+  // все три "масляных" приёма переписаны граммами по норме ложки (13.5г) — сумма
+  // ровно совпадает с LIMITS.dayOilG, day.oil обязано молчать, как и с ложками.
+  const exactGrams = {
+    ...base,
+    meals: base.meals.map(m => ({
+      ...m,
+      items: m.items.map(it => (it.product === 'oil' ? item('oil', { g: 13.5 }, it.where) : it))
+    }))
+  }
+  assert(!hasRule(checkDay(exactGrams, P), 'day.oil'), 'масло 3×13.5г, записанное граммами, должно давать ровно норму и не давать day.oil')
+
+  // масло в одном приёме занижено граммами (10г вместо 13.5) — сумма за день ниже нормы
+  const lowGrams = {
+    ...base,
+    meals: base.meals.map(m =>
+      m.slot === 'dinner' ? { ...m, items: m.items.map(it => (it.product === 'oil' ? item('oil', { g: 10 }, it.where) : it)) } : m
+    )
+  }
+  assert(hasRule(checkDay(lowGrams, P), 'day.oil'), 'масло граммами ниже нормы (37г за день вместо 40.5) должно дать day.oil')
+
+  group('day.oil: граммовая запись масла проверяется так же, как ложечная')
+}
+
+function brokenFlaxGramsChecks(): void {
+  const base = validDay()
+  // лён на завтраке записан граммами ровно по норме (7г) — portion.flax обязано молчать
+  const exactGrams = {
+    ...base,
+    meals: base.meals.map(m =>
+      m.slot === 'breakfast' ? { ...m, items: m.items.map(it => (it.product === 'flax' ? item('flax', { g: 7 }, it.where) : it)) } : m
+    )
+  }
+  assert(!hasRule(checkDay(exactGrams, P), 'portion.flax'), 'лён 7г, записанный граммами, должен совпасть с нормой и не давать portion.flax')
+
+  // лён граммами занижен (3г вместо 7)
+  const lowGrams = {
+    ...base,
+    meals: base.meals.map(m =>
+      m.slot === 'breakfast' ? { ...m, items: m.items.map(it => (it.product === 'flax' ? item('flax', { g: 3 }, it.where) : it)) } : m
+    )
+  }
+  assert(hasRule(checkDay(lowGrams, P), 'portion.flax'), 'лён 3г, записанный граммами (ниже нормы), должен дать portion.flax')
+
+  group('portion.flax: граммовая запись льна проверяется так же, как ложечная')
+}
+
 function brokenBerriesAmountChecks(): void {
   const broken = withReplacedItem('dinner', 'berries', item('berries', { g: 100 }))
   assert(hasRule(checkDay(broken, P), 'day.berries.amount'), 'ягоды 100г за день вместо 125 должны дать day.berries.amount')
@@ -212,22 +265,22 @@ function brokenBerriesSpreadChecks(): void {
 }
 
 function brokenDayKcalChecks(): void {
-  // день ~3000 ккал: сильно урезаем филлер завтрака (убираем его целиком, -520 ккал)
+  // день ~2711 ккал: сильно урезаем филлер завтрака (убираем его целиком, -540 ккал)
   const base = validDay()
   const lowMeals = base.meals.map(m => (m.slot === 'breakfast' ? { ...m, items: m.items.filter(it => it.product !== 'filler') } : m))
-  const lowDay = { ...base, meals: lowMeals } // 3250.47 - 520 = 2730.47 (ниже коридора)
-  assert(hasRule(checkDay(lowDay, P), 'day.kcal.low'), 'день ~2730 ккал (ниже 3050) должен дать day.kcal.low')
+  const lowDay = { ...base, meals: lowMeals } // 3251.19 - 540 = 2711.19 (ниже коридора)
+  assert(hasRule(checkDay(lowDay, P), 'day.kcal.low'), 'день ~2711 ккал (ниже 3050) должен дать day.kcal.low')
 
-  // день ~3400+ ккал: сильно увеличиваем филлер обеда (было 170г/340ккал)
-  const high = withReplacedItem('lunch', 'filler', item('filler', { g: 400 })) // +230г = +460ккал: 3250.47+460=3710.47
-  assert(hasRule(checkDay(high, P), 'day.kcal.high'), 'день ~3710 ккал (выше 3350) должен дать day.kcal.high')
+  // день ~3700+ ккал: сильно увеличиваем филлер обеда (было 175г/350ккал)
+  const high = withReplacedItem('lunch', 'filler', item('filler', { g: 400 })) // +225г = +450ккал: 3251.19+450=3701.19
+  assert(hasRule(checkDay(high, P), 'day.kcal.high'), 'день ~3701 ккал (выше 3350) должен дать day.kcal.high')
 
   group('day.kcal.low/high: коридор 3050-3350')
 }
 
 function brokenMealKcalChecks(): void {
-  // обед ~750 ккал: заменяем филлер обеда так, чтобы сумма упала ниже 800 (но выше 0)
-  const lunchLow = withReplacedItem('lunch', 'filler', item('filler', { g: 143 })) // 463.76 + 286 = 749.76
+  // обед ~745 ккал: заменяем филлер обеда так, чтобы сумма упала ниже 800 (но выше 0)
+  const lunchLow = withReplacedItem('lunch', 'filler', item('filler', { g: 143 })) // 459.34 + 286 = 745.34
   const v1 = checkDay(lunchLow, P)
   assert(v1.some(v => v.rule === 'meal.kcal.low' && v.scope.kind === 'meal' && v.scope.slot === 'lunch'),
     `обед ~750 ккал должен дать meal.kcal.low на обеде, получено: ${JSON.stringify(v1)}`)
@@ -257,6 +310,8 @@ function main(): void {
   brokenGrainInLunchChecks()
   brokenFlaxMissingChecks()
   brokenOilChecks()
+  brokenOilGramsChecks()
+  brokenFlaxGramsChecks()
   brokenBerriesAmountChecks()
   brokenBerriesSpreadChecks()
   brokenDayKcalChecks()
