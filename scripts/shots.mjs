@@ -15,7 +15,7 @@
 // каждая шторка из шапки. Итог — PNG-файлы, report.json и код возврата: 1, если
 // хоть одна полоса с процентом получила нулевую ширину или высоту.
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 const CHROME = process.env.CHROME ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe';
@@ -29,6 +29,11 @@ if (!existsSync(CHROME)) {
   process.exit(2);
 }
 mkdirSync(OUT, { recursive: true });
+/* Профиль браузера — одноразовый: в нём остаётся localStorage прошлого прогона
+   (дневник с уже записанными приёмами), и сценарий «записать обед» упирается
+   в отсутствующую кнопку. Каждый прогон начинается с чистого первого запуска. */
+const PROFILE = path.join(OUT, 'profile');
+rmSync(PROFILE, { recursive: true, force: true });
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -41,7 +46,7 @@ function localDateShifted(days) {
 }
 
 const chrome = spawn(CHROME, [
-  '--headless=new', `--remote-debugging-port=${PORT}`, `--user-data-dir=${path.join(OUT, 'profile')}`,
+  '--headless=new', `--remote-debugging-port=${PORT}`, `--user-data-dir=${PROFILE}`,
   '--no-first-run', '--no-default-browser-check', '--hide-scrollbars',
   `--window-size=${VIEW.width},${VIEW.height}`, 'about:blank'
 ], { stdio: 'ignore' });
