@@ -116,7 +116,7 @@ function IngredientRowView({
   const dotClass = stance === 'love' ? 'stance-dot stance-dot--love' : stance === 'avoid' ? 'stance-dot stance-dot--avoid' : null
 
   return (
-    <li className="book-ingredient">
+    <li className="list__row book-ingredient">
       <span className={nameClass}>
         {dotClass && <span className={dotClass} aria-hidden="true" />}
         {product.name}
@@ -177,19 +177,21 @@ export default function BookSheet({ menu, products, preferences, onSetStance, on
 
       {section === 'dishes' && (
         <section className="book-section" aria-label="Блюда">
-          <ul className="book-list">
-            {dishRows.map(row => (
-              <DishRowView
-                key={row.meal.id}
-                row={row}
-                preferences={preferences}
-                expanded={expandedMealId === row.meal.id}
-                onToggle={() => setExpandedMealId(prev => (prev === row.meal.id ? null : row.meal.id))}
-                onRate={onRate}
-                onClearRating={onClearRating}
-              />
-            ))}
-          </ul>
+          <div className="card">
+            <ul className="book-list">
+              {dishRows.map(row => (
+                <DishRowView
+                  key={row.meal.id}
+                  row={row}
+                  preferences={preferences}
+                  expanded={expandedMealId === row.meal.id}
+                  onToggle={() => setExpandedMealId(prev => (prev === row.meal.id ? null : row.meal.id))}
+                  onRate={onRate}
+                  onClearRating={onClearRating}
+                />
+              ))}
+            </ul>
+          </div>
         </section>
       )}
 
@@ -209,16 +211,18 @@ export default function BookSheet({ menu, products, preferences, onSetStance, on
           {filteredIngredients.length === 0 ? (
             <p className="book-empty">Ничего не найдено</p>
           ) : (
-            <ul className="book-list">
-              {filteredIngredients.map(product => (
-                <IngredientRowView
-                  key={product.id}
-                  product={product}
-                  stance={stanceOf(preferences, product.id)}
-                  onSetStance={onSetStance}
-                />
-              ))}
-            </ul>
+            <div className="card">
+              <ul className="book-list">
+                {filteredIngredients.map(product => (
+                  <IngredientRowView
+                    key={product.id}
+                    product={product}
+                    stance={stanceOf(preferences, product.id)}
+                    onSetStance={onSetStance}
+                  />
+                ))}
+              </ul>
+            </div>
           )}
         </section>
       )}

@@ -1,0 +1,393 @@
+/* Сводка дня (DaySummary.tsx): герой с кольцом калорий и макросами, карточки
+   приёмов, «Добавлено», место под микронутриенты. Каркас экрана - в
+   layout.css, экран приёма - в meal.css.
+
+   Цвета, размеры, радиусы и длительности только через токены из theme.css.
+   Примитивы .card, .list/.list__row, .ring*, .macro* и .btn живут в theme.css:
+   здесь только раскладка сводки и то, что есть лишь у неё. */
+
+/* ---- герой дня: кольцо калорий, съедено и цель по бокам, макросы ---- */
+
+/* Один зрительный центр на экран. Карточка первого плана (.card) и внутри
+   два яруса: кольцо с числами и три полосы макросов под ним. */
+.day-hero {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* Выгрузка дня - второстепенное действие в углу карточки: иконка без заливки,
+   рядом с кольцом второе цветное пятно спорило бы с ним за внимание.
+   Имя кнопке даёт aria-label «выгрузить день»: глиф сам по себе не имя. */
+.day-hero__export {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: grid;
+  place-items: center;
+  width: var(--tap-min);
+  height: var(--tap-min);
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--fg-faint);
+}
+
+.day-hero__ring-row {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Колонки по бокам кольца: подпись капсом с разрядкой, число крупнее текста,
+   но заметно мельче числа в кольце - иерархия держится размером. */
+.day-hero__side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.day-hero__side:last-child {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.day-hero__side-label {
+  font-size: var(--text-11);
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+}
+
+.day-hero__side-value {
+  font-size: var(--text-20);
+  font-weight: 600;
+  line-height: var(--lh-tight);
+}
+
+/* Центр кольца: слово над числом, число, единица под ним. Слово нужно именно
+   сверху - «осталось», «сверх» и «съедено» меняют смысл одного и того же
+   числа, и прочитать его надо раньше цифр. */
+.day-hero__caption {
+  font-size: var(--text-13);
+  color: var(--fg-dim);
+}
+
+.day-hero__number {
+  font-size: var(--text-56);
+  font-weight: 700;
+  line-height: var(--lh-tight);
+}
+
+/* Съедено сверх цели - это факт, а не тревога: красным окрашено только число,
+   заливка кольца берёт --ring-over из того же набора (Ring.tsx). */
+.day-hero__number--over {
+  color: var(--danger);
+}
+
+.day-hero__unit {
+  font-size: var(--text-13);
+  color: var(--fg-dim);
+}
+
+.day-hero__macros {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* На широком экране места больше, и кольцо растёт до --ring-size-wide: SVG
+   рисуется в своей системе координат (viewBox) и масштабируется вместе с
+   рамкой, дуга и толщина - тоже. */
+@media (min-width: 48rem) {
+  .day-hero .ring {
+    width: var(--ring-size-wide);
+    height: var(--ring-size-wide);
+  }
+
+  .day-hero .ring__svg {
+    width: 100%;
+    height: 100%;
+  }
+}
+
+/* ---- список приёмов: четыре карточки ---- */
+
+.day-meals {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Карточка - <article>, а не <button>: внутри две независимые кнопки
+   («открыть» и «Съел»), кнопка в кнопке невалидна. Внутренний отступ .card
+   снят: его берёт на себя кнопка-заголовок, иначе зона пальца оказалась бы
+   меньше карточки на 16 px с каждой стороны. */
+.day-meal {
+  display: flex;
+  align-items: stretch;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* Карточка режет всё за своим краем, поэтому кольцо фокуса у кнопок внутри
+   рисуется внутрь, а не наружу, иначе его не видно. */
+.day-meal :focus-visible {
+  outline-offset: calc(-1 * var(--space-1));
+}
+
+/* Записанный приём отличается от просто запланированного рамкой - в том числе
+   пропущенный: «пропустил» и «ещё не ел» разные вещи, и экран обязан их
+   различать не только кругом слева. */
+.day-meal--logged {
+  border-color: var(--fg-faint);
+}
+
+.day-meal__open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: none;
+  border-radius: inherit;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+/* Круг с глифом приёма. Состояние видно раньше, чем прочитана строка статуса:
+   съеденный - галочка на --ok, съеденный частично - кольцо --ok вокруг глифа
+   (долю называет строка статуса словом: «съел ½»; половинная заливка круга
+   оставила бы глиф наполовину на светлом, наполовину на тёмном, и в одной из
+   тем он бы пропал), пропущенный - приглушённый круг с чертой. */
+.day-meal__mark {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--tap-min);
+  height: var(--tap-min);
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--fg-dim);
+}
+
+.day-meal__mark .icon {
+  width: 1.35em;
+  height: 1.35em;
+}
+
+.day-meal__mark--eaten {
+  background: var(--ok);
+  color: var(--bg);
+}
+
+.day-meal__mark--partial {
+  color: var(--ok);
+  /* Обводка «половины»: 1px теряется на --surface-2, 4px съедает глиф. */
+  box-shadow: inset 0 0 0 2px var(--ok);
+}
+
+.day-meal__mark--skipped {
+  color: var(--fg-faint);
+}
+
+/* Черта поверх глифа - тот же знак зачёркивания, что и у «не ем» в книге
+   предпочтений (.name--avoided): приём был в плане, и его вычеркнули. */
+.day-meal__mark--skipped::after {
+  content: '';
+  position: absolute;
+  top: calc(50% - 1px);
+  left: 20%;
+  right: 20%;
+  height: 1px;
+  background: var(--fg-faint);
+  transform: rotate(-45deg);
+}
+
+.day-meal__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.day-meal__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+}
+
+.day-meal__title {
+  font-size: var(--text-17);
+  font-weight: 700;
+}
+
+.day-meal__time {
+  font-size: var(--text-13);
+  color: var(--fg-faint);
+}
+
+/* «Сейчас» - маленький чип акцентом: это единственная подсказка на сводке о
+   том, какой приём идёт сейчас по времени, и она обязана ловиться боковым
+   зрением. Заливка, а не цвет текста: приглушённое слово среди подписей
+   потерялось бы. */
+.day-meal__now {
+  padding: 0 var(--space-1);
+  border-radius: var(--r-8);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: var(--text-11);
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+/* Название блюда меню - вторичная строка, до двух строк, дальше обрезается:
+   карточка не растягивается под длинное название, четыре приёма должны
+   помещаться на экран без прокрутки на глаз. */
+.day-meal__dish {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: var(--text-15);
+  color: var(--fg-dim);
+}
+
+.day-meal__status {
+  font-size: var(--text-13);
+  color: var(--fg-faint);
+}
+
+/* Столбик чисел справа: съеденное крупно, план мелко под ним. У незаписанного
+   приёма крупного числа нет вовсе - показывать план тем же кеглем, что и
+   съеденное, значит выдавать намерение за факт. */
+.day-meal__nums {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+}
+
+.day-meal__kcal {
+  font-size: var(--text-20);
+  font-weight: 600;
+  line-height: var(--lh-tight);
+}
+
+.day-meal__kcal--planned {
+  font-size: var(--text-17);
+  font-weight: 400;
+  color: var(--fg-faint);
+}
+
+.day-meal__kcal-note {
+  font-size: var(--text-11);
+  color: var(--fg-faint);
+}
+
+/* Пишет приём целиком, не открывая его - быстрый путь для «поел по плану».
+   Круглая акцентная кнопка в свою зону пальца, отдельную от кнопки-заголовка;
+   имя ей даёт aria-label «Съел: Завтрак», глиф - только знак. */
+.day-meal__log {
+  flex: none;
+  align-self: center;
+  display: grid;
+  place-items: center;
+  width: var(--tap-min);
+  height: var(--tap-min);
+  margin-right: var(--space-3);
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+.day-meal__log .icon {
+  width: 1.4em;
+  height: 1.4em;
+}
+
+/* ---- добавленная еда: перенесённое блюдо и своя еда, сверх меню ---- */
+
+/* Живёт под карточками приёмов - extras не трогают их статус, поэтому и на
+   экране это отдельный блок, а не часть одной из четырёх карточек. */
+.day-extras {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.day-extras__title {
+  margin: 0;
+  font-size: var(--text-11);
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+}
+
+/* Строки внутри одной карточки (.list/.list__row), а не карточка на каждую
+   добавку: три границы и три тени подряд ради трёх строк - шум. */
+.day-extras__item {
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  font-size: var(--text-15);
+}
+
+.day-extras__name {
+  flex: 1 1 auto;
+  min-width: 8rem;
+}
+
+.day-extras__meta {
+  font-size: var(--text-13);
+  color: var(--fg-dim);
+}
+
+.day-extras__remove {
+  flex: none;
+  padding: var(--space-1) 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: var(--text-13);
+  color: var(--fg-dim);
+  text-decoration: underline;
+}
+
+.day-extras__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* Две кнопки в ряд, пока помещаются; на узком экране переносятся одна под
+   другую целиком - обрезать подпись нельзя, она и есть имя действия. */
+.day-extras__actions .btn {
+  flex: 1 1 12rem;
+  font-size: var(--text-15);
+}
+
+/* ---- микронутриенты за день ---- */
+
+/* Последний блок сводки: справка, а не то, с чем работают каждый день. Сам
+   блок (NutrientsBlock.tsx, meal.css) уже карточка и здесь только размещён. */
+.day-nutrients {
+  margin-top: var(--space-4);
+}

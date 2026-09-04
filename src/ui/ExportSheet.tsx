@@ -89,31 +89,33 @@ export default function ExportSheet({ payload, channels, onConfirmed }: ExportSh
 
   return (
     <div className="export-sheet">
-      <div className="export-sheet__numbers">
+      <div className="card export-sheet__numbers">
         <div className="export-sheet__headline">{headline(payload)}</div>
-        <div className="export-sheet__kcal">{round(k.kcal)} ккал</div>
-        <div className="export-sheet__bju">Б {round(k.p)} · Ж {round(k.f)} · У {round(k.c)}</div>
+        <div className="export-sheet__kcal nums">{round(k.kcal)} ккал</div>
+        <div className="export-sheet__bju nums">Б {round(k.p)} · Ж {round(k.f)} · У {round(k.c)}</div>
       </div>
 
-      <ul className="export-sheet__nutrients">
-        {NUTRIENT_KEYS.map(key => {
-          const total = nutrients[key]
-          const known = total.known > 0
-          return (
-            <li key={key} className={`export-nutrient${known ? '' : ' export-nutrient--unknown'}`}>
-              <span className="export-nutrient__name">{NUTRIENT_TITLE[key]}</span>
-              <span className="export-nutrient__value">
-                {known ? `${formatNutrientAmount(total.value)} ${NUTRIENT_UNIT[key]}` : NO_DATA_TEXT}
-                {known && total.known < total.total && (
-                  <span className="export-nutrient__hint">по {total.known} из {total.total} позиций</span>
-                )}
-              </span>
-            </li>
-          )
-        })}
-      </ul>
+      <div className="card">
+        <ul className="export-sheet__nutrients">
+          {NUTRIENT_KEYS.map(key => {
+            const total = nutrients[key]
+            const known = total.known > 0
+            return (
+              <li key={key} className={`export-nutrient${known ? '' : ' export-nutrient--unknown'}`}>
+                <span className="export-nutrient__name">{NUTRIENT_TITLE[key]}</span>
+                <span className="export-nutrient__value">
+                  {known ? `${formatNutrientAmount(total.value)} ${NUTRIENT_UNIT[key]}` : NO_DATA_TEXT}
+                  {known && total.known < total.total && (
+                    <span className="export-nutrient__hint">по {total.known} из {total.total} позиций</span>
+                  )}
+                </span>
+              </li>
+            )
+          })}
+        </ul>
+      </div>
 
-      <div className="export-sheet__channels">
+      <div className="card export-sheet__channels">
         {channels.map(channel => {
           // Payload передан: недоступность может зависеть не только от канала,
           // но и от того, что отправляем (пропущенный приём — см. withSkippedGuard
@@ -183,7 +185,7 @@ export default function ExportSheet({ payload, channels, onConfirmed }: ExportSh
         })}
       </div>
 
-      <details className="export-sheet__preview">
+      <details className="card export-sheet__preview">
         <summary>Показать текстом (на случай, если ни один канал не сработал)</summary>
         <pre>{previewText(payload)}</pre>
       </details>

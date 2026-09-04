@@ -18,13 +18,37 @@
   --danger: #E8806E;
   --border: rgba(246, 242, 233, .10);
 
+  /* Карточка первого плана. В тёмной теме заметно светлее --bg: карточку
+     держит сама поверхность, а не тень (см. --shadow-card ниже). */
+  --surface-raised: #201D18;
+
+  /* Полосы макросов. Три различимых между собой цвета, ни один не совпадает
+     с --accent (янтарь), --ok (зелёный) и --danger (коралловый): полоса
+     макроса не означает ни действия, ни успеха, ни тревоги. В тёмной теме
+     приглушённо-насыщенные, в светлой заметно темнее, чтобы полоса читалась
+     на белой карточке. Ими красится только полоса и точка-легенда, не текст. */
+  --macro-protein: #B79BE8;
+  --macro-fat: #79B9DC;
+  --macro-carbs: #DE93C9;
+
+  /* Кольцо калорий: дорожка, заливка и заливка сверх цели. */
+  --ring-track: var(--surface-2);
+  --ring-fill: var(--accent);
+  --ring-over: var(--danger);
+
   /* Подложка шторки и тень поднятого слоя — тоже цвет, тоже через токен. */
   --scrim: rgba(0, 0, 0, .55);
   --shadow-lift: 0 -8px 28px rgba(0, 0, 0, .45);
 
+  /* Мягкая ambient-тень карточки первого плана. В тёмной теме она почти
+     невидима: на тёмном фоне тень не читается, карточку держат
+     --surface-raised и --border. */
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, .32);
+
   /* — типографика — */
   --font-sys: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --text-56: 56px;
   --text-44: 44px;
   --text-32: 32px;
   --text-24: 24px;
@@ -32,13 +56,19 @@
   --text-17: 17px;
   --text-15: 15px;
   --text-13: 13px;
+  /* Надписи-легенды капсом с разрядкой (заголовки групп, подписи вкладок). */
+  --text-11: 11px;
   --lh-tight: 1.15;
   --lh-text: 1.4;
 
   /* — форма — */
   --r-8: 8px;
   --r-14: 14px;
+  /* Карточка первого плана. */
+  --r-20: 20px;
   --r-22: 22px;
+  /* Шторка. */
+  --r-28: 28px;
 
   /* — плотность: шаг сетки 4px, отступ экрана 16px — */
   --grid: 4px;
@@ -58,6 +88,19 @@
 
   /* — зона нажатия — */
   --tap-min: 44px;
+
+  /* Нижняя панель вкладок. Отступ содержимого снизу считается от неё вместе
+     с env(safe-area-inset-bottom), см. layout.css. */
+  --tabbar-h: 64px;
+  /* Высота полос покрытия (макросы, нутриенты, неделя). Не 4 и не 8 из
+     шага сетки: 4 теряется, 8 спорит с текстом. */
+  --bar-h: 6px;
+  /* Кольцо калорий. 184, а не круглые 200: на 390 px после отступов экрана и
+     карточки остаётся 326 px, и колонкам «Съедено» и «Цель» по бокам нужно по
+     60 px, иначе подпись капсом переносится по буквам. На широком экране
+     места больше. */
+  --ring-size: 184px;
+  --ring-size-wide: 216px;
 }
 
 /* Светлая тема — первого класса, а не «инверсия». color-scheme переключается
@@ -79,8 +122,19 @@
     --danger: #B4402C;
     --border: rgba(26, 23, 18, .10);
 
+    /* Карточка первого плана на светлом фоне - чистый белый, её отделяют
+       от --bg тень и волосяная граница. */
+    --surface-raised: #FFFFFF;
+
+    /* Те же три макроса заметно темнее: на белой карточке светлая полоса
+       не читается вовсе. */
+    --macro-protein: #5B45A6;
+    --macro-fat: #1F6A93;
+    --macro-carbs: #9A3A79;
+
     --scrim: rgba(26, 23, 18, .35);
     --shadow-lift: 0 -8px 28px rgba(26, 23, 18, .16);
+    --shadow-card: 0 1px 2px rgba(26, 23, 18, .04), 0 6px 20px rgba(26, 23, 18, .06);
   }
 }
 
@@ -265,17 +319,156 @@ button:disabled:active,
 
 /* ---- примитив: карточка ---- */
 
-/* Глубина слоями: --bg → --surface → волосяная граница. Внутри потока теней нет,
-   тень только у поднятого над экраном (шторка, липкая панель). */
+/* Карточка первого плана: собственная поверхность --surface-raised, крупный
+   радиус --r-20 и мягкая ambient-тень --shadow-card. Тень тут не «коробка»
+   вокруг блока, а полтона отрыва от фона: в тёмной теме она почти невидима,
+   и карточку держат поверхность с волосяной границей. */
 .card {
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-4);
   border: 1px solid var(--border);
-  border-radius: var(--r-14);
-  background: var(--surface);
+  border-radius: var(--r-20);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-card);
 }
 
-.card--nested {
+/* Вложенная поверхность внутри карточки: ни своего подъёма, ни тени. */
+/* ---- примитив: строки внутри одной карточки ---- */
+
+/* Список строк одной карточки (состав приёма, настройки, дни недели) вместо
+   карточки на каждую строку: разделяет волосяная линия, а не четыре границы
+   и четыре тени подряд. У последней строки разделителя нет - линия под
+   последним элементом отделяла бы его от пустоты. */
+.list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.list__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--tap-min);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.list__row:last-child {
+  border-bottom: none;
+}
+
+/* ---- примитив: кольцо прогресса ---- */
+
+/* Кольцо (Ring.tsx) - зрительный центр сводки дня. Дорожка, заливка и заливка
+   сверх цели красятся токенами --ring-*; число живёт в центре обычным потоком,
+   поверх SVG. */
+.ring {
+  position: relative;
+  flex: none;
+  width: var(--ring-size);
+  height: var(--ring-size);
+  display: grid;
+  place-items: center;
+}
+
+.ring__svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.ring__track {
+  stroke: var(--ring-track);
+}
+
+/* Изменение длины дуги - единственное движение на сводке, и оно плавное.
+   При prefers-reduced-motion переход снимает общее правило ниже по файлу. */
+.ring__fill {
+  stroke: var(--ring-fill);
+  transition: stroke-dashoffset var(--dur-sheet) var(--ease);
+}
+
+.ring__fill--over {
+  stroke: var(--ring-over);
+}
+
+/* Засечка на отметке 100 %, когда кольцо ушло за цель. */
+.ring__mark {
+  stroke: var(--bg);
+  stroke-width: 2;
+}
+
+.ring__center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+/* ---- примитив: строка макроса ---- */
+
+/* Подпись, съедено/знаменатель и полоса своим цветом (MacroBar.tsx). Цвет
+   приходит в --macro-color токеном из набора --macro-*; текст им не красится:
+   цветной текст на карточке спорил бы с акцентом за внимание. */
+.macro {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+}
+
+.macro__dot {
+  width: var(--space-2);
+  height: var(--space-2);
+  border-radius: 50%;
+  background: var(--macro-color);
+}
+
+.macro__label {
+  font-size: var(--text-15);
+  color: var(--fg-dim);
+}
+
+.macro__value {
+  font-size: var(--text-15);
+  white-space: nowrap;
+}
+
+/* Что за знаменатель: «цель» и «из плана меню» - разные утверждения. Стоит
+   в той же строке, что число, мелко и приглушённо. */
+.macro__caption {
+  margin-left: var(--space-1);
+  font-size: var(--text-13);
+  font-variant-numeric: normal;
+  color: var(--fg-faint);
+}
+
+/* Полосы нет вовсе, когда знаменателя нет: доля от неизвестного не рисуется
+   (см. MacroBar.tsx). */
+.macro__bar {
+  grid-column: 1 / -1;
+  height: var(--space-2);
+  border-radius: var(--r-8);
   background: var(--surface-2);
+  overflow: hidden;
+}
+
+.macro__fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--macro-color);
+  transition: width var(--dur-sheet) var(--ease);
+}
+
+/* Сверх знаменателя: тот же цвет предела, что у кольца и полос нутриентов. */
+.macro__fill--over {
+  background: var(--ring-over);
 }
 
 /* ---- примитив: чип ---- */

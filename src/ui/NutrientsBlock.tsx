@@ -253,16 +253,22 @@ export function NutrientsBlock({
 
   return (
     <details
-      className="meal-nutrients"
+      className="meal-nutrients card"
       open={open}
       onToggle={event => setOpen((event.currentTarget as HTMLDetailsElement).open)}
     >
+      {/* Свёрнутый блок читается одной строкой карточки: что это, сколько
+          набрано и куда нажать. Шеврон стоит справа, в конце строки: он
+          обещает продолжение, а не подписывает заголовок. */}
       <summary className="meal-nutrients__summary">
-        <ChevronIcon open={open} />
-        Микронутриенты
+        <span className="meal-nutrients__summary-title">Микронутриенты</span>
         {summaryHints.length > 0 && (
-          <span className="meal-nutrients__summary-hint nums">{summaryHints.join(' · ')}</span>
+          <>
+            <span className="meal-nutrients__summary-sep" aria-hidden="true">·</span>
+            <span className="meal-nutrients__summary-hint nums">{summaryHints.join(' · ')}</span>
+          </>
         )}
+        <ChevronIcon open={open} />
       </summary>
 
       {/* Один режим — переключаться не между чем, чипы только заняли бы место

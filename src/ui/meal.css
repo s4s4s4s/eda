@@ -1,0 +1,560 @@
+/* Экран одного приёма (MealScreen.tsx, NutrientsBlock.tsx): заголовок приёма,
+   состав, сборка, плюсы и минусы, КБЖУ, микронутриенты, липкая панель
+   действий, оценка блюда. Каркас экрана живёт в layout.css, сводка дня в
+   summary.css.
+
+   Раскладка блока одна и та же везде: мелкий заголовок капсом НАД карточкой,
+   а содержимое внутри одной карточки (.card). Карточка на строку запрещена:
+   восемь карточек подряд читаются как восемь одинаковых по важности вещей.
+
+   Цвета, размеры и радиусы только токенами из theme.css; высота полос
+   покрытия - общий токен --bar-h. */
+
+/* ---- 2. заголовок приёма ---- */
+
+.meal-title {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+/* Строка над названием: приём, окно времени и «сейчас». Мелко и приглушённо -
+   это подпись к герою, а не второй герой. */
+.meal-title__meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-size: var(--text-13);
+  color: var(--fg-dim);
+}
+
+.meal-title__sep {
+  color: var(--fg-faint);
+}
+
+/* «Сейчас» - единственное акцентное пятно в шапке экрана: оно отвечает на
+   вопрос «этот ли приём я ем прямо сейчас». */
+.meal-title__now {
+  padding: 0 var(--space-1);
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+  font-size: var(--text-11);
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+/* Название блюда - герой экрана, но не плакат: 32, а не 44. */
+.meal-title__name {
+  font-size: var(--text-32);
+  font-weight: 700;
+  line-height: var(--lh-tight);
+}
+
+.meal-title__notes {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  font-size: var(--text-13);
+}
+
+/* Явный возврат к текущему приёму: показывается только тогда, когда выбранный
+   приём разошёлся с временем суток. Выглядит ссылкой, а не кнопкой: это
+   переход, и он не соперничает с «Съел». */
+.meal-title__back {
+  padding: var(--space-1) 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+/* Числа не из меню, а из снапшота записи. Тише всего на экране, но видно. */
+.meal-title__source {
+  color: var(--fg-faint);
+}
+
+.meal-missing {
+  font-size: var(--text-17);
+  color: var(--danger);
+}
+
+/* ---- 3. состав: два раздельных блока, они не смешиваются никогда ---- */
+
+.meal-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* Заголовок раздела разделяет, а не кричит: мелкий, разрежённый, приглушённый,
+   и стоит над карточкой, а не внутри неё. */
+.meal-section__title {
+  margin: 0;
+  padding-left: var(--space-2);
+  font-size: var(--text-11);
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+}
+
+/* Пустой раздел говорит словами внутри своей карточки: «пусто» и «раздела
+   нет» - разные вещи, и вторая не имеет права выглядеть как первая. */
+.meal-section__empty {
+  margin: 0;
+  font-size: var(--text-15);
+  font-style: italic;
+  color: var(--fg-faint);
+}
+
+/* Строка ингредиента внутри карточки раздела: сетку и волосяной разделитель
+   даёт примитив .list__row, здесь только кегль и колонка чисел. */
+.meal-item {
+  font-size: var(--text-17);
+}
+
+.meal-item__name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.meal-item__qty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  white-space: nowrap;
+}
+
+.meal-item__qty-value {
+  font-weight: 600;
+}
+
+/* Перевод штук и ложек в граммы - подсказка под мерой, а не сама мера:
+   в контейнер кладут две ложки, а не 14 граммов. */
+.meal-item__qty-hint {
+  font-size: var(--text-13);
+  color: var(--fg-faint);
+}
+
+/* ---- 4. сборка ---- */
+
+.meal-steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.meal-steps__item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  font-size: var(--text-15);
+  line-height: var(--lh-text);
+  color: var(--fg-dim);
+}
+
+/* Номер шага в кружке: порядок виден боковым зрением, пока руки заняты. */
+.meal-steps__num {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--space-6);
+  height: var(--space-6);
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--fg-dim);
+  font-size: var(--text-13);
+  font-weight: 700;
+}
+
+.meal-steps__text {
+  min-width: 0;
+}
+
+/* ---- 5. плюсы и минусы приёма: справка, а не сигнализация ---- */
+
+/* Рисуется только при наличии - компонент сам решает, вернуть ли пусто.
+   Колонки-карточки встают рядом на широком экране и одна под другой на узком:
+   12rem основы не помещаются вдвоём в телефон и помещаются в широкую колонку. */
+.meal-verdict {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.meal-verdict__col {
+  flex: 1 1 12rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* Сторону называет цветная точка, а не цветной текст: заголовок остаётся
+   такой же мелкой подписью, как у состава. */
+.meal-verdict__title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--text-11);
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+}
+
+.meal-verdict__dot {
+  flex: none;
+  width: var(--space-2);
+  height: var(--space-2);
+  border-radius: 50%;
+}
+
+.meal-verdict__title--pro .meal-verdict__dot {
+  background: var(--ok);
+}
+
+.meal-verdict__title--con .meal-verdict__dot {
+  background: var(--danger);
+}
+
+.meal-verdict__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.meal-verdict__item {
+  font-size: var(--text-15);
+  line-height: var(--lh-text);
+  color: var(--fg-dim);
+}
+
+/* Приём пропущен - вердикту взяться неоткуда, и это не то же самое, что
+   «сказать нечего» у обычной пустоты (тогда блока нет вовсе): здесь блок
+   есть, но состоит из одной честной строки вместо двух колонок. */
+.meal-verdict__skipped {
+  margin: 0;
+  font-size: var(--text-15);
+  font-style: italic;
+  color: var(--fg-faint);
+}
+
+/* ---- 6. КБЖУ приёма ---- */
+
+/* Кольца здесь нет и не будет: доля одного приёма от суточной нормы
+   запрещена (DESIGN.md, «Честность»), а кольцо без знаменателя - украшение.
+   Числа: калории крупно, три макроса мелкими строками с цветной точкой. */
+.meal-kbju {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.meal-kbju__kcal {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.meal-kbju__kcal-value {
+  font-size: var(--text-32);
+  font-weight: 700;
+  line-height: var(--lh-tight);
+}
+
+.meal-kbju__kcal-unit {
+  font-size: var(--text-15);
+  color: var(--fg-dim);
+}
+
+.meal-kbju__macros {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* Пояснение к числам записи: справочник продуктов правится, а снапшот записи
+   заморожен намеренно. Живёт внутри карточки КБЖУ, тише самих чисел. */
+.meal-revision-note {
+  margin: 0;
+  font-size: var(--text-13);
+  line-height: var(--lh-text);
+  color: var(--fg-faint);
+}
+
+/* ---- 7. микронутриенты: покрытие суточных норм ---- */
+
+/* Свёрнуто блок читается одной строкой карточки: «Микронутриенты · набрано 13
+   из 26 · неполных 22 ›». Главное на экране - приём и его состав, поэтому
+   раскрытый список прокручивается, а не растягивает экран на два роста.
+   Тот же блок стоит на сводке дня (режим ['day']) и выглядит там так же. */
+.meal-nutrients {
+  /* Полоса покрытия: 4px теряется рядом с текстом, 8px читается как элемент
+     управления. Своего токена под эту высоту в теме нет. */
+
+  padding-block: var(--space-2);
+}
+
+.meal-nutrients[open] {
+  padding-bottom: var(--space-4);
+}
+
+.meal-nutrients__summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--tap-min);
+  list-style: none;
+  cursor: pointer;
+  font-size: var(--text-15);
+}
+
+.meal-nutrients__summary::-webkit-details-marker {
+  display: none;
+}
+
+.meal-nutrients__summary-title {
+  flex: none;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.meal-nutrients__summary-sep {
+  flex: none;
+  color: var(--fg-faint);
+}
+
+/* Сводка покрытия: длинная строка ужимается многоточием, а не переносит
+   шеврон на второй ряд. */
+.meal-nutrients__summary-hint {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--text-13);
+  color: var(--fg-faint);
+  /* Переносится, а не обрезается: «набрано 11 из 26 · неполных 22» - это
+     честная сводка, и её хвост с числом неполных должен быть виден. */
+  white-space: normal;
+}
+
+/* Шеврон стоит в конце строки: он обещает продолжение. */
+.meal-nutrients__summary .icon {
+  margin-left: auto;
+  flex: none;
+  color: var(--fg-faint);
+}
+
+/* Переключатель охвата. Нормы суточные, поэтому процент осмыслен только за
+   день; «этот приём» показывает те же строки без полос и процентов. */
+.meal-nutrients__modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.meal-nutrients__note {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-13);
+  line-height: var(--lh-text);
+  color: var(--fg-faint);
+}
+
+.meal-nutrients__list {
+  margin-top: var(--space-2);
+  max-height: 45vh;
+  padding-right: var(--space-2);
+  overflow-y: auto;
+}
+
+.meal-nutrients__rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Воздух между строками задаёт список, а не собственные отступы строки:
+   иначе он складывался бы с зазором и строки разъезжались. */
+.meal-nutrients .nutrient {
+  padding: 0;
+}
+
+/* Полоса покрытия внутри панели: ниже, со скруглением и без рамки. Дорожку
+   держит собственный фон, и её видно на карточке первого плана. Правила
+   «Покрытия норм» это не трогает: полоса по-прежнему есть только там, где
+   есть и данные, и норма. */
+.meal-nutrients .nutrient__bar {
+  height: var(--bar-h);
+  border: none;
+  border-radius: var(--bar-h);
+}
+
+/* Группа нутриентов отбивается волосяной линией, а не отступом: заголовок
+   работает разделителем списка. У первой группы линии нет - отделять её
+   не от чего. */
+.meal-nutrients .nutrient-group {
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.meal-nutrients .nutrient-group:first-child {
+  margin-top: var(--space-3);
+  padding-top: 0;
+  border-top: none;
+}
+
+.meal-nutrients .nutrient-group__title {
+  margin-bottom: var(--space-3);
+  font-size: var(--text-11);
+  letter-spacing: .08em;
+}
+
+/* Строка со сноской нажимается целиком - сноска на телефоне иначе недостижима.
+   Собственного вида у кнопки нет: сетку, отступы и состояния даёт примитив
+   .nutrient из темы, здесь снимается только оформление кнопки. */
+.nutrient-row {
+  list-style: none;
+}
+
+.nutrient-row__btn {
+  width: 100%;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* Суффикс «AI» рядом с процентом: норма с основанием «адекватное потребление»
+   не то же самое, что суточная норма (RDA), и это стоит видеть с первого
+   взгляда на строку, а не только в раскрытой сноске. Мельче процента и
+   приглушённее: уточнение, а не отдельное число. */
+.nutrient__basis {
+  margin-left: .25em;
+  font-size: var(--text-13);
+  color: var(--fg-faint);
+}
+
+/* ---- 8. панель действий: липкая, под большим пальцем ---- */
+
+/* Главные действия внизу экрана: до них не надо доскроллить. Панель поднята
+   над потоком - отсюда тень и волосяная граница сверху; поля выведены за
+   отступы экрана, чтобы фон закрывал содержимое во всю ширину. */
+.meal-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  margin: var(--space-1) calc(var(--screen-pad) * -1) 0;
+  padding: var(--space-3) var(--screen-pad);
+  padding-bottom: max(var(--space-4), env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+  box-shadow: var(--shadow-lift);
+}
+
+.meal-actions__stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* Одно действие из трёх случается почти всегда: оно и есть кнопка во всю
+   ширину, крупная и акцентная. Два редких стоят под ней и тише. */
+.meal-actions__eat {
+  width: 100%;
+  min-height: calc(var(--tap-min) + var(--space-2));
+  border-radius: var(--r-28);
+  font-size: var(--text-20);
+}
+
+.meal-actions__row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+}
+
+.meal-actions__row .btn,
+.meal-actions__main .btn {
+  font-size: var(--text-15);
+  padding-inline: var(--space-2);
+}
+
+/* Доли съеденного - шкала чипов: выбор из шести, а не шесть отдельных команд. */
+.meal-actions__fractions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.meal-actions__fractions .chip {
+  flex: 1 0 auto;
+  justify-content: center;
+}
+
+.meal-actions__cancel {
+  background: none;
+  color: var(--fg-faint);
+}
+
+.meal-actions__main {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.meal-actions__main .btn {
+  flex: 1;
+}
+
+.meal-actions__recorded {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* Записанный приём подтверждается сменой состояния, а не всплывающим
+   сообщением: галочка и слово, оба цветом --ok. */
+.meal-actions__recorded-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-17);
+  font-weight: 600;
+  color: var(--ok);
+}
+
+/* ---- 9. оценка по горячим следам: под липкой панелью действий ---- */
+
+/* Живёт после .meal-actions в потоке: панель липкая и остаётся на месте, этот
+   блок раскрывается прокруткой вниз. Заголовок - вопрос, а не команда: оценка
+   необязательна, и экран об этом не давит. */
+.meal-rating {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.meal-rating__title {
+  font-size: var(--text-20);
+  font-weight: 700;
+  line-height: var(--lh-tight);
+}

@@ -28,6 +28,7 @@ import MealScreen from './MealScreen.tsx'
 import DaySummary from './DaySummary.tsx'
 import ScreenHeader from './ScreenHeader.tsx'
 import SlotSwitch from './SlotSwitch.tsx'
+import TabBar from './TabBar.tsx'
 import type { DaySlotProgress } from './slots.ts'
 import AddFromMenuSheet from './AddFromMenuSheet.tsx'
 import CustomFoodSheet from './CustomFoodSheet.tsx'
@@ -300,9 +301,11 @@ export default function App() {
   const daySlots: DaySlotProgress[] = useMemo(() => SLOTS.map(s => {
     const slotMeal = menuDay?.meals.find(m => m.slot === s)
     const slotEntry = dayLog?.meals[s]
-    const plannedKcal = slotMeal
-      ? mealKbju(slotMeal, products).kcal
-      : (slotEntry?.kbju.kcal ?? 0)
+    /* Один и тот же источник правды на все плановые числа слота: меню, если
+       блюдо на приём есть, иначе снапшот записи. Считается разом, чтобы
+       ккал, жиры и углеводы не разъехались по разным веткам. */
+    const plannedKbju = slotMeal ? mealKbju(slotMeal, products) : slotEntry?.kbju
+    const plannedKcal = plannedKbju?.kcal ?? 0
     const extrasKcal = (dayLog?.extras ?? [])
       .filter(e => e.slot === s)
       .reduce((sum, e) => sum + e.kbju.kcal * e.fraction, 0)
@@ -314,6 +317,8 @@ export default function App() {
       // выше для текущего открытого приёма.
       title: slotMeal?.title ?? slotEntry?.title,
       plannedKcal,
+      plannedFatG: plannedKbju?.f ?? 0,
+      plannedCarbsG: plannedKbju?.c ?? 0,
       eatenKcal: slotEntry ? slotEntry.kbju.kcal * slotEntry.fraction : 0,
       status: slotEntry?.status,
       fraction: slotEntry?.fraction,
@@ -321,6 +326,19 @@ export default function App() {
       extrasKcal
     }
   }), [menuDay, dayLog, products])
+
+  /* План меню на день по жирам и углеводам - сумма по четырём приёмам. Целей
+     по ним в настройках нет и выдумывать их нельзя (DESIGN.md, «Честность -
+     часть дизайна»), поэтому знаменателем этих двух макросов на сводке дня
+     работает план меню, а не норма. */
+  const dayPlannedFatG = useMemo(
+    () => daySlots.reduce((sum, s) => sum + s.plannedFatG, 0),
+    [daySlots]
+  )
+  const dayPlannedCarbsG = useMemo(
+    () => daySlots.reduce((sum, s) => sum + s.plannedCarbsG, 0),
+    [daySlots]
+  )
 
   /* Ручная правка даты старта цикла — не то же самое, что «всё верно»: она
      МЕНЯЕТ дату, а значит человек её уже проверил. Оба случая закрывают
@@ -555,27 +573,49 @@ export default function App() {
             </div>
           )
           : (saveError && <div className="save-error" role="alert">{saveError}</div>)}
-      <div className="screen">
+      {/* Модификатор вида нужен CSS, а не логике: на сводке низ экрана держит
+          панель вкладок, на экране приёма - липкая панель действий, и отступ
+          снизу у них разный (layout.css, .screen--day). */}
+      <div className={`screen${view === 'day' ? ' screen--day' : ''}`}>
         <ScreenHeader
           date={today}
           cycleDayNum={cycleDayNum}
           cycleDays={menu.cycleDays}
           batchDayNum={batchDayNum}
-          onOpenWeek={() => setWeekOpen(true)}
-          onOpenBook={() => setBookOpen(true)}
-          onOpenSettings={() => setSettingsOpen(true)}
           cycleStartDate={state.settings.cycleStartDate}
           cycleStartConfirmed={state.settings.cycleStartConfirmed}
           onConfirmCycleStart={handleConfirmCycleStart}
+          onOpenSettings={() => setSettingsOpen(true)}
         />
 
-        <div className="screen__body">
-          <SlotSwitch
-            view={view}
-            currentSlot={autoSlot}
-            daySlots={daySlots}
-            onSelect={handleSelectView}
-          />
+        <div className={`screen__body screen__body--${view === 'day' ? 'day' : 'meal'}`}>
+          {/* Возврат на сводку с экрана приёма. На широком экране скрыт CSS -
+              там «Сводка» осталась пунктом боковой колонки. */}
+          {view !== 'day' && (
+            <button type="button" className="meal-back" onClick={() => handleSelectView('day')}>
+              ← Сводка
+            </button>
+          )}
+
+          {/* Боковая колонка широкого экрана. На узком своей коробки у неё нет
+              (display: contents), и обе панели живут по своим правилам:
+              переключатель приёмов над содержимым экрана приёма, панель
+              вкладок - липкой полосой внизу окна на сводке. */}
+          <div className="screen__side">
+            <SlotSwitch
+              view={view}
+              currentSlot={autoSlot}
+              daySlots={daySlots}
+              onSelect={handleSelectView}
+            />
+            <TabBar
+              view={view}
+              onSelectDay={() => handleSelectView('day')}
+              onOpenWeek={() => setWeekOpen(true)}
+              onOpenBook={() => setBookOpen(true)}
+              onOpenSettings={() => setSettingsOpen(true)}
+            />
+          </div>
 
           <div className="screen__content">
             {view === 'day'
@@ -592,6 +632,10 @@ export default function App() {
                   targetKcal={state.settings.targetKcal}
                   dayProteinG={dayKbju.p}
                   targetProteinG={state.settings.targetProteinG}
+                  dayFatG={dayKbju.f}
+                  dayCarbsG={dayKbju.c}
+                  dayPlannedFatG={dayPlannedFatG}
+                  dayPlannedCarbsG={dayPlannedCarbsG}
                   hasDayLog={Boolean(dayLog && (Object.keys(dayLog.meals).length > 0 || dayLog.extras.length > 0))}
                   onOpenDayExport={handleOpenDayExport}
                   extras={dayExtras}

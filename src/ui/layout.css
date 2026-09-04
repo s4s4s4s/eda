@@ -1,0 +1,482 @@
+/* Каркас экрана: рамка .screen, шапка, переключатель приёмов, нижняя панель
+   вкладок, баннер первого запуска, полоса отказа сохранения и раскладка
+   широкого экрана. Всё, что не относится ни к сводке дня (summary.css), ни к
+   экрану приёма (meal.css), живёт здесь.
+
+   Три файла разведены намеренно: сводка, приём и каркас правятся порознь.
+   Цвета, размеры, радиусы и длительности только через токены из theme.css. */
+
+.screen {
+  /* Высота липкой панели действий: крупная кнопка «Съел» (tap-min + space-2),
+     зазор, ряд из двух кнопок в зону пальца и отступы панели (meal.css,
+     .meal-actions). Тем же значением экран добирает нижний отступ, иначе панель
+     накрывала бы последний блок содержимого. */
+  --actions-h: calc(var(--tap-min) * 2 + var(--space-2) * 2 + var(--space-3) + var(--space-4));
+
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: 32rem;
+  margin: 0 auto;
+  padding:
+    max(var(--space-3), env(safe-area-inset-top))
+    var(--screen-pad)
+    calc(var(--actions-h) + max(var(--space-4), env(safe-area-inset-bottom)));
+}
+
+/* На сводке низ экрана занимает не липкая панель действий приёма, а панель
+   вкладок: отступ считается от неё и от env(safe-area-inset-bottom), иначе
+   на iPhone последняя карточка уезжает под панель и под индикатор. */
+.screen--day {
+  padding-bottom: calc(var(--tabbar-h) + max(var(--space-4), env(safe-area-inset-bottom)));
+}
+
+/* Иконки рисуются в цвет текста и масштабируются вместе с ним: собственных
+   размеров и цветов у них нет. */
+.icon {
+  width: 1.25em;
+  height: 1.25em;
+  flex: none;
+}
+
+/* Тело экрана — навигация (SlotSwitch) и содержимое (сводка дня или экран
+   приёма). На узком экране это просто вертикальный поток: полоса кнопок,
+   под ней содержимое. Широкий облик (боковая колонка) — медиа-запрос 48rem
+   в конце файла. */
+.screen__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.screen__content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+/* ---- 1. шапка: дата, день цикла и день партии, настройки ---- */
+
+.screen__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.screen__header-lines {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+/* Дата — главная строка шапки: какой сегодня день недели и число. Крупнее и
+   ярче строки цикла, но не герой экрана — тот остаётся за названием приёма. */
+/* Дата - главная строка шапки и её единственный герой: три кнопки-иконки
+   уехали в панель вкладок, спорить за место больше не с кем. */
+.screen__date-line {
+  font-size: var(--text-24);
+  font-weight: 700;
+  line-height: var(--lh-tight);
+  color: var(--fg);
+}
+
+.screen__date-line::first-letter {
+  text-transform: uppercase;
+}
+
+/* Строка дня переносится только по разделителю, а не посреди фразы: с тремя
+   кнопками-иконками справа места на одну строку уже не хватает, и «партия:
+   день 1 / из 4» читалось бы как обрывок. Вторична по отношению к дате —
+   приглушённый цвет, мелкий кегль. */
+.screen__day-line {
+  align-self: flex-start;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  min-width: 0;
+  font-size: var(--text-13);
+  color: var(--fg-faint);
+}
+
+.screen__day-line > span {
+  white-space: nowrap;
+}
+
+.screen__day-line-sep {
+  margin: 0 var(--space-1);
+}
+
+/* ---- 2. навигация: переключатель приёмов и панель вкладок ---- */
+
+/* SlotSwitch - один компонент, два облика (DESIGN.md, «Навигация: сводка
+   первая»):
+   - узкий экран, вид приёма: сегментированный контрол из ЧЕТЫРЁХ приёмов над
+     содержимым, кнопка «Сводка» в нём скрыта (со сводки на приём ведут
+     карточки, с приёма назад - кнопка .meal-back);
+   - узкий экран, вид сводки: переключателя нет вовсе;
+   - широкий экран (48rem, в конце файла): та же nav - липкая боковая колонка
+     из пяти пунктов, у каждого приёма вторая строка со статусом.
+   Все три облика задаёт CSS, JSX один и тот же: раздваивать компонент значило
+   бы держать два места, которые могут разойтись. */
+.slot-switch {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-1);
+  padding: var(--space-1);
+  border-radius: var(--r-14);
+  background: var(--surface-2);
+}
+
+.slot-switch__btn {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  min-height: var(--tap-min);
+  padding: var(--space-2) var(--space-1);
+  border: none;
+  border-radius: var(--r-8);
+  background: none;
+  color: var(--fg-dim);
+  /* Подпись под глифом: четыре сегмента на 390px не дают места крупнее. */
+  font-size: var(--text-11);
+  line-height: var(--lh-tight);
+}
+
+/* На узком экране «Сводка» из переключателя убрана: её место заняла вкладка
+   в нижней панели и кнопка «← Сводка» на экране приёма. В DOM кнопка
+   остаётся - на широком экране она снова видна (медиа-запрос внизу файла). */
+.slot-switch__btn--summary {
+  display: none;
+}
+
+/* Глиф приёма стоит НАД подписью, но в DOM идёт после неё: первый текстовый
+   узел кнопки - сама подпись, и на неё опирается сценарий снимков
+   (scripts/shots.mjs, navBtn). Порядок в потоке задаёт order, а не разметка. */
+.slot-switch__icon {
+  order: -1;
+  display: flex;
+  /* Глиф крупнее подписи: подпись под ним набрана --text-11, и глиф в её
+     кегле превратился бы в точку. */
+  font-size: var(--text-20);
+}
+
+/* Выбранный вручную - заливкой. */
+.slot-switch__btn--active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 700;
+}
+
+/* Текущий по времени - точкой. Это отдельный признак от заливки, и он может
+   стоять на другой кнопке: человек листает приёмы, время идёт своим ходом. */
+.slot-switch__now-dot {
+  position: absolute;
+  right: var(--space-2);
+  top: var(--space-2);
+  width: var(--space-1);
+  height: var(--space-1);
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.slot-switch__btn--active .slot-switch__now-dot {
+  background: var(--accent-fg);
+}
+
+/* Строка статуса приёма («не записан», «съел ½», …) - только у широкого
+   облика (боковая колонка, см. медиа-запрос 48rem ниже): в сегментированном
+   контроле узкого экрана ей просто негде уместиться под подписью. */
+.slot-switch__sub {
+  display: none;
+}
+
+/* Возврат со экрана приёма на сводку. На широком экране скрыт: там «Сводка»
+   осталась пунктом боковой колонки. */
+.meal-back {
+  align-self: flex-start;
+  min-height: var(--tap-min);
+  padding: var(--space-2) 0;
+  border: none;
+  background: none;
+  color: var(--fg-dim);
+  font-size: var(--text-15);
+  font-weight: 600;
+}
+
+/* ---- нижняя панель вкладок ---- */
+
+/* Главная навигация под большим пальцем: «Сводка» выбирает вид дня, три
+   остальные открывают шторки (раньше это были иконки в шапке). Панель липнет
+   к низу окна и уводит нижний край содержимого выше себя - отступ считает
+   .screen--day. На широком экране (48rem) панель перестаёт быть fixed и
+   становится нижней частью боковой колонки. */
+.tab-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 15;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  padding-bottom: env(safe-area-inset-bottom);
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.tab-bar__btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  min-height: var(--tabbar-h);
+  padding: var(--space-2) var(--space-1);
+  border: none;
+  background: none;
+  color: var(--fg-dim);
+}
+
+.tab-bar__btn--active {
+  color: var(--accent);
+}
+
+.tab-bar__label {
+  font-size: var(--text-11);
+  letter-spacing: .04em;
+  line-height: var(--lh-tight);
+}
+
+/* Панели видны по виду экрана, и решает это CSS, а не вторая ветка разметки:
+   на сводке узкого экрана нет переключателя приёмов, на экране приёма нет
+   панели вкладок - внизу уже стоит липкая панель действий, а две панели
+   друг над другом недопустимы. */
+.screen__body--day .slot-switch {
+  display: none;
+}
+
+.screen__body--meal .tab-bar {
+  display: none;
+}
+
+/* Боковая колонка широкого экрана. На узком своей коробки у неё нет вовсе
+   (display: contents): переключатель и панель вкладок раскладываются прямо
+   в потоке .screen__body, каждый по своим правилам. */
+.screen__side {
+  display: contents;
+}
+
+
+/* ---- баннер первого запуска: дата старта цикла не подтверждена ---- */
+
+/* Спокойная, не красная: это не отказ и не ошибка, а вопрос. Живёт в потоке
+   экрана (под шапкой), а не поверх него — save-error и update-banner уже
+   заняли sticky/fixed верх и низ. */
+.cycle-start-notice {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-14);
+  background: var(--surface-2);
+}
+
+.cycle-start-notice__text {
+  margin: 0;
+  font-size: var(--text-15);
+  line-height: var(--lh-text);
+  color: var(--fg);
+}
+
+.cycle-start-notice__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* ---- отказ сохранения ---- */
+
+/* Полоса держится сверху и не прячется сама: пока она видна, дневник на экране
+   расходится с дневником на диске (или с тем, что было в хранилище). Текст и
+   необязательная кнопка «Понятно» — в ряд: на узком экране (320px) кнопка
+   переносится под текст, а не срезает его. */
+.save-error {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-3) var(--screen-pad);
+  padding-top: max(var(--space-3), env(safe-area-inset-top));
+  background: var(--danger);
+  color: var(--accent-fg);
+  font-size: var(--text-15);
+  line-height: var(--lh-text);
+}
+
+.save-error__text {
+  flex: 1 1 14rem;
+}
+
+/* Закрывает полосу «corrupt»/dropped до перезагрузки (состояние в памяти —
+   см. App.tsx). Обводка вместо заливки: полоса уже акцентная сама по себе,
+   вторая заливка внутри неё спорила бы с ней за внимание. */
+.save-error__dismiss {
+  flex: none;
+  min-height: var(--tap-min);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--accent-fg);
+  border-radius: var(--r-8);
+  background: none;
+  color: var(--accent-fg);
+  font: inherit;
+  font-weight: 600;
+}
+/* ---- широкий экран: боковая колонка приёмов и вкладок ---- */
+
+/* Тот же контент, другая раскладка: навигация уходит из потока в липкую
+   колонку слева, содержимое - не шире прежних 32rem на любой ширине окна.
+   `.screen` при этом расширяется, чтобы вместить колонку и содержимое рядом,
+   а не потому, что содержимому вдруг стало нужно больше места.
+   Колонка на широком экране полная: пять пунктов переключателя (со «Сводкой»)
+   и панель вкладок под ними. Нижней липкой панели вкладок здесь нет - мышь
+   не палец, тянуться к низу окна незачем. */
+@media (min-width: 48rem) {
+  .screen {
+    max-width: 48rem;
+  }
+
+  /* Панель вкладок ушла из-под низа окна в колонку - добирать под неё отступ
+     содержимому больше не нужно. */
+  .screen--day {
+    padding-bottom: max(var(--space-4), env(safe-area-inset-bottom));
+  }
+
+  .screen__body {
+    display: grid;
+    grid-template-columns: 13rem minmax(0, 1fr);
+    gap: var(--space-4);
+    align-items: start;
+  }
+
+  .screen__content {
+    max-width: 32rem;
+  }
+
+  /* Колонка получает собственную коробку (на узком у неё display: contents)
+     и липнет к верху окна целиком, вместе с панелью вкладок. */
+  .screen__side {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    position: sticky;
+    /* Тот же зазор, что и верхний паддинг .screen - колонка не липнет
+       вплотную к краю окна поверх шапки, которая осталась в потоке. */
+    top: max(var(--space-3), env(safe-area-inset-top));
+  }
+
+  /* На широком экране виден и переключатель приёмов на сводке, и панель
+     вкладок на экране приёма: в колонке они не спорят за низ экрана. */
+  .slot-switch {
+    display: grid;
+    grid-template-columns: 1fr;
+    padding: 0;
+    background: none;
+  }
+
+  .screen__body--meal .tab-bar {
+    display: grid;
+  }
+
+  /* «Сводка» возвращается пунктом колонки: кнопки «← Сводка» здесь нет. */
+  .slot-switch__btn--summary {
+    display: flex;
+  }
+
+  .meal-back {
+    display: none;
+  }
+
+  .slot-switch__btn {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-start;
+    gap: var(--space-1) var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    font-size: var(--text-15);
+    text-align: left;
+  }
+
+  /* Заливка выбранного пункта повторена здесь намеренно: правило колонки
+     возвращает кнопкам собственный фон и границу, и без этого выбранный
+     пункт потерял бы акцент. */
+  .slot-switch__btn--active {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+
+  /* Точка «сейчас» в узком облике сидела в углу кнопки - в колонке кнопки
+     выровнены по левому краю, и точка следует за подписью, а не остаётся
+     висеть в пустом углу. */
+  .slot-switch__now-dot {
+    position: static;
+  }
+
+  .slot-switch__icon {
+    font-size: var(--text-17);
+  }
+
+  .slot-switch__sub {
+    display: block;
+    flex-basis: 100%;
+    font-size: var(--text-13);
+    font-weight: 400;
+    color: var(--fg-faint);
+  }
+
+  .slot-switch__btn--active .slot-switch__sub {
+    color: var(--accent-fg);
+  }
+
+  /* Панель вкладок в колонке: обычный блок в потоке, строкой на пункт,
+     отделена от переключателя волосяной линией. */
+  .tab-bar {
+    position: static;
+    grid-template-columns: 1fr;
+    padding-top: var(--space-3);
+    padding-bottom: 0;
+    background: none;
+  }
+
+  .tab-bar__btn {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: var(--space-2);
+    min-height: var(--tap-min);
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .tab-bar__label {
+    font-size: var(--text-15);
+    letter-spacing: normal;
+  }
+
+  /* «Сводка» в колонке уже есть первым пунктом переключателя приёмов -
+     второй раз тот же пункт в панели вкладок только сбивал бы с толку. */
+  .tab-bar__btn--day {
+    display: none;
+  }
+}

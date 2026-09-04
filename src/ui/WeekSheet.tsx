@@ -32,8 +32,11 @@ const WEEKDAY_SHORT = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб']
     читать у стола, а первых восьми хватает, чтобы увидеть закономерность. */
 const DEFICIT_LIMIT = 8
 
-function round(n: number): number {
-  return Math.round(n)
+/** Полосы недели дублируют проценты из текста, поэтому для скринридера они
+    скрыты. Сверх цели полоса упирается в край и меняет цвет на цвет предела:
+    120 % и 100 % не имеют права выглядеть одинаково. */
+function barFillClass(pct: number): string {
+  return pct > 100 ? 'week-summary__bar-fill week-summary__bar-fill--over' : 'week-summary__bar-fill'
 }
 
 /** Русское склонение слова «день» по числу (день/дня/дней). Та же таблица, что
@@ -132,20 +135,50 @@ function SummarySection({
   targetProteinG: number
 }) {
   if (summary.daysWithLog === 0) {
-    return <p className="week-summary week-summary--empty">За эти семь дней записей нет</p>
+    return (
+      <div className="card week-summary">
+        <p className="week-summary__empty">За эти семь дней записей нет</p>
+      </div>
+    )
   }
 
   const n = summary.daysWithLog
   const avgKcal = summary.avgKcal as number
   const avgProteinG = summary.avgProteinG as number
-  const kcalPct = targetKcal > 0 ? round((avgKcal / targetKcal) * 100) : null
-  const proteinPct = targetProteinG > 0 ? round((avgProteinG / targetProteinG) * 100) : null
+  const kcalPct = targetKcal > 0 ? Math.round((avgKcal / targetKcal) * 100) : null
+  const proteinPct = targetProteinG > 0 ? Math.round((avgProteinG / targetProteinG) * 100) : null
   const { incompleteDays } = summary
 
   return (
-    <div className="week-summary">
+    <div className="card week-summary">
+      {/* Крупные числа и тонкие полосы доли к цели - визуальный центр карточки;
+          текстовые строки ниже дословно те же предложения, что были раньше. */}
+      <div className="week-summary__nums">
+        <div className="week-summary__stat">
+          <span className="week-summary__value nums">{Math.round(avgKcal)}</span>
+          <span className="week-summary__unit">ккал в среднем</span>
+        </div>
+        <div className="week-summary__stat">
+          <span className="week-summary__value nums">{Math.round(avgProteinG)}</span>
+          <span className="week-summary__unit">г белка в среднем</span>
+        </div>
+      </div>
+      {(kcalPct !== null || proteinPct !== null) && (
+        <div className="week-summary__bars" aria-hidden="true">
+          {kcalPct !== null && (
+            <div className="week-summary__bar">
+              <span className={barFillClass(kcalPct)} style={{ width: `${Math.min(kcalPct, 100)}%` }} />
+            </div>
+          )}
+          {proteinPct !== null && (
+            <div className="week-summary__bar week-summary__bar--protein">
+              <span className={barFillClass(proteinPct)} style={{ width: `${Math.min(proteinPct, 100)}%` }} />
+            </div>
+          )}
+        </div>
+      )}
       <p className="week-summary__line">
-        В среднем за {n} {daysWord(n)} с записями: {round(avgKcal)} ккал, {round(avgProteinG)} г белка
+        В среднем за {n} {daysWord(n)} с записями: {Math.round(avgKcal)} ккал, {Math.round(avgProteinG)} г белка
         {incompleteDays > 0 && ` (из них ${incompleteDays} ${loggedWord(incompleteDays)} не полностью)`}
       </p>
       {(kcalPct !== null || proteinPct !== null) && (
@@ -184,7 +217,7 @@ function DayRow({ day, isToday, targetKcal }: { day: DaySummary; isToday: boolea
           {isToday && ' · сегодня'}
           {day.cycleDay !== null && <span className="week-day__cycle"> · день {day.cycleDay}</span>}
         </span>
-        <span className="week-day__kcal">{round(day.kbju.kcal)} ккал</span>
+        <span className="week-day__kcal">{Math.round(day.kbju.kcal)} ккал</span>
       </div>
       {ratio !== null && <CoverageBar ratio={ratio} />}
       <span className="week-day__meals">
@@ -248,7 +281,7 @@ function WeekCoverageRow({ cov }: { cov: WeekCoverage }) {
       <span className="nutrient__name">{NUTRIENT_TITLE[key]}</span>
       <span className="nutrient__value">
         {state === 'no-data' ? 'нет данных' : `${formatNutrientAmount(value)} ${unit}`}
-        {showBar && <span className="nutrient__pct">{round((ratio as number) * 100)}%</span>}
+        {showBar && <span className="nutrient__pct">{Math.round((ratio as number) * 100)}%</span>}
         {/* not-comparable (вода: считает разное) и no-norm (нормы просто нет) —
             обе строки показывают набранное без полосы и без придуманного процента. */}
         {state === 'not-comparable' && (
@@ -290,7 +323,7 @@ function WeekCoverageSection({
   expectedSlots: number
 }) {
   return (
-    <section className="week-section">
+    <section className="week-section card">
       <h2 className="week-section__title">Итоги недели</h2>
       {/* Оговорка одна на весь раздел, а не на каждую строку: неполные дни бьют
           по всем нутриентам разом, повторять её в каждой строке было бы шумом
@@ -336,14 +369,18 @@ export default function WeekSheet({ log, today, targetKcal, targetProteinG, norm
       <div className="week-sheet">
         <SummarySection summary={summary} targetKcal={targetKcal} targetProteinG={targetProteinG} />
 
-        <ul className="week-days">
-          {orderedDays.map(day => (
-            <DayRow key={day.date} day={day} isToday={day.date === today} targetKcal={targetKcal} />
-          ))}
-        </ul>
+        {/* Дни - строки внутри одной карточки, с волосяным разделителем между
+            ними, а не карточка на каждый день (см. .week-day в sheets.css). */}
+        <div className="card">
+          <ul className="week-days">
+            {orderedDays.map(day => (
+              <DayRow key={day.date} day={day} isToday={day.date === today} targetKcal={targetKcal} />
+            ))}
+          </ul>
+        </div>
 
         {summary.daysWithLog > 0 && deficitRows.length > 0 && (
-          <section className="week-section">
+          <section className="week-section card">
             <h2 className="week-section__title">Чего недобираешь</h2>
             <ul className="week-nutrients">
               {deficitRows.map(row => (
@@ -351,7 +388,7 @@ export default function WeekSheet({ log, today, targetKcal, targetProteinG, norm
                   <span className="nutrient__name">{NUTRIENT_TITLE[row.key]}</span>
                   <span className="nutrient__value">
                     {formatNutrientAmount(row.avgValue)} {NUTRIENT_UNIT[row.key]}
-                    <span className="nutrient__pct">{round(row.ratio * 100)}%</span>
+                    <span className="nutrient__pct">{Math.round(row.ratio * 100)}%</span>
                   </span>
                   <CoverageBar ratio={row.ratio} />
                   {/* Знаменатель — dayCount (дни окна, «из 7»), тот же, что и в разделе

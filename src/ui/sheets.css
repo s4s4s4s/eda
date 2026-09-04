@@ -4,10 +4,13 @@
 
 /* ---- каркас шторки ---- */
 
+/* Шторка модальна и лежит выше всего, что закреплено на экране под ней:
+   панели вкладок (z 15), липкой панели действий и полосы ошибки (z 20).
+   Иначе панель вкладок рисуется поверх открытой шторки и срезает её низ. */
 .sheet {
   position: fixed;
   inset: 0;
-  z-index: 10;
+  z-index: 30;
   display: flex;
   align-items: flex-end;
 }
@@ -31,7 +34,7 @@
   overscroll-behavior: contain;
   background: var(--bg);
   border-top: 1px solid var(--border);
-  border-radius: var(--r-22) var(--r-22) 0 0;
+  border-radius: var(--r-28) var(--r-28) 0 0;
   box-shadow: var(--shadow-lift);
   padding-bottom: env(safe-area-inset-bottom);
   animation: sheet-rise var(--dur-sheet) var(--ease);
@@ -52,7 +55,7 @@
   z-index: 1;
   display: block;
   width: 2.25rem;
-  height: 4px;
+  height: var(--space-1);
   margin: var(--space-2) auto 0;
   border-radius: 2px;
   background: var(--border);
@@ -70,16 +73,25 @@
 }
 
 .sheet__title {
-  font-size: var(--text-20);
+  font-size: var(--text-24);
+  font-weight: 700;
 }
 
+/* Круглая кнопка закрытия - --tap-min, на лёгкой поверхности --surface-2, а не
+   в собственной рамке: она рядом с крупным заголовком и не обязана спорить
+   с ним весом. */
 .sheet__close {
   flex: none;
+  width: var(--tap-min);
+  height: var(--tap-min);
   min-width: var(--tap-min);
   min-height: var(--tap-min);
-  border: 1px solid var(--border);
-  border-radius: var(--r-8);
-  background: var(--surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: var(--surface-2);
   color: var(--fg-dim);
   font-size: var(--text-15);
 }
@@ -93,11 +105,28 @@
 
 /* ---- настройки ---- */
 
+/* Поля сгруппированы в карточки (iOS grouped): «Цикл», «Цели», «Интеграции»,
+   «Дневник». Заголовок группы - капсом, --text-11, тот же приём, что и
+   легенды вкладок (theme.css). */
+.settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.settings-group__title {
+  margin: 0;
+  font-size: var(--text-11);
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+}
+
 .cycle-shift {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  flex-wrap: wrap;
 }
 
 .cycle-shift .btn {
@@ -106,7 +135,7 @@
 
 .cycle-shift__today {
   flex: 1;
-  min-width: 8rem;
+  min-width: 0;
   font-size: var(--text-15);
   color: var(--fg-dim);
   text-align: center;
@@ -153,8 +182,6 @@
 
 /* Числа наверху, кнопки внизу: под большой палец, одной рукой. */
 .export-sheet__numbers {
-  padding-bottom: var(--space-4);
-  border-bottom: 1px solid var(--border);
   text-align: center;
 }
 
@@ -188,6 +215,13 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+
+.export-channel:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
 }
 
 .export-channel__button {
@@ -301,6 +335,11 @@
   justify-content: space-between;
   gap: var(--space-3);
   padding: var(--space-1) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.export-nutrient:last-child {
+  border-bottom: none;
 }
 
 .export-nutrient__name {
@@ -336,25 +375,83 @@
 }
 
 .week-summary {
-  padding-bottom: var(--space-4);
-  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* Среднее ккал и белок - визуальный центр карточки: крупные числа сверху,
+   тонкие полосы доли к цели под ними; исходные текстовые строки (ниже)
+   остаются дословно теми же предложениями, что и раньше. */
+.week-summary__nums {
+  display: flex;
+  gap: var(--space-5);
+}
+
+.week-summary__stat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  flex: 1;
+}
+
+.week-summary__value {
+  font-size: var(--text-24);
+  font-weight: 700;
+  line-height: var(--lh-tight);
+}
+
+.week-summary__unit {
+  font-size: var(--text-13);
+  color: var(--fg-dim);
+}
+
+.week-summary__bars {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.week-summary__bar {
+  height: var(--bar-h);
+  border-radius: var(--bar-h);
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.week-summary__bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+}
+
+/* Полоса белка - цветом протеина из набора макросов, как на сводке дня:
+   тот же цвет означает то же самое в обоих местах приложения. */
+.week-summary__bar--protein .week-summary__bar-fill {
+  background: var(--macro-protein);
+}
+
+.week-summary__bar .week-summary__bar-fill--over {
+  background: var(--ring-over);
 }
 
 .week-summary__line {
   margin: 0;
-  font-size: var(--text-17);
+  font-size: var(--text-15);
+  color: var(--fg-dim);
   line-height: var(--lh-text);
   font-variant-numeric: tabular-nums;
 }
 
 .week-summary__ratio {
-  margin: var(--space-1) 0 0;
-  font-size: var(--text-15);
-  color: var(--fg-dim);
+  margin: 0;
+  font-size: var(--text-13);
+  color: var(--fg-faint);
   font-variant-numeric: tabular-nums;
 }
 
-.week-summary--empty {
+.week-summary__empty {
   margin: 0;
   font-size: var(--text-15);
   color: var(--fg-faint);
@@ -481,19 +578,23 @@
   gap: var(--space-3);
 }
 
+/* Одна карточка на весь список (dishes/ingredients), строки внутри разделяет
+   волосяная линия - тот же приём, что и .list из theme.css, вместо карточки
+   на каждую строку. */
 .book-list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
 .book-dish {
-  border: 1px solid var(--border);
-  border-radius: var(--r-8);
-  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.book-dish:last-child {
+  border-bottom: none;
 }
 
 /* Вся строка — цель нажатия: раскрывает RatingEditor на месте, без перехода
@@ -546,13 +647,11 @@
   margin-bottom: var(--space-1);
 }
 
+/* Расположение строки (row/gap/padding/разделитель) даёт примитив .list__row
+   из theme.css - здесь только то, чего в нём нет: числа справа выравниваются
+   от текста слева. */
 .book-ingredient {
-  display: flex;
-  align-items: center;
   justify-content: space-between;
-  gap: var(--space-3);
-  padding: var(--space-2) 0;
-  border-bottom: 1px solid var(--border);
 }
 
 .book-ingredient__name {
@@ -603,10 +702,11 @@
   vertical-align: middle;
 }
 
+/* Строки одного списка внутри карточки (не карточка на приём): разделяет
+   волосяная линия, выбранная строка - лёгкой подсветкой поверхности. */
 .add-from-menu__slots {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -620,16 +720,20 @@
   width: 100%;
   min-height: var(--tap-min);
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border);
+  border: none;
+  border-bottom: 1px solid var(--border);
   border-radius: var(--r-8);
-  background: var(--surface);
+  background: none;
   color: var(--fg);
   font: inherit;
   text-align: left;
 }
 
+.add-from-menu__slots li:last-child .add-from-menu__slot {
+  border-bottom: none;
+}
+
 .add-from-menu__slot--selected {
-  border-color: var(--accent);
   background: var(--surface-2);
 }
 
@@ -723,11 +827,11 @@
   list-style: none;
 }
 
+/* Оформление (поверхность, радиус, тень) даёт .card из theme.css; здесь
+   только раскладка содержимого строки книги своей еды. */
 .custom-food-book-row {
-  padding: var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--r-8);
-  background: var(--surface);
+  display: flex;
+  flex-direction: column;
 }
 
 .custom-food-book-row__head {
@@ -787,14 +891,13 @@
   list-style: none;
 }
 
+/* Оформление (поверхность, радиус, тень) даёт .card из theme.css; здесь
+   только внутренний flex-столбец с меньшим шагом, чем стандартный отступ
+   карточки, - у заказа много коротких строк подряд. */
 .custom-food-request {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  padding: var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--r-8);
-  background: var(--surface);
 }
 
 .custom-food-request--failed {

@@ -37,6 +37,13 @@ export interface DaySlotProgress {
       название из снапшота записи. undefined — ни меню, ни записи нет. */
   title: string | undefined
   plannedKcal: number
+  /* Жиры и углеводы по плану меню на этот приём - та же арифметика, что у
+     plannedKcal, и тот же источник (mealKbju блюда меню, иначе снапшот
+     записи). Нужны сводке дня: цели по жирам и углеводам нет и выдумывать её
+     нельзя, знаменателем для них работает план меню на день - сумма этих
+     полей по четырём приёмам. */
+  plannedFatG: number
+  plannedCarbsG: number
   eatenKcal: number
   status: MealStatus | undefined
   /** Доля записанного приёма — та же величина, что и `MealLogEntry.fraction`.
@@ -51,6 +58,6 @@ export interface DaySlotProgress {
   productsRevision: string | undefined
   /** Съеденное сверх меню, отнесённое к этому слоту (сумма kbju.kcal × fraction
       по ExtraLogEntry.slot === slot). Не входит в plannedKcal — план всегда
-      идёт из меню, добавленное лишь заполняет заливку сегмента сверх него. */
+      идёт из меню; добавленное показывает строка статуса карточки приёма. */
   extrasKcal: number
 }

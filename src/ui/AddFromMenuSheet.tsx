@@ -71,91 +71,95 @@ export default function AddFromMenuSheet({
   return (
     <Sheet title="Добавить блюдо из другого дня" onClose={onClose}>
       <div className="add-from-menu">
-        <div className="field">
-          <span className="field__label">День цикла</span>
-          <div className="add-from-menu__days" role="group" aria-label="День цикла">
-            {dayChips.map(day => (
-              <button
-                key={day}
-                type="button"
-                className={day === sourceDay ? 'chip chip--tap chip--selected' : 'chip chip--tap'}
-                aria-pressed={day === sourceDay}
-                onClick={() => handlePickDay(day)}
-              >
-                {day}
-                {day === currentCycleDay && <span className="add-from-menu__today-dot" aria-hidden="true" />}
-              </button>
-            ))}
+        <div className="card settings-group">
+          <div className="field">
+            <span className="field__label">День цикла</span>
+            <div className="add-from-menu__days" role="group" aria-label="День цикла">
+              {dayChips.map(day => (
+                <button
+                  key={day}
+                  type="button"
+                  className={day === sourceDay ? 'chip chip--tap chip--selected' : 'chip chip--tap'}
+                  aria-pressed={day === sourceDay}
+                  onClick={() => handlePickDay(day)}
+                >
+                  {day}
+                  {day === currentCycleDay && <span className="add-from-menu__today-dot" aria-hidden="true" />}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="field">
+            <span className="field__label">Приём в этот день</span>
+            <ul className="add-from-menu__slots">
+              {SLOTS.map(slot => {
+                const meal = mealFor(menu, targetDate, sourceDay, slot)
+                const selected = sourceSlot === slot
+                return (
+                  <li key={slot}>
+                    <button
+                      type="button"
+                      className={`add-from-menu__slot${selected ? ' add-from-menu__slot--selected' : ''}${meal ? '' : ' add-from-menu__slot--empty'}`}
+                      aria-pressed={selected}
+                      disabled={!meal}
+                      onClick={() => setSourceSlot(slot)}
+                    >
+                      <span className="add-from-menu__slot-title">{SLOT_TITLE[slot]}</span>
+                      {meal
+                        ? <span className="add-from-menu__slot-meal">{meal.title} · {round(computeMealKbju(meal, products).kcal)} ккал</span>
+                        : <span className="add-from-menu__slot-empty">в меню на этот день такого приёма нет</span>}
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
           </div>
         </div>
 
-        <div className="field">
-          <span className="field__label">Приём в этот день</span>
-          <ul className="add-from-menu__slots">
-            {SLOTS.map(slot => {
-              const meal = mealFor(menu, targetDate, sourceDay, slot)
-              const selected = sourceSlot === slot
-              return (
-                <li key={slot}>
-                  <button
-                    type="button"
-                    className={`add-from-menu__slot${selected ? ' add-from-menu__slot--selected' : ''}${meal ? '' : ' add-from-menu__slot--empty'}`}
-                    aria-pressed={selected}
-                    disabled={!meal}
-                    onClick={() => setSourceSlot(slot)}
-                  >
-                    <span className="add-from-menu__slot-title">{SLOT_TITLE[slot]}</span>
-                    {meal
-                      ? <span className="add-from-menu__slot-meal">{meal.title} · {round(computeMealKbju(meal, products).kcal)} ккал</span>
-                      : <span className="add-from-menu__slot-empty">в меню на этот день такого приёма нет</span>}
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
-        </div>
-
-        <div className="field">
-          <span className="field__label">Доля</span>
-          <div className="add-from-menu__fractions" role="group" aria-label="Доля">
-            {ADD_FRACTIONS.map(value => (
-              <button
-                key={value}
-                type="button"
-                className={value === fraction ? 'chip chip--tap chip--selected nums' : 'chip chip--tap nums'}
-                aria-pressed={value === fraction}
-                onClick={() => setFraction(value)}
-              >
-                {fractionLabel(value)}
-              </button>
-            ))}
+        <div className="card settings-group">
+          <div className="field">
+            <span className="field__label">Доля</span>
+            <div className="add-from-menu__fractions" role="group" aria-label="Доля">
+              {ADD_FRACTIONS.map(value => (
+                <button
+                  key={value}
+                  type="button"
+                  className={value === fraction ? 'chip chip--tap chip--selected nums' : 'chip chip--tap nums'}
+                  aria-pressed={value === fraction}
+                  onClick={() => setFraction(value)}
+                >
+                  {fractionLabel(value)}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
 
-        <label className="field">
-          <span className="field__label">Дата записи</span>
-          <input
-            type="date"
-            className="field__input"
-            value={targetDate}
-            onChange={e => setTargetDate(e.target.value)}
-          />
-        </label>
+          <label className="field">
+            <span className="field__label">Дата записи</span>
+            <input
+              type="date"
+              className="field__input"
+              value={targetDate}
+              onChange={e => setTargetDate(e.target.value)}
+            />
+          </label>
 
-        <div className="field">
-          <span className="field__label">Записать в приём</span>
-          <div className="add-from-menu__target" role="group" aria-label="Целевой приём">
-            {SLOTS.map(slot => (
-              <button
-                key={slot}
-                type="button"
-                className={slot === targetSlot ? 'chip chip--tap chip--selected' : 'chip chip--tap'}
-                aria-pressed={slot === targetSlot}
-                onClick={() => setTargetSlot(slot)}
-              >
-                {SLOT_TITLE[slot]}
-              </button>
-            ))}
+          <div className="field">
+            <span className="field__label">Записать в приём</span>
+            <div className="add-from-menu__target" role="group" aria-label="Целевой приём">
+              {SLOTS.map(slot => (
+                <button
+                  key={slot}
+                  type="button"
+                  className={slot === targetSlot ? 'chip chip--tap chip--selected' : 'chip chip--tap'}
+                  aria-pressed={slot === targetSlot}
+                  onClick={() => setTargetSlot(slot)}
+                >
+                  {SLOT_TITLE[slot]}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 

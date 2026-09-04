@@ -27,9 +27,13 @@ import path from 'node:path';
 const CHROME = process.env.CHROME ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const PORT = 9333;
 const URL_APP = process.argv[2] ?? 'http://localhost:5173/eda/';
-const OUT = path.resolve(process.argv[3] ?? 'node_modules/.cache/eda/shots');
+/* Тема: по умолчанию тёмная (у приложения она без медиа-запроса); SCHEME=light
+   эмулирует prefers-color-scheme: light и кладёт снимки в соседний каталог,
+   чтобы светлая тема проверялась теми же сценами, а не «на глаз». */
+const SCHEME = process.env.SCHEME === 'light' ? 'light' : 'dark';
+const OUT = path.resolve(process.argv[3] ?? `node_modules/.cache/eda/shots${SCHEME === 'light' ? '-light' : ''}`);
 const VIEW = { width: 390, height: 844, deviceScaleFactor: 1, mobile: true };
-/* Широкий облик: `@media (min-width: 48rem)` в screen.css переключает nav на
+/* Широкий облик: `@media (min-width: 48rem)` в layout.css переключает nav на
    боковую колонку — 960 шире порога с запасом, 900 высоты хватает без full. */
 const WIDE = { width: 960, height: 900, deviceScaleFactor: 1, mobile: false };
 
@@ -115,6 +119,9 @@ const { sessionId: S } = await send('Target.attachToTarget', { targetId, flatten
 await send('Page.enable', {}, S);
 await send('Runtime.enable', {}, S);
 await send('Emulation.setDeviceMetricsOverride', VIEW, S);
+await send('Emulation.setEmulatedMedia', {
+  features: [{ name: 'prefers-color-scheme', value: SCHEME }]
+}, S);
 
 async function goto(url) {
   const loaded = waitEvent('Page.loadEventFired', S);
@@ -158,13 +165,25 @@ async function shotAt(name, metrics) {
 }
 
 /* Помощники внутри страницы: кнопка по точному тексту, клик с паузой на
-   перерисовку, и отдельно — клик по вкладке навигации (nav.slot-switch).
-   Вкладки — не просто «кнопка с таким текстом»: у каждого приёма в DOM
-   всегда лежит вторая строка статуса (`.slot-switch__sub`, скрыта CSS только
-   на узком экране, но остаётся в textContent), поэтому «Обед» после записи
-   textContent'ом становится «Обедсъел ½» и точное совпадение с btn() рвётся.
-   navBtn ищет ТОЛЬКО по первому текстовому узлу кнопки — самой подписи
-   приёма, — и это не зависит от того, записан приём или нет. */
+   перерисовку и переходы между сводкой и экраном приёма.
+
+   Навигация после редизайна разная на узком и широком экране (DESIGN.md,
+   «Навигация: сводка первая»):
+   - на сводке узкого экрана переключателя приёмов нет вовсе, приём открывает
+     кнопка карточки `.day-meal__open`;
+   - на экране приёма сверху стоит сегментированный переключатель из четырёх
+     приёмов (`nav.slot-switch`) и кнопка возврата `.meal-back`;
+   - на широком экране колонка `nav.slot-switch` держит все пять пунктов,
+     включая «Сводку».
+   Поэтому openMeal сам выбирает путь по тому, где сейчас находится, а
+   backToSummary всегда жмёт `.meal-back` (на широком экране кнопка скрыта
+   CSS, но остаётся в DOM и кликается).
+
+   clickNav по-прежнему ищет вкладку ТОЛЬКО по первому текстовому узлу кнопки:
+   у каждого приёма в DOM лежат ещё глиф и вторая строка статуса
+   (`.slot-switch__sub`, скрыта CSS на узком экране, но остаётся в
+   textContent), поэтому «Обед» после записи textContent'ом становится
+   «Обедсъел ½» и точное совпадение с btn() рвётся. */
 const helpers = `
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   const btn = t => [...document.querySelectorAll('button')].find(b => b.textContent.trim() === t);
@@ -172,15 +191,29 @@ const helpers = `
   const navBtn = t => [...document.querySelectorAll('nav.slot-switch button')]
     .find(b => (b.childNodes[0]?.textContent || '').trim() === t);
   const clickNav = async (t) => { const b = navBtn(t); if (!b) throw new Error('нет вкладки ' + t); b.click(); await sleep(350); };
+  const onMealScreen = () => document.querySelector('.meal-title') !== null;
+  const openMeal = async (t) => {
+    if (onMealScreen()) { await clickNav(t); return; }
+    const card = [...document.querySelectorAll('.day-meal')]
+      .find(c => (c.querySelector('.day-meal__title')?.textContent || '').trim() === t);
+    const b = card && card.querySelector('.day-meal__open');
+    if (!b) throw new Error('нет карточки приёма ' + t);
+    b.click(); await sleep(350);
+  };
+  const backToSummary = async () => {
+    const b = document.querySelector('.meal-back');
+    if (!b) throw new Error('нет кнопки возврата на сводку');
+    b.click(); await sleep(350);
+  };
 `;
 const squash = `.replace(/\\s+/g, ' ').trim()`;
 
-/* Число ккал за день из сводки: первое целое в тексте `.day-progress__value`
+/* Число ккал за день из сводки: первое целое в тексте `.day-hero__eaten`
    («820 из 2000 ккал за день»). Используется до/после записи приёма — доказать
    рост суммы числом, а не сверкой строки целиком. Вынесено в начало файла:
    нужно и сразу после записи обеда/ужина, и позже, у добавок из шторок. */
 const dayEatenKcalNow = () => evaluate(
-  `(() => { const m = document.querySelector('.day-progress__value')?.textContent.match(/\\d+/); return m ? Number(m[0]) : null; })()`
+  `(() => { const m = document.querySelector('.day-hero__eaten')?.textContent.match(/\\d+/); return m ? Number(m[0]) : null; })()`
 );
 /* Закрытие шторки крестиком — общий приём для всех шторок сценария. */
 const closeDialog = () => evaluate(`(async () => { const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -194,7 +227,7 @@ const closeDialog = () => evaluate(`(async () => { const sleep = ms => new Promi
 async function ensureSummary() {
   const onMeal = await evaluate(`document.querySelector('.meal-title') !== null`);
   if (onMeal) {
-    await evaluate(`(async () => { ${helpers} await clickNav('Сводка'); return 'ok'; })()`);
+    await evaluate(`(async () => { ${helpers} await backToSummary(); return 'ok'; })()`);
   }
 }
 
@@ -225,7 +258,7 @@ try {
   // вкладкой navBtn — точным текстом самой подписи вкладки, а не всей
   // кнопки (см. комментарий у helpers).
   await evaluate(`(async () => { ${helpers}
-    await clickNav('Обед'); await click('Съел часть');
+    await openMeal('Обед'); await click('Съел часть');
     const half = [...document.querySelectorAll('.meal-actions button')].find(b => /^(½|1\\/2)$/.test(b.textContent.trim()));
     if (!half) throw new Error('нет кнопки половины среди: ' + [...document.querySelectorAll('.meal-actions button')].map(b => b.textContent.trim()).join(' | '));
     half.click(); await sleep(350);
@@ -249,28 +282,31 @@ try {
   await shot('03-lunch-half-full', { full: true });
   if (report.panel.zeroHeight > 0 || report.panel.emptyWithPct > 0) failed = true;
 
-  // 3b. Назад в сводку: ккал дня выросли, у обеда статус «съел», сегменты
-  // прогресса дня закрашены без нулевой ширины/высоты. Экран приёма
-  // (MealScreen) больше не содержит .day-progress вовсе — эта проверка
-  // возможна только здесь, в сводке.
-  await evaluate(`(async () => { ${helpers} await clickNav('Сводка'); return 'ok'; })()`);
+  // 3b. Назад в сводку: ккал дня выросли, у обеда статус «съел», полосы
+  // макросов под кольцом (.macro__fill) закрашены без нулевой ширины/высоты,
+  // кольцо дня на месте. Прежней полосы из четырёх сегментов больше нет -
+  // её роль взяли карточки приёмов; эта проверка возможна только в сводке.
+  await evaluate(`(async () => { ${helpers} await backToSummary(); return 'ok'; })()`);
   await evaluate('window.scrollTo(0, 0)');
   await sleep(200);
   report.summaryAfterLogging = await evaluate(`(() => {
     const cards = [...document.querySelectorAll('.day-meal')];
     const lunch = cards.find(c => c.querySelector('.day-meal__title')?.textContent.trim() === 'Обед');
-    const value = document.querySelector('.day-progress__value')?.textContent.match(/\\d+/);
-    const fills = [...document.querySelectorAll('.day-progress__fill')];
+    const value = document.querySelector('.day-hero__eaten')?.textContent.match(/\\d+/);
+    const fills = [...document.querySelectorAll('.macro__fill')];
+    const ring = document.querySelector('.ring');
     return {
       cardCount: cards.length,
       lunchStatus: lunch?.querySelector('.day-meal__status')?.textContent ?? null,
       dayKcal: value ? Number(value[0]) : null,
       fillsCount: fills.length,
+      hasRing: ring !== null,
       zeroHeight: fills.filter(f => f.offsetHeight === 0).length,
       emptyWithPct: fills.filter(f => parseFloat(f.style.width) > 5 && f.offsetWidth === 0).length
     };
   })()`);
   if (report.summaryAfterLogging.cardCount !== 4) failed = true;
+  if (!report.summaryAfterLogging.hasRing || report.summaryAfterLogging.fillsCount === 0) failed = true;
   if (!report.summaryAfterLogging.lunchStatus || !report.summaryAfterLogging.lunchStatus.toLowerCase().includes('съел')) failed = true;
   if (report.summaryAfterLogging.zeroHeight > 0 || report.summaryAfterLogging.emptyWithPct > 0) failed = true;
   await shot('04-summary-after-logging');
@@ -292,13 +328,15 @@ try {
   if (!report.breakfastLoggedFromCard.grew) failed = true;
   await shot('05-summary-breakfast-logged');
 
-  // 4. Шторки по кнопкам шапки — каждая открывается, снимается и закрывается крестиком.
-  // Ограничено кнопками шапки: секция .day-extras (E4a/E4b) живёт в сводке
-  // и добавляет на главный экран ещё две кнопки с aria-label вне <header> —
-  // «Добавить блюдо из другого дня» и «Своя еда» — у них свои сцены ниже
-  // (5–8), общий перебор их не трогает.
-  const labels = await evaluate(`[...document.querySelectorAll('header button[aria-label]')].map(b => b.getAttribute('aria-label'))`);
-  report.headerButtons = labels;
+  // 4. Шторки по кнопкам нижней панели вкладок - каждая открывается,
+  // снимается и закрывается крестиком. Три иконки уехали из шапки в панель
+  // (TabBar.tsx), aria-label у них прежние: «Неделя», «Книга предпочтений»,
+  // «Настройки». Перебор ограничен панелью и её кнопками с aria-label: у
+  // вкладки «Сводка» его нет намеренно (имя даёт видимая подпись), а секция
+  // .day-extras добавляет на сводку ещё две кнопки с aria-label вне панели -
+  // «Добавить блюдо из другого дня» и «Своя еда», у них свои сцены ниже (5-8).
+  const labels = await evaluate(`[...document.querySelectorAll('nav.tab-bar button[aria-label]')].map(b => b.getAttribute('aria-label'))`);
+  report.tabBarButtons = labels;
   let n = 6;
   for (const label of labels) {
     await evaluate(`(async () => { const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -487,7 +525,7 @@ try {
   }
 
   // 9. Широкий экран (960×900) — nav.slot-switch становится липкой боковой
-  // колонкой слева от содержимого (screen.css, медиа-запрос 48rem): сводка,
+  // колонкой слева от содержимого (layout.css, медиа-запрос 48rem): сводка,
   // затем экран приёма «Обед» в том же облике. Метрики устройства
   // возвращаются к узкой VIEW в конце сцены — она последняя в сценарии, но
   // явный возврат правильнее, чем полагаться на порядок.
@@ -496,6 +534,8 @@ try {
   await sleep(200);
   await shotAt(`${String(n++).padStart(2, '0')}-wide-summary`, WIDE);
 
+  // Метрики уже широкие (shotAt их не возвращает), поэтому боковая колонка на
+  // месте и приём открывается её пунктом, а не карточкой сводки.
   await evaluate(`(async () => { ${helpers} await clickNav('Обед'); return 'ok'; })()`);
   await evaluate('window.scrollTo(0, 0)');
   await sleep(200);

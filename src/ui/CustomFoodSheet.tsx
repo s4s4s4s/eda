@@ -108,7 +108,7 @@ function BookRow({
   const [fraction, setFraction] = useState(1)
 
   return (
-    <li className="custom-food-book-row">
+    <li className="card custom-food-book-row">
       <div className="custom-food-book-row__head">
         <span className="custom-food-book-row__title">{food.title}</span>
         <div className="custom-food-book-row__actions">
@@ -210,7 +210,7 @@ function NewFoodForm({
   }
 
   return (
-    <section className="custom-food-form" aria-label="Новая своя еда">
+    <section className="card custom-food-form" aria-label="Новая своя еда">
       <h2 className="custom-food__section-title">Новая своя еда</h2>
       <label className="field">
         <span className="field__label">Что съел</span>
@@ -253,7 +253,7 @@ function PendingRequestRow({ request }: { request: FoodRequest }) {
       : `Запрос в очереди, компьютер не в сети уже ${formatOfflineDuration(request.pcAgo)} — разбор придёт, когда он включится; запрос живёт сутки.`
 
   return (
-    <li className="custom-food-request">
+    <li className="card custom-food-request">
       <span className="custom-food-request__text">
         {request.text}{request.grams !== null ? ` · ${request.grams} г` : ''}
       </span>
@@ -285,7 +285,7 @@ function FailedOrExpiredRequestRow({
   }
 
   return (
-    <li className="custom-food-request custom-food-request--failed">
+    <li className="card custom-food-request custom-food-request--failed">
       <span className="custom-food-request__text">
         {request.text}{request.grams !== null ? ` · ${request.grams} г` : ''}
       </span>
@@ -329,7 +329,7 @@ function DoneRequestRow({
   }
 
   return (
-    <li className="custom-food-request custom-food-request--done">
+    <li className="card custom-food-request custom-food-request--done">
       <h3 className="custom-food-request__title">{draftFood.title}</h3>
 
       <ul className="custom-food-components">
@@ -467,7 +467,7 @@ export default function CustomFoodSheet({
 
         {token === ''
           ? (
-            <div className="custom-food-no-token">
+            <div className="card custom-food-no-token">
               <p className="custom-food-no-token__text">
                 Своя еда разбирается на домашнем компьютере через Штурмана. Чтобы заказать разбор,
                 впиши токен приложения в Настройках.
