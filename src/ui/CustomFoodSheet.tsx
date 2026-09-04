@@ -13,7 +13,7 @@ import { customFoodFromResult, customFoodTotals, withComponentGrams } from '../c
 import type { CustomFood, FoodRequest, FoodResultOk, NutrientTotals } from '../core/types.ts'
 import { NUTRIENT_KEYS, SLOT_TITLE, SLOTS } from '../core/types.ts'
 import type { Slot } from '../core/types.ts'
-import { FRACTIONS, fractionLabel } from './MealScreen.tsx'
+import { FRACTIONS, fractionLabel } from './fractions.ts'
 import Sheet from './Sheet.tsx'
 
 type AskResult = { ok: true } | { ok: false; error: string }

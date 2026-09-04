@@ -32,6 +32,23 @@
   flex: none;
 }
 
+/* Тело экрана — навигация (SlotSwitch) и содержимое (сводка дня или экран
+   приёма). На узком экране это просто вертикальный поток: полоса кнопок,
+   под ней содержимое. Широкий облик (боковая колонка) — медиа-запрос 48rem
+   в конце файла. */
+.screen__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.screen__content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
 /* ---- 1. шапка: дата, день цикла и день партии, настройки ---- */
 
 .screen__header {
@@ -102,11 +119,15 @@
   font-size: var(--text-17);
 }
 
-/* ---- 2. переключатель приёмов ---- */
+/* ---- 2. навигация: «Сводка» + четыре приёма ---- */
 
+/* Один компонент, два облика (DESIGN.md, «Навигация: сводка первая»). Здесь —
+   узкий экран по умолчанию: горизонтальная полоса из ПЯТИ кнопок под шапкой.
+   Широкий облик — липкая боковая колонка — задаёт медиа-запрос 48rem внизу
+   файла, вместе с раскладкой `.screen__body`. */
 .slot-switch {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: var(--space-1);
 }
 
@@ -118,7 +139,9 @@
   border-radius: var(--r-8);
   background: var(--surface);
   color: var(--fg-dim);
-  font-size: var(--text-15);
+  /* Пять кнопок в ряд на узком экране (390px) требуют более компактного
+     текста, чем прежние четыре — иначе «Перекус» не помещается в колонку. */
+  font-size: var(--text-13);
 }
 
 /* Выбранный вручную — заливкой. */
@@ -144,6 +167,13 @@
 
 .slot-switch__btn--active .slot-switch__now-dot {
   background: var(--accent-fg);
+}
+
+/* Строка статуса приёма («не записан», «съел ½», …) — только у широкого
+   облика (боковая колонка, см. медиа-запрос 48rem ниже): в горизонтальной
+   полосе узкого экрана ей просто негде уместиться рядом с названием приёма. */
+.slot-switch__sub {
+  display: none;
 }
 
 /* ---- 3. название приёма: герой экрана ---- */
@@ -457,6 +487,108 @@
   color: var(--fg-dim);
 }
 
+/* ---- список приёмов: четыре карточки, сводка дня (DaySummary.tsx) ---- */
+
+.day-meals {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Карточка — <article>, а не <button>: внутри две независимые кнопки
+   («открыть» и «Съел»), кнопка в кнопке невалидна. Сама карточка не имеет
+   своей рамки-акцента — акцент экрана держат переключатель и «Съел». */
+.day-meal {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-2);
+  border-radius: var(--r-14);
+  background: var(--surface);
+}
+
+/* Записанный приём отличается рамкой — тот же приём, что и у сегмента
+   прогресса дня (`.day-progress__seg--logged`): пропущенный записан честно,
+   а не «ещё не ел». */
+.day-meal--logged {
+  border: 1px solid var(--fg-faint);
+}
+
+.day-meal:not(.day-meal--logged) {
+  border: 1px solid var(--border);
+}
+
+.day-meal__open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.day-meal__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.day-meal__title {
+  font-size: var(--text-17);
+  font-weight: 700;
+}
+
+.day-meal__time {
+  font-size: var(--text-13);
+  color: var(--fg-faint);
+}
+
+.day-meal__now {
+  font-size: var(--text-13);
+  color: var(--fg-dim);
+}
+
+/* Название блюда меню — вторичная строка, до двух строк, дальше обрезается:
+   карточка не растягивается под длинное название, список из четырёх приёмов
+   должен помещаться на экран без прокрутки на глаз. */
+.day-meal__dish {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: var(--text-15);
+  color: var(--fg-dim);
+}
+
+.day-meal__status {
+  font-size: var(--text-13);
+  color: var(--fg-faint);
+}
+
+/* Пишет приём целиком, не открывая его — быстрый путь для «поел по плану».
+   Своя зона пальца, отдельная от кнопки-заголовка. */
+.day-meal__log {
+  flex: none;
+  align-self: center;
+  margin-right: var(--space-3);
+  min-width: var(--tap-min);
+  min-height: var(--tap-min);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-8);
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+}
+
 /* ---- добавленная еда: перенесённое блюдо и своя еда, сверх меню ---- */
 
 /* Живёт под прогрессом дня — extras не трогают статус приёмов, поэтому и на
@@ -718,4 +850,64 @@
   color: var(--accent-fg);
   font: inherit;
   font-weight: 600;
+}
+
+/* ---- широкий экран: боковая колонка приёмов ---- */
+
+/* Тот же контент, другая раскладка: навигация уходит из потока в липкую
+   колонку слева, содержимое — не шире прежних 32rem на любой ширине окна.
+   `.screen` при этом расширяется, чтобы вместить колонку и содержимое рядом,
+   а не потому, что содержимому вдруг стало нужно больше места. */
+@media (min-width: 48rem) {
+  .screen {
+    max-width: 48rem;
+  }
+
+  .screen__body {
+    display: grid;
+    grid-template-columns: 13rem minmax(0, 1fr);
+    gap: var(--space-4);
+    align-items: start;
+  }
+
+  .screen__content {
+    max-width: 32rem;
+  }
+
+  .slot-switch {
+    grid-template-columns: 1fr;
+    position: sticky;
+    /* Тот же зазор, что и верхний паддинг .screen — колонка не липнет
+       вплотную к краю окна поверх шапки, которая осталась в потоке. */
+    top: max(var(--space-3), env(safe-area-inset-top));
+  }
+
+  .slot-switch__btn {
+    justify-content: flex-start;
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--text-15);
+    text-align: left;
+  }
+
+  /* Точка «сейчас» в узком облике сидела по центру нижнего края кнопки —
+     в колонке кнопки выровнены по левому краю, и точка следует за текстом,
+     а не остаётся висеть по центру пустой строки. */
+  .slot-switch__now-dot {
+    position: static;
+    display: inline-block;
+    margin-left: var(--space-1);
+    vertical-align: middle;
+  }
+
+  .slot-switch__sub {
+    display: block;
+    margin-top: var(--space-1);
+    font-size: var(--text-13);
+    font-weight: 400;
+    color: var(--fg-faint);
+  }
+
+  .slot-switch__btn--active .slot-switch__sub {
+    color: var(--accent-fg);
+  }
 }

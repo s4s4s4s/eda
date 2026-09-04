@@ -25,7 +25,10 @@ import { loadData } from '../data/load.ts'
 import { BACKUP_KEY, defaultState, loadState, saveState } from '../state/storage.ts'
 import type { StateSource } from '../state/storage.ts'
 import MealScreen from './MealScreen.tsx'
-import type { DaySlotProgress } from './MealScreen.tsx'
+import DaySummary from './DaySummary.tsx'
+import ScreenHeader from './ScreenHeader.tsx'
+import SlotSwitch from './SlotSwitch.tsx'
+import type { DaySlotProgress } from './slots.ts'
 import AddFromMenuSheet from './AddFromMenuSheet.tsx'
 import CustomFoodSheet from './CustomFoodSheet.tsx'
 import { useFoodPolling } from './useFoodPolling.ts'
@@ -35,6 +38,12 @@ import ExportSheet from './ExportSheet.tsx'
 import WeekSheet from './WeekSheet.tsx'
 import BookSheet from './BookSheet.tsx'
 import UpdateBanner from './UpdateBanner.tsx'
+
+/** Вид главного экрана: сводка дня или конкретный приём. При открытии
+    приложения и при смене календарного дня вид — всегда `'day'` (см. эффект
+    сброса `manualView` в компоненте ниже); выбор приёма живёт, пока не
+    сменилось окно текущего приёма по времени (см. `ManualView`). */
+export type View = 'day' | Slot
 
 const ZERO_KBJU: Kbju = { kcal: 0, p: 0, f: 0, c: 0 }
 /** Пустая сумма нутриентов: known === 0 по всем ключам, то есть «нет данных»,
@@ -58,10 +67,13 @@ function readClock(now: Date): Clock {
   return { today: todayLocal(now), slot: currentSlot(minutesOfDay(now)) }
 }
 
-/** Ручной выбор приёма вместе с тем приёмом, который был текущим в момент
-    выбора: сравнение с ним и отпускает выбор, когда время идёт дальше. */
-interface ManualSlot {
-  slot: Slot
+/** Ручной выбор вида вместе с тем приёмом, который был текущим в момент
+    выбора: сравнение с ним отпускает выбор, когда время идёт дальше — тогда
+    вид возвращается к сводке дня (`'day'`), а не к приёму, который наступил.
+    Выбор сводки отдельно не запоминается: она и так вид по умолчанию, пока
+    ручного выбора приёма нет или он истёк (см. `view` в App). */
+interface ManualView {
+  view: View
   pinnedTo: Slot
 }
 
@@ -118,7 +130,7 @@ export default function App() {
      живёт рядом с source по той же причине: пересчитывать его позже не из
      чего, санитизация происходит один раз, при чтении localStorage. */
   const [initialDropped] = useState<number>(initialLoad.dropped)
-  const [manualSlot, setManualSlot] = useState<ManualSlot | null>(null)
+  const [manualView, setManualView] = useState<ManualView | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [weekOpen, setWeekOpen] = useState(false)
   const [bookOpen, setBookOpen] = useState(false)
@@ -184,32 +196,48 @@ export default function App() {
   const today = clock.today
   const autoSlot = clock.slot
 
+  /* Смена календарного дня возвращает вид к сводке — вчерашний ручной выбор
+     приёма не должен пережить полночь: он отвечал на вопрос про вчера, а не
+     про сегодня. `today` меняется тем же таймером, что и autoSlot (см. выше),
+     поэтому один эффект на него ловит и полночь, и открытие приложения в
+     новый день. */
+  useEffect(() => {
+    setManualView(null)
+  }, [today])
+
   const cycleDayNum = useMemo(
     () => cycleDay(state.settings.cycleStartDate, today, state.settings.cycleShift, menu.cycleDays),
     [state.settings.cycleStartDate, state.settings.cycleShift, today, menu.cycleDays]
   )
   const batchDayNum = batchDay(cycleDayNum)
 
-  /* Ручной выбор приёма живёт до следующего приёма по времени, а не вечно:
-     он запомнил, какой приём был текущим в момент выбора, и когда время
-     переводит стрелку на следующий, выбор отпускается сам. Без этого вернуться
-     к «сейчас» можно было только перезагрузкой страницы. */
-  const slot = manualSlot && manualSlot.pinnedTo === autoSlot ? manualSlot.slot : autoSlot
+  /* Ручной выбор вида живёт до следующего приёма по времени, а не вечно: он
+     запомнил, какой приём был текущим в момент выбора, и когда время
+     переводит стрелку на следующий, выбор отпускается сам — вид возвращается
+     к сводке дня. Без этого вернуться к сводке можно было только вручную. */
+  const view: View = manualView && manualView.pinnedTo === autoSlot ? manualView.view : 'day'
+  /* Приём, содержимое которого сейчас читается/пишется: сама сводка дня его
+     не показывает, но хуки ниже (meal/entry/verdict/…) должны получать
+     конкретный слот независимо от вида — на сводке это текущий по времени. */
+  const activeSlot: Slot = view === 'day' ? autoSlot : view
 
-  const handleSelectSlot = useCallback((next: Slot) => {
+  const handleSelectView = useCallback((next: View) => {
     // привязка к текущему значению autoSlot, а не к свежему времени: иначе в
     // минуту перехода выбор оказался бы просроченным ещё до отрисовки
-    setManualSlot({ slot: next, pinnedTo: autoSlot })
+    setManualView({ view: next, pinnedTo: autoSlot })
   }, [autoSlot])
 
   /* Какая редакция меню действует на этот день, решает core/menu.ts: экран не
      перебирает редакции сам, иначе правило выбора разъехалось бы по копиям. */
   const menuToday = useMemo(() => menuDayFor(menu, today, cycleDayNum), [menu, today, cycleDayNum])
   const menuDay = menuToday?.day
-  const meal: Meal | undefined = useMemo(() => menuDay?.meals.find(m => m.slot === slot), [menuDay, slot])
+  const meal: Meal | undefined = useMemo(
+    () => menuDay?.meals.find(m => m.slot === activeSlot),
+    [menuDay, activeSlot]
+  )
 
   const dayLog = state.log[today]
-  const entry = dayLog?.meals[slot]
+  const entry = dayLog?.meals[activeSlot]
 
   /* Правда о приёме: меню есть — она из меню, это состав, который можно
      собрать заново. Меню нет, но приём уже записан — правда только в снапшоте
@@ -280,6 +308,11 @@ export default function App() {
       .reduce((sum, e) => sum + e.kbju.kcal * e.fraction, 0)
     return {
       slot: s,
+      // название блюда для карточки сводки: меню, если оно есть, иначе
+      // снапшот записи (меню могло измениться или пропасть после записи) —
+      // та же приоритетность источника правды, что и у mealKbju/mealNutrients
+      // выше для текущего открытого приёма.
+      title: slotMeal?.title ?? slotEntry?.title,
       plannedKcal,
       eatenKcal: slotEntry ? slotEntry.kbju.kcal * slotEntry.fraction : 0,
       status: slotEntry?.status,
@@ -339,17 +372,22 @@ export default function App() {
     if (meal) handleClearRating(meal.id)
   }, [meal, handleClearRating])
 
-  const handleLog = useCallback((status: MealStatus, fraction: number) => {
-    if (!meal) return
+  /* onLog принимает слот явно, а не берёт его из замыкания: сводка дня зовёт
+     его для ЛЮБОГО из четырёх приёмов кнопкой «Съел» в карточке, не открывая
+     экран приёма, поэтому блюдо ищется в меню по переданному слоту, а не в
+     переменной `meal` (та — только про activeSlot, открытый сейчас экран). */
+  const handleLog = useCallback((targetSlot: Slot, status: MealStatus, fraction: number) => {
+    const targetMeal = menuDay?.meals.find(m => m.slot === targetSlot)
+    if (!targetMeal) return
     const now = new Date()
     setState(prev => logMeal(
-      prev, today, slot, meal, products, status, fraction, cycleDayNum, now.toISOString(), productsRevision
+      prev, today, targetSlot, targetMeal, products, status, fraction, cycleDayNum, now.toISOString(), productsRevision
     ))
-  }, [meal, products, slot, today, cycleDayNum, productsRevision])
+  }, [menuDay, products, today, cycleDayNum, productsRevision])
 
-  const handleUnlog = useCallback(() => {
-    setState(prev => unlogMeal(prev, today, slot))
-  }, [today, slot])
+  const handleUnlog = useCallback((targetSlot: Slot) => {
+    setState(prev => unlogMeal(prev, today, targetSlot))
+  }, [today])
 
   /* Перенос блюда из другого дня цикла: снапшот (menuExtraFrom) считает та же
      арифметика, что и обычную запись меню (mealKbju/mealNutrients внутри
@@ -446,14 +484,14 @@ export default function App() {
     const payload: ExportPayload = {
       kind: 'meal',
       date: today,
-      slot,
+      slot: activeSlot,
       title: entry.title,
       kbju: entry.kbju,
       nutrients: entry.nutrients,
       fraction: entry.fraction
     }
     setExportPayload(payload)
-  }, [entry, meal, today, slot])
+  }, [entry, meal, today, activeSlot])
 
   /* Выгрузка целого дня. Порядок приёмов задаётся SLOTS в сборщиках (CSV и
      текст), поэтому здесь достаточно отдать записи как есть. Суммы уже
@@ -517,53 +555,89 @@ export default function App() {
             </div>
           )
           : (saveError && <div className="save-error" role="alert">{saveError}</div>)}
-      <MealScreen
-        // День и приём — разный контекст: локальный выбор режима нутриентов,
-        // раскрытых сносок и «съел часть» не должен пережить переключение
-        // (см. DESIGN.md, «Покрытие норм» — состояние NutrientsBlock и
-        // pickingFraction пересоздаются React'ом по key, а не синхронизацией).
-        key={`${today}:${slot}`}
-        date={today}
-        cycleDayNum={cycleDayNum}
-        cycleDays={menu.cycleDays}
-        batchDayNum={batchDayNum}
-        slot={slot}
-        currentSlot={autoSlot}
-        onSelectSlot={handleSelectSlot}
-        meal={meal}
-        mealKbju={currentMealKbju}
-        mealNutrients={currentMealNutrients}
-        dayNutrients={dayNutrients}
-        norms={norms}
-        preferences={state.preferences}
-        verdict={verdict}
-        products={products}
-        entry={entry}
-        productsRevision={productsRevision}
-        rating={currentRating}
-        onRate={handleRateCurrent}
-        onClearRating={handleClearRatingCurrent}
-        daySlots={daySlots}
-        dayEatenKcal={dayKbju.kcal}
-        targetKcal={state.settings.targetKcal}
-        dayProteinG={dayKbju.p}
-        targetProteinG={state.settings.targetProteinG}
-        hasDayLog={Boolean(dayLog && (Object.keys(dayLog.meals).length > 0 || dayLog.extras.length > 0))}
-        extras={dayExtras}
-        onRemoveExtra={handleRemoveExtra}
-        cycleStartDate={state.settings.cycleStartDate}
-        cycleStartConfirmed={state.settings.cycleStartConfirmed}
-        onConfirmCycleStart={handleConfirmCycleStart}
-        onLog={handleLog}
-        onUnlog={handleUnlog}
-        onOpenSettings={() => setSettingsOpen(true)}
-        onOpenWeek={() => setWeekOpen(true)}
-        onOpenBook={() => setBookOpen(true)}
-        onOpenExport={handleOpenExport}
-        onOpenDayExport={handleOpenDayExport}
-        onOpenAddFromMenu={() => setAddFromMenuOpen(true)}
-        onOpenCustomFood={() => setCustomFoodOpen(true)}
-      />
+      <div className="screen">
+        <ScreenHeader
+          date={today}
+          cycleDayNum={cycleDayNum}
+          cycleDays={menu.cycleDays}
+          batchDayNum={batchDayNum}
+          onOpenWeek={() => setWeekOpen(true)}
+          onOpenBook={() => setBookOpen(true)}
+          onOpenSettings={() => setSettingsOpen(true)}
+          cycleStartDate={state.settings.cycleStartDate}
+          cycleStartConfirmed={state.settings.cycleStartConfirmed}
+          onConfirmCycleStart={handleConfirmCycleStart}
+        />
+
+        <div className="screen__body">
+          <SlotSwitch
+            view={view}
+            currentSlot={autoSlot}
+            daySlots={daySlots}
+            onSelect={handleSelectView}
+          />
+
+          <div className="screen__content">
+            {view === 'day'
+              ? (
+                // key: на смену календарного дня сводка пересоздаётся — раскрытая
+                // панель микронутриентов не должна пережить полночь (как и у MealScreen).
+                <DaySummary
+                  key={today}
+                  daySlots={daySlots}
+                  currentSlot={autoSlot}
+                  onSelectSlot={handleSelectView}
+                  onLog={handleLog}
+                  dayEatenKcal={dayKbju.kcal}
+                  targetKcal={state.settings.targetKcal}
+                  dayProteinG={dayKbju.p}
+                  targetProteinG={state.settings.targetProteinG}
+                  hasDayLog={Boolean(dayLog && (Object.keys(dayLog.meals).length > 0 || dayLog.extras.length > 0))}
+                  onOpenDayExport={handleOpenDayExport}
+                  extras={dayExtras}
+                  onRemoveExtra={handleRemoveExtra}
+                  onOpenAddFromMenu={() => setAddFromMenuOpen(true)}
+                  onOpenCustomFood={() => setCustomFoodOpen(true)}
+                  dayNutrients={dayNutrients}
+                  norms={norms}
+                  productsRevision={productsRevision}
+                />
+              )
+              : (
+                <MealScreen
+                  // День и приём — разный контекст: локальный выбор режима
+                  // нутриентов, раскрытых сносок и «съел часть» не должен
+                  // пережить переключение (см. DESIGN.md, «Покрытие норм» —
+                  // состояние NutrientsBlock и pickingFraction пересоздаются
+                  // React'ом по key, а не синхронизацией).
+                  key={`${today}:${activeSlot}`}
+                  date={today}
+                  slot={activeSlot}
+                  currentSlot={autoSlot}
+                  onSelectSlot={handleSelectView}
+                  meal={meal}
+                  mealKbju={currentMealKbju}
+                  mealNutrients={currentMealNutrients}
+                  dayNutrients={dayNutrients}
+                  norms={norms}
+                  preferences={state.preferences}
+                  verdict={verdict}
+                  products={products}
+                  entry={entry}
+                  productsRevision={productsRevision}
+                  rating={currentRating}
+                  onRate={handleRateCurrent}
+                  onClearRating={handleClearRatingCurrent}
+                  daySlots={daySlots}
+                  extras={dayExtras}
+                  onLog={handleLog}
+                  onUnlog={handleUnlog}
+                  onOpenExport={handleOpenExport}
+                />
+              )}
+          </div>
+        </div>
+      </div>
 
       {settingsOpen && (
         <SettingsSheet
@@ -584,7 +658,7 @@ export default function App() {
           cycleDays={menu.cycleDays}
           currentCycleDay={cycleDayNum}
           defaultDate={today}
-          defaultSlot={slot}
+          defaultSlot={activeSlot}
           onAdd={handleAddFromMenu}
           onClose={() => setAddFromMenuOpen(false)}
         />
@@ -595,7 +669,7 @@ export default function App() {
           token={state.settings.shturmanToken}
           customFoods={state.customFoods}
           foodRequests={state.foodRequests}
-          defaultTarget={{ date: today, slot }}
+          defaultTarget={{ date: today, slot: activeSlot }}
           pollError={foodPollError}
           onAskNew={handleAskFood}
           onRetry={handleRetryFoodRequest}

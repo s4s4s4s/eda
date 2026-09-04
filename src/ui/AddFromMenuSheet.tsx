@@ -13,7 +13,7 @@ import { mealFor } from '../core/menu.ts'
 import { mealKbju as computeMealKbju } from '../core/nutrition.ts'
 import { SLOT_TITLE, SLOTS } from '../core/types.ts'
 import type { Meal, Menu, ProductIndex, Slot } from '../core/types.ts'
-import { FRACTIONS, fractionLabel } from './MealScreen.tsx'
+import { FRACTIONS, fractionLabel } from './fractions.ts'
 import Sheet from './Sheet.tsx'
 
 interface AddFromMenuSheetProps {

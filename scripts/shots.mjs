@@ -10,10 +10,16 @@
 // Путь к Chrome берётся из переменной окружения CHROME, иначе стандартный путь
 // установки на Windows. Библиотек не нужно: WebSocket и fetch встроены в Node ≥ 22.
 //
-// Сценарий: первый запуск (баннер даты цикла) → дата цикла «позавчера» (день 3) →
-// обед записан наполовину, ужин целиком → обед с раскрытой панелью нутриентов →
-// каждая шторка из шапки. Итог — PNG-файлы, report.json и код возврата: 1, если
-// хоть одна полоса с процентом получила нулевую ширину или высоту.
+// Сценарий (главный экран — сводка дня, приёмы — вкладки nav.slot-switch,
+// DESIGN.md «Навигация: сводка первая»): первый запуск (баннер даты цикла) →
+// дата цикла «позавчера» (день 3) → на экране приёма «Обед» половина, на
+// экране приёма «Ужин» целиком → «Обед» с раскрытой панелью нутриентов →
+// сводка дня (рост ккал, полосы прогресса, статус карточки) → «Съел: Завтрак»
+// из карточки сводки, без открытия приёма → каждая шторка из шапки →
+// «Добавить блюдо из другого дня»/«Своя еда» из сводки → широкий экран
+// (боковая колонка вместо горизонтальной полосы). Итог — PNG-файлы,
+// report.json и код возврата: 1, если хоть одна полоса с процентом получила
+// нулевую ширину или высоту, либо какая-то из проверок сценария провалилась.
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -23,6 +29,9 @@ const PORT = 9333;
 const URL_APP = process.argv[2] ?? 'http://localhost:5173/eda/';
 const OUT = path.resolve(process.argv[3] ?? 'node_modules/.cache/eda/shots');
 const VIEW = { width: 390, height: 844, deviceScaleFactor: 1, mobile: true };
+/* Широкий облик: `@media (min-width: 48rem)` в screen.css переключает nav на
+   боковую колонку — 960 шире порога с запасом, 900 высоты хватает без full. */
+const WIDE = { width: 960, height: 900, deviceScaleFactor: 1, mobile: false };
 
 if (!existsSync(CHROME)) {
   console.error(`Chrome не найден: ${CHROME}. Укажи путь через переменную окружения CHROME.`);
@@ -136,21 +145,68 @@ async function shot(name, { full = false } = {}) {
     await sleep(200);
   }
 }
+/** Снимок с произвольными метриками устройства (широкий облик) — в отличие
+    от shot({full}), не привязан к узкой VIEW и не восстанавливает её сам:
+    сцена, которая переключает метрики, отвечает за возврат к VIEW сама. */
+async function shotAt(name, metrics) {
+  await send('Emulation.setDeviceMetricsOverride', metrics, S);
+  await sleep(300);
+  const { data } = await send('Page.captureScreenshot', { format: 'png' }, S);
+  const file = path.join(OUT, `${name}.png`);
+  writeFileSync(file, Buffer.from(data, 'base64'));
+  files.push(file);
+}
 
-/* Помощники внутри страницы: кнопка по точному тексту и клик с паузой на перерисовку. */
+/* Помощники внутри страницы: кнопка по точному тексту, клик с паузой на
+   перерисовку, и отдельно — клик по вкладке навигации (nav.slot-switch).
+   Вкладки — не просто «кнопка с таким текстом»: у каждого приёма в DOM
+   всегда лежит вторая строка статуса (`.slot-switch__sub`, скрыта CSS только
+   на узком экране, но остаётся в textContent), поэтому «Обед» после записи
+   textContent'ом становится «Обедсъел ½» и точное совпадение с btn() рвётся.
+   navBtn ищет ТОЛЬКО по первому текстовому узлу кнопки — самой подписи
+   приёма, — и это не зависит от того, записан приём или нет. */
 const helpers = `
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   const btn = t => [...document.querySelectorAll('button')].find(b => b.textContent.trim() === t);
   const click = async (t) => { const b = btn(t); if (!b) throw new Error('нет кнопки ' + t); b.click(); await sleep(350); };
+  const navBtn = t => [...document.querySelectorAll('nav.slot-switch button')]
+    .find(b => (b.childNodes[0]?.textContent || '').trim() === t);
+  const clickNav = async (t) => { const b = navBtn(t); if (!b) throw new Error('нет вкладки ' + t); b.click(); await sleep(350); };
 `;
 const squash = `.replace(/\\s+/g, ' ').trim()`;
+
+/* Число ккал за день из сводки: первое целое в тексте `.day-progress__value`
+   («820 из 2000 ккал за день»). Используется до/после записи приёма — доказать
+   рост суммы числом, а не сверкой строки целиком. Вынесено в начало файла:
+   нужно и сразу после записи обеда/ужина, и позже, у добавок из шторок. */
+const dayEatenKcalNow = () => evaluate(
+  `(() => { const m = document.querySelector('.day-progress__value')?.textContent.match(/\\d+/); return m ? Number(m[0]) : null; })()`
+);
+/* Закрытие шторки крестиком — общий приём для всех шторок сценария. */
+const closeDialog = () => evaluate(`(async () => { const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const d = document.querySelector('[role=dialog]');
+  const close = d && [...d.querySelectorAll('button')].find(b => b.textContent.trim() === '✕' || /закры/i.test(b.getAttribute('aria-label') || ''));
+  close?.click(); await sleep(400); return document.querySelector('[role=dialog]') === null; })()`);
+/** Кнопки «Добавить блюдо из другого дня»/«Своя еда» и прогресс дня живут в
+    сводке (DaySummary), а не на экране приёма — сцены 5–8 (шторки поверх
+    главного экрана) обязаны сначала на неё вернуться, если сейчас открыт
+    приём (например, потому что предыдущая сцена этого не сделала). */
+async function ensureSummary() {
+  const onMeal = await evaluate(`document.querySelector('.meal-title') !== null`);
+  if (onMeal) {
+    await evaluate(`(async () => { ${helpers} await clickNav('Сводка'); return 'ok'; })()`);
+  }
+}
 
 const report = {};
 let failed = false;
 try {
-  // 1. Первый запуск как есть — баннер про дату цикла и дефолтное состояние.
+  // 1. Первый запуск как есть — баннер про дату цикла, главный экран —
+  // сводка дня (DaySummary), прогресс дня наверху прокручен в кадр.
   await goto(URL_APP);
   report.firstRunBanner = await evaluate(`document.querySelector('.cycle-start-notice')?.textContent${squash} ?? null`);
+  await evaluate('window.scrollTo(0, 0)');
+  await sleep(200);
   await shot('01-first-run');
 
   // 2. Дата цикла позавчера — сегодня день 3, приёмы на экране из середины цикла.
@@ -160,22 +216,27 @@ try {
     localStorage.setItem(k, JSON.stringify(s)); return 'ok'; })()`);
   await goto(URL_APP);
   report.header = await evaluate(`document.querySelector('header')?.textContent${squash}.slice(0, 80) ?? null`);
+  await evaluate('window.scrollTo(0, 0)');
+  await sleep(200);
   await shot('02-day3-top');
 
   // 3. Обед — половина, ужин — целиком; обед с раскрытой панелью нутриентов.
+  // Всё это теперь происходит на экране приёма (MealScreen), открытом
+  // вкладкой navBtn — точным текстом самой подписи вкладки, а не всей
+  // кнопки (см. комментарий у helpers).
   await evaluate(`(async () => { ${helpers}
-    await click('Обед'); await click('Съел часть');
-    const half = [...document.querySelectorAll('button')].find(b => /^(½|1\\/2)$/.test(b.textContent.trim()));
+    await clickNav('Обед'); await click('Съел часть');
+    const half = [...document.querySelectorAll('.meal-actions button')].find(b => /^(½|1\\/2)$/.test(b.textContent.trim()));
     if (!half) throw new Error('нет кнопки половины среди: ' + [...document.querySelectorAll('.meal-actions button')].map(b => b.textContent.trim()).join(' | '));
     half.click(); await sleep(350);
-    await click('Ужин'); await click('Съел');
-    await click('Обед');
+    await clickNav('Ужин'); await click('Съел');
+    await clickNav('Обед');
     const summary = [...document.querySelectorAll('summary')].find(s => s.textContent.includes('Микронутриенты'));
     if (!summary) throw new Error('нет панели «Микронутриенты»');
     summary.click(); await sleep(500); return 'ok'; })()`);
   report.panel = await evaluate(`(() => {
     const panel = [...document.querySelectorAll('details')].find(d => d.textContent.includes('Микронутриенты'));
-    const fills = [...document.querySelectorAll('.nutrient__fill, .day-progress__fill')];
+    const fills = [...document.querySelectorAll('.nutrient__fill')];
     return {
       modes: [...panel.querySelectorAll('.meal-nutrients__modes button')].map(b => b.textContent.trim() + (b.getAttribute('aria-pressed') === 'true' ? '*' : '')),
       note: panel.querySelector('.meal-nutrients__note')?.textContent ?? null,
@@ -188,44 +249,74 @@ try {
   await shot('03-lunch-half-full', { full: true });
   if (report.panel.zeroHeight > 0 || report.panel.emptyWithPct > 0) failed = true;
 
+  // 3b. Назад в сводку: ккал дня выросли, у обеда статус «съел», сегменты
+  // прогресса дня закрашены без нулевой ширины/высоты. Экран приёма
+  // (MealScreen) больше не содержит .day-progress вовсе — эта проверка
+  // возможна только здесь, в сводке.
+  await evaluate(`(async () => { ${helpers} await clickNav('Сводка'); return 'ok'; })()`);
+  await evaluate('window.scrollTo(0, 0)');
+  await sleep(200);
+  report.summaryAfterLogging = await evaluate(`(() => {
+    const cards = [...document.querySelectorAll('.day-meal')];
+    const lunch = cards.find(c => c.querySelector('.day-meal__title')?.textContent.trim() === 'Обед');
+    const value = document.querySelector('.day-progress__value')?.textContent.match(/\\d+/);
+    const fills = [...document.querySelectorAll('.day-progress__fill')];
+    return {
+      cardCount: cards.length,
+      lunchStatus: lunch?.querySelector('.day-meal__status')?.textContent ?? null,
+      dayKcal: value ? Number(value[0]) : null,
+      fillsCount: fills.length,
+      zeroHeight: fills.filter(f => f.offsetHeight === 0).length,
+      emptyWithPct: fills.filter(f => parseFloat(f.style.width) > 5 && f.offsetWidth === 0).length
+    };
+  })()`);
+  if (report.summaryAfterLogging.cardCount !== 4) failed = true;
+  if (!report.summaryAfterLogging.lunchStatus || !report.summaryAfterLogging.lunchStatus.toLowerCase().includes('съел')) failed = true;
+  if (report.summaryAfterLogging.zeroHeight > 0 || report.summaryAfterLogging.emptyWithPct > 0) failed = true;
+  await shot('04-summary-after-logging');
+
+  // 3c. «Съел: Завтрак» из карточки сводки — пишет приём целиком, не открывая
+  // экран приёма (App.tsx: onLog в DaySummary). Ккал дня должны вырасти ещё
+  // раз; приём остаётся записанным — «Отменить запись» сцене не нужна.
+  const kcalBeforeBreakfast = await dayEatenKcalNow();
+  await evaluate(`(async () => { const sleep = ms => new Promise(r => setTimeout(r, ms));
+    const b = document.querySelector('button[aria-label="Съел: Завтрак"]');
+    if (!b) throw new Error('нет кнопки «Съел: Завтрак» в карточке сводки');
+    b.click(); await sleep(350); return 'ok'; })()`);
+  const kcalAfterBreakfast = await dayEatenKcalNow();
+  report.breakfastLoggedFromCard = {
+    before: kcalBeforeBreakfast,
+    after: kcalAfterBreakfast,
+    grew: kcalBeforeBreakfast !== null && kcalAfterBreakfast !== null && kcalAfterBreakfast > kcalBeforeBreakfast
+  };
+  if (!report.breakfastLoggedFromCard.grew) failed = true;
+  await shot('05-summary-breakfast-logged');
+
   // 4. Шторки по кнопкам шапки — каждая открывается, снимается и закрывается крестиком.
-  // Ограничено кнопками шапки: секция .day-extras (E4a/E4b) добавила на главный
-  // экран ещё две кнопки с aria-label вне <header> — «Добавить блюдо из другого
-  // дня» и «Своя еда» — у них свои сцены ниже (5–8), общий перебор их не трогает.
+  // Ограничено кнопками шапки: секция .day-extras (E4a/E4b) живёт в сводке
+  // и добавляет на главный экран ещё две кнопки с aria-label вне <header> —
+  // «Добавить блюдо из другого дня» и «Своя еда» — у них свои сцены ниже
+  // (5–8), общий перебор их не трогает.
   const labels = await evaluate(`[...document.querySelectorAll('header button[aria-label]')].map(b => b.getAttribute('aria-label'))`);
   report.headerButtons = labels;
-  let n = 4;
+  let n = 6;
   for (const label of labels) {
     await evaluate(`(async () => { const sleep = ms => new Promise(r => setTimeout(r, ms));
       [...document.querySelectorAll('button[aria-label]')].find(b => b.getAttribute('aria-label') === ${JSON.stringify(label)}).click();
       await sleep(600); return 'ok'; })()`);
     report['sheet:' + label] = await evaluate(`document.querySelector('[role=dialog]')?.textContent${squash}.slice(0, 200) ?? null`);
     await shot(`${String(n++).padStart(2, '0')}-sheet-${label.replace(/[^a-zа-яё0-9]+/gi, '-').toLowerCase()}`);
-    const closed = await evaluate(`(async () => { const sleep = ms => new Promise(r => setTimeout(r, ms));
-      const d = document.querySelector('[role=dialog]');
-      const close = d && [...d.querySelectorAll('button')].find(b => b.textContent.trim() === '✕' || /закры/i.test(b.getAttribute('aria-label') || ''));
-      close?.click(); await sleep(400); return document.querySelector('[role=dialog]') === null; })()`);
+    const closed = await closeDialog();
     if (!closed) {
       report['sheet:' + label + ':closed'] = false;
       failed = true;
     }
   }
 
-  /* Число ккал за день из шапки «day-progress»: первое целое в тексте
-     («820 из 2000 ккал за день»). Используется до/после добавок ниже — доказать
-     рост суммы числом, а не сверкой строки целиком. */
-  const dayEatenKcalNow = () => evaluate(
-    `(() => { const m = document.querySelector('.day-progress__value')?.textContent.match(/\\d+/); return m ? Number(m[0]) : null; })()`
-  );
-  /* Закрытие шторки крестиком — тот же приём, что и в шаге 4, но вынесен сюда:
-     новые сцены закрывают шторку не только автоматически (после «Записать»),
-     но и вручную (сцены 6, 8), и обеим веткам нужен один и тот же способ. */
-  const closeDialog = () => evaluate(`(async () => { const sleep = ms => new Promise(r => setTimeout(r, ms));
-    const d = document.querySelector('[role=dialog]');
-    const close = d && [...d.querySelectorAll('button')].find(b => b.textContent.trim() === '✕' || /закры/i.test(b.getAttribute('aria-label') || ''));
-    close?.click(); await sleep(400); return document.querySelector('[role=dialog]') === null; })()`);
-
   // 5. «Добавить блюдо из другого дня»: день 5, обед, доля ½, «Записать».
+  // Кнопка теперь в сводке (DaySummary, .day-extras__actions) — ensureSummary()
+  // подстраховывает на случай, если предыдущая сцена оставила открытым приём.
+  await ensureSummary();
   await evaluate(`(async () => { ${helpers}
     const openBtn = [...document.querySelectorAll('button[aria-label]')].find(b => b.getAttribute('aria-label') === 'Добавить блюдо из другого дня');
     if (!openBtn) throw new Error('нет кнопки «Добавить блюдо из другого дня»');
@@ -261,7 +352,8 @@ try {
   report.dayEatenKcalGrew = dayEatenKcalBefore !== null && dayEatenKcalAfter !== null && dayEatenKcalAfter > dayEatenKcalBefore;
   if (!report.dayEatenKcalGrew) failed = true;
   report['extras:menuRow'] = await evaluate(`document.querySelector('.day-extras__item')?.textContent${squash} ?? null`);
-  // Список «Добавлено» стоит под прогрессом дня, ниже сгиба — без прокрутки его на снимке нет.
+  // Список «Добавлено» стоит под прогрессом дня и карточками приёмов, ниже
+  // сгиба — без прокрутки его на снимке нет.
   await evaluate(`document.querySelector('.day-extras')?.scrollIntoView({ block: 'center' })`);
   await sleep(300);
   await shot(`${String(n++).padStart(2, '0')}-main-with-menu-extra`);
@@ -269,6 +361,7 @@ try {
   await sleep(200);
 
   // 6. «Своя еда» без токена — только объяснение и кнопка настроек, формы нет.
+  await ensureSummary();
   await evaluate(`(async () => { ${helpers}
     const openBtn = [...document.querySelectorAll('button[aria-label]')].find(b => b.getAttribute('aria-label') === 'Своя еда');
     if (!openBtn) throw new Error('нет кнопки «Своя еда»');
@@ -303,7 +396,10 @@ try {
     s.foodRequests = [${JSON.stringify(doneRequest)}];
     localStorage.setItem(k, JSON.stringify(s)); return 'ok'; })()`);
   await goto(URL_APP);
+  await evaluate('window.scrollTo(0, 0)');
+  await sleep(200);
 
+  await ensureSummary();
   await evaluate(`(async () => { ${helpers}
     const openBtn = [...document.querySelectorAll('button[aria-label]')].find(b => b.getAttribute('aria-label') === 'Своя еда');
     openBtn.click(); await sleep(500); return 'ok'; })()`);
@@ -331,7 +427,8 @@ try {
   if (!report.dayEatenKcalGrewCustom) failed = true;
   report['extras:customRow'] = await evaluate(`[...document.querySelectorAll('.day-extras__item')].map(li => li.textContent${squash}).find(t => t.includes('своя еда')) ?? null`);
   if (!report['extras:customRow']) failed = true;
-  // Список «Добавлено» стоит под прогрессом дня, ниже сгиба — без прокрутки его на снимке нет.
+  // Список «Добавлено» стоит под прогрессом дня и карточками приёмов, ниже
+  // сгиба — без прокрутки его на снимке нет.
   await evaluate(`document.querySelector('.day-extras')?.scrollIntoView({ block: 'center' })`);
   await sleep(300);
   await shot(`${String(n++).padStart(2, '0')}-main-with-custom-extra`);
@@ -373,7 +470,10 @@ try {
     localStorage.setItem(k, JSON.stringify(s)); return 'ok'; })()`);
   await goto(URL_APP);
   await sleep(800); // useFoodPolling опрашивает сразу при монтировании — ждём круг опроса
+  await evaluate('window.scrollTo(0, 0)');
+  await sleep(200);
 
+  await ensureSummary();
   await evaluate(`(async () => { ${helpers}
     const openBtn = [...document.querySelectorAll('button[aria-label]')].find(b => b.getAttribute('aria-label') === 'Своя еда');
     openBtn.click(); await sleep(500); return 'ok'; })()`);
@@ -385,6 +485,39 @@ try {
     report['sheet:custom-pending:closed'] = false;
     failed = true;
   }
+
+  // 9. Широкий экран (960×900) — nav.slot-switch становится липкой боковой
+  // колонкой слева от содержимого (screen.css, медиа-запрос 48rem): сводка,
+  // затем экран приёма «Обед» в том же облике. Метрики устройства
+  // возвращаются к узкой VIEW в конце сцены — она последняя в сценарии, но
+  // явный возврат правильнее, чем полагаться на порядок.
+  await ensureSummary();
+  await evaluate(`window.scrollTo(0, 0)`);
+  await sleep(200);
+  await shotAt(`${String(n++).padStart(2, '0')}-wide-summary`, WIDE);
+
+  await evaluate(`(async () => { ${helpers} await clickNav('Обед'); return 'ok'; })()`);
+  await evaluate('window.scrollTo(0, 0)');
+  await sleep(200);
+  await shotAt(`${String(n++).padStart(2, '0')}-wide-meal`, WIDE);
+  report.wideLayout = await evaluate(`(() => {
+    const nav = document.querySelector('nav.slot-switch');
+    const content = document.querySelector('.screen__content');
+    const navRect = nav.getBoundingClientRect();
+    const contentRect = content.getBoundingClientRect();
+    const lunchBtn = [...nav.querySelectorAll('button')]
+      .find(b => (b.childNodes[0]?.textContent || '').trim() === 'Обед');
+    const sub = lunchBtn?.querySelector('.slot-switch__sub');
+    return {
+      navRightLeContentLeft: navRect.right <= contentRect.left,
+      lunchHasSub: Boolean(sub && sub.textContent.trim().length > 0)
+    };
+  })()`);
+  if (!report.wideLayout.navRightLeContentLeft) failed = true;
+  if (!report.wideLayout.lunchHasSub) failed = true;
+
+  await send('Emulation.setDeviceMetricsOverride', VIEW, S);
+  await sleep(200);
 } catch (err) {
   report.error = String(err);
   failed = true;
