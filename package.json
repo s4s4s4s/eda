@@ -12,7 +12,7 @@
     "food-search": "node scripts/food-search.mjs",
     "icons": "node scripts/make-icons.mjs",
     "shots": "node scripts/shots.mjs",
-    "test": "npm run test:data && npm run test:menu && npm run test:cycle && npm run test:nutrition && npm run test:rules && npm run test:log && npm run test:storage && npm run test:export && npm run test:norms && npm run test:week && npm run test:preferences && npm run test:verdict && npm run test:food-resolve && npm run test:food",
+    "test": "npm run test:data && npm run test:menu && npm run test:cycle && npm run test:nutrition && npm run test:rules && npm run test:log && npm run test:storage && npm run test:export && npm run test:norms && npm run test:week && npm run test:preferences && npm run test:verdict && npm run test:food-resolve && npm run test:food && npm run test:shtab",
     "test:menu": "esbuild test/menu.test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/eda/menu.mjs && node node_modules/.cache/eda/menu.mjs",
     "test:cycle": "esbuild test/cycle.test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/eda/cycle.mjs && node node_modules/.cache/eda/cycle.mjs",
     "test:nutrition": "esbuild test/nutrition.test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/eda/nutrition.mjs && node node_modules/.cache/eda/nutrition.mjs",
@@ -26,7 +26,8 @@
     "test:preferences": "esbuild test/preferences.test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/eda/preferences.mjs && node node_modules/.cache/eda/preferences.mjs",
     "test:verdict": "esbuild test/verdict.test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/eda/verdict.mjs && node node_modules/.cache/eda/verdict.mjs",
     "test:food-resolve": "esbuild test/food-resolve.test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/eda/food-resolve.mjs && node node_modules/.cache/eda/food-resolve.mjs",
-    "test:food": "esbuild test/food.test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/eda/food.mjs && node node_modules/.cache/eda/food.mjs"
+    "test:food": "esbuild test/food.test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/eda/food.mjs && node node_modules/.cache/eda/food.mjs",
+    "test:shtab": "esbuild test/shtab.test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/eda/shtab.mjs && node node_modules/.cache/eda/shtab.mjs"
   },
   "dependencies": {
     "js-yaml": "^4.1.0",

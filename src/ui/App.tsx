@@ -32,6 +32,7 @@ import type { DaySlotProgress } from './slots.ts'
 import AddFromMenuSheet from './AddFromMenuSheet.tsx'
 import CustomFoodSheet from './CustomFoodSheet.tsx'
 import { useFoodPolling } from './useFoodPolling.ts'
+import { useShtabSync } from './useShtabSync.ts'
 import Sheet from './Sheet.tsx'
 import SettingsSheet from './SettingsSheet.tsx'
 import ExportSheet from './ExportSheet.tsx'
@@ -413,6 +414,11 @@ export default function App() {
      CustomFoodSheet: foodRequests лежат в AppState и переживают закрытие
      шторки (см. useFoodPolling.ts, раздел 1.7 плана «своя еда»). */
   const foodPollError = useFoodPolling(state, setState, SHTURMAN_BASE, state.settings.shturmanToken)
+
+  /* Дневная сводка в Штаб (POST /api/ingest/eda, раздел «Еда» плана «Штаб
+     2.0») - тем же токеном, что опрос выше, но отдельным хуком: тот читает
+     из воркера, этот пишет в другой. */
+  useShtabSync(state)
 
   /* Новый заказ на разбор: id заводится здесь (эффект стороны — не ядро),
      askFood зовёт воркер, и только при успехе заказ попадает в состояние
