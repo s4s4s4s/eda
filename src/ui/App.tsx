@@ -586,18 +586,19 @@ export default function App() {
   /* «Записать и запросить витамины» в карточке товара: заказ собирается ДО
      сети (newProductRequest проверяет граммы и долю и бросает раньше, чем
      воркер получил наряд), askProduct зовёт воркер, и только при успехе заказ
-     встаёт в очередь. Цель - сегодня и выбранный в карточке приём; запись в
-     журнал появится сама, когда опрос принесёт разбор (logDoneAutoRequests). */
+     встаёт в очередь. Цель (дата и приём) приходит из карточки, той же, что у
+     «Записать без витаминов»; запись в журнал появится сама, когда опрос
+     принесёт разбор (logDoneAutoRequests). */
   const handleAskProduct = useCallback(async (
-    product: OffProduct, grams: number, slot: Slot, fraction: number
+    product: OffProduct, grams: number, target: { date: string; slot: Slot }, fraction: number
   ): Promise<ProductAskResult> => {
     const id = crypto.randomUUID()
-    const request = newProductRequest(id, product, grams, '', { date: today, slot }, fraction, new Date().toISOString())
+    const request = newProductRequest(id, product, grams, '', target, fraction, new Date().toISOString())
     const result = await askProduct(SHTURMAN_BASE, state.settings.shturmanToken, { id, code: product.code, grams, note: '' })
     if (!result.ok) return { ok: false, reason: result.reason, error: productAskErrorText(result.reason, result.error) }
     setState(prev => applyFoodAsk(prev, request))
     return { ok: true }
-  }, [state.settings.shturmanToken, today])
+  }, [state.settings.shturmanToken])
 
   /* «Записать без витаминов»: из карточки (заказ собран локально, в очереди
      его нет) и из очереди (шторка и сводка). Запись ровно одна при любой

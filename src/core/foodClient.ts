@@ -69,7 +69,9 @@ async function interpretResponse(res: Response, offAware = false): Promise<FoodC
       const serverError = typeof body.error === 'string' ? body.error : undefined
       return { ok: false, reason: 'off', error: serverError ?? 'Open Food Facts не ответил, попробуй через минуту.' }
     }
-    if (res.status !== 404) return { ok: false, reason: 'bad-response', error: `Воркер ответил кодом ${res.status}.` }
+    // 404 без reason - сбой на стороне воркера (маршрут, прокси), а не «штрихкода нет»:
+    // not-found карточка товара читает как отсутствие штрихкода в Open Food Facts.
+    return { ok: false, reason: 'bad-response', error: `Воркер ответил кодом ${res.status}.` }
   }
   if (res.status === 404) {
     return { ok: false, reason: 'not-found', error: 'Такой запрос на разбор не найден - возможно, он уже убран.' }

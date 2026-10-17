@@ -66,7 +66,7 @@ interface CustomFoodSheetProps {
   onRelog: (food: CustomFood) => void
   onSearchOff: (q: string, n: number) => Promise<OffSearchResult>
   onFetchOffProduct: (code: string) => Promise<OffProductResult>
-  onAskProduct: (product: OffProduct, grams: number, slot: Slot, fraction: number) => Promise<ProductAskResult>
+  onAskProduct: (product: OffProduct, grams: number, target: { date: string; slot: Slot }, fraction: number) => Promise<ProductAskResult>
   /** «Записать без витаминов»: из карточки (заказ собран локально) и из очереди. */
   onLogProductNow: (request: FoodRequest) => void
   onOpenSettings: () => void
@@ -477,8 +477,10 @@ export default function CustomFoodSheet({
   const queried = hasToken && query.trim() !== ''
   const shownBooks = queried ? searchCustomFoods(books, query, books.length) : books
 
-  async function handleAskProduct(p: OffProduct, grams: number, slot: Slot, fraction: number): Promise<ProductAskResult> {
-    const result = await onAskProduct(p, grams, slot, fraction)
+  async function handleAskProduct(
+    p: OffProduct, grams: number, target: { date: string; slot: Slot }, fraction: number
+  ): Promise<ProductAskResult> {
+    const result = await onAskProduct(p, grams, target, fraction)
     if (result.ok) setProduct(null)
     return result
   }

@@ -1087,7 +1087,13 @@ async function askProductChecks(): Promise<void> {
     const timeout = await ask(504, { ok: false, reason: 'off-timeout', error: 'таймаут' })
     assert(!timeout.ok && timeout.reason === 'off', '504 с reason обязан давать off')
     const old = await ask(404, { ok: false })
-    assert(!old.ok && old.reason === 'not-found', '404 без reason остаётся not-found')
+    assert(!old.ok && old.reason === 'bad-response' && old.error === 'Воркер ответил кодом 404.',
+      `404 без reason - сбой воркера (bad-response), не not-found, получено ${JSON.stringify(old)}`)
+    const noBody = await askProduct(SHTURMAN_BASE, 't', { id: 'p-4', code: '5000159461122', grams: 50 }, fakeFetch(404, 'не json').fetchFn)
+    assert(!noBody.ok && noBody.reason === 'bad-response', '404 с телом не JSON - тоже сбой воркера')
+    const missing = await ask(404, { ok: false, reason: 'not-found', error: 'Товара с таким штрихкодом нет' })
+    assert(!missing.ok && missing.reason === 'off' && missing.error === 'Товара с таким штрихкодом нет',
+      `404 с reason not-found от воркера остаётся off с текстом воркера, получено ${JSON.stringify(missing)}`)
     const unauth = await ask(401, {})
     assert(!unauth.ok && unauth.reason === 'unauthorized', '401 остаётся unauthorized')
   }

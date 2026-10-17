@@ -29,7 +29,7 @@ export interface ProductCardProps {
   defaultSlot: Slot
   onBack: () => void
   /** «Записать и запросить витамины»: заказ на разбор, нужна сеть. */
-  onAskProduct: (product: OffProduct, grams: number, slot: Slot, fraction: number) => Promise<ProductAskResult>
+  onAskProduct: (product: OffProduct, grams: number, target: { date: string; slot: Slot }, fraction: number) => Promise<ProductAskResult>
   /** «Записать без витаминов»: заказ собран локально (в очереди его может не быть). */
   onLogProductNow: (request: FoodRequest) => void
   /** Новый id заказа (эффект стороны, не ядро). */
@@ -65,15 +65,19 @@ export function ProductCard({
   const printed = printedText(product)
   const { per100 } = product
 
+  /* Одна цель на обе кнопки карточки: «Записать без витаминов» и заказ воркеру
+     пишут в одну дату и один приём. */
+  const target = { date, slot }
+
   function buildRequest(): FoodRequest {
-    return newProductRequest(newRequestId(), product, grams, '', { date, slot }, fraction, now())
+    return newProductRequest(newRequestId(), product, grams, '', target, fraction, now())
   }
 
   async function handleAsk(): Promise<void> {
     if (!canSubmit) return
     setAsking(true)
     setFailure(null)
-    const result = await onAskProduct(product, grams, slot, fraction)
+    const result = await onAskProduct(product, grams, target, fraction)
     setAsking(false)
     if (!result.ok) {
       setFailure(result.reason === undefined ? result.error : offFailureText(result.reason, result.error))
