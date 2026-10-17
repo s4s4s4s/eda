@@ -20,7 +20,14 @@
 // (боковая колонка вместо горизонтальной полосы) → сцена `journal` (цикл
 // выключен: две записи по наклейке с долями 100 % и 60 %, один заказ в очереди,
 // правка доли в журнале, шторка съёмки) → сцена `label-done` (готовый заказ по
-// наклейке в шторке «Своя еда», блок «С наклейки»). Сцены меню идут с
+// наклейке в шторке «Своя еда», блок «С наклейки») → сцена `product-search`
+// (поиск «сникерс»: книга с одной едой `product` и список Open Food Facts) →
+// `product-card` (карточка Snickers с пресетами граммов, затем заказ витаминов)
+// → `product-logged` («Записать сейчас без витаминов» из строки очереди и запись
+// товара в журнале со ссылкой на Open Food Facts). Ответы воркера для сцен
+// 8 и 10-14 подменены через DevTools-домен `Fetch` (stubWorker ниже): поиск и
+// карточка отдают test/fixtures/off/normalized-search.json, `/food` отвечает
+// pending. Сцены меню идут с
 // seed-состоянием `settings.menuCycleEnabled: true`: по умолчанию цикл выключен
 // и ни карточек приёмов, ни баннера даты цикла на сводке нет. Итог: PNG-файлы,
 // report.json и код возврата: 1, если хоть одна полоса с процентом получила
@@ -235,6 +242,68 @@ async function ensureSummary() {
     await evaluate(`(async () => { ${helpers} await backToSummary(); return 'ok'; })()`);
   }
 }
+
+/* Подмена ответов воркера через домен `Fetch`: запрос приостанавливается в
+   браузере и закрывается подготовленным ответом, настоящая сеть не нужна. Это
+   надёжнее подмены window.fetch в странице: ловится любой код, в том числе
+   запросы до инициализации страницы. Шаблоны - полные адреса воркера, а не
+   голые пути с маской впереди: такая маска зацепила бы и модули dev-сервера
+   (файл `food.ts` ядра).
+   Пока `stub.enabled` выключен, запросы к воркеру уходят как есть (в ранних
+   сценах токен ещё не задан и воркер не нужен). */
+const SHTURMAN_BASE = 'https://shturman.vault-78edd5.workers.dev';
+const offFixture = JSON.parse(readFileSync(path.resolve('test/fixtures/off/normalized-search.json'), 'utf8'));
+const stub = { enabled: false, pcAgo: 7200, calls: { search: 0, product: 0, foodAsk: 0, foodPoll: 0 }, errors: [] };
+const STUB_HEADERS = [
+  { name: 'content-type', value: 'application/json' },
+  { name: 'access-control-allow-origin', value: '*' },
+  { name: 'access-control-allow-headers', value: 'authorization, content-type' },
+  { name: 'access-control-allow-methods', value: 'GET, POST, OPTIONS' }
+];
+async function stubResponse(p) {
+  const { method, url: rawUrl, postData } = p.request;
+  const url = new URL(rawUrl);
+  if (method === 'OPTIONS') return { status: 204, body: null };
+  if (url.pathname === '/off/search') {
+    stub.calls.search++;
+    return { status: 200, body: { ...offFixture, q: url.searchParams.get('q') ?? offFixture.q } };
+  }
+  if (url.pathname === '/off/product') {
+    stub.calls.product++;
+    const product = offFixture.items.find(i => i.code === url.searchParams.get('code'));
+    if (!product) {
+      return { status: 404, body: { ok: false, reason: 'not-found', error: 'Товар с таким штрихкодом в Open Food Facts не найден' } };
+    }
+    return { status: 200, body: { ok: true, product, cached: false } };
+  }
+  if (url.pathname === '/food') {
+    const isAsk = method === 'POST';
+    stub.calls[isAsk ? 'foodAsk' : 'foodPoll']++;
+    const id = isAsk ? JSON.parse(postData ?? '{}').id : url.searchParams.get('id');
+    return { status: 200, body: { ok: true, id, state: 'pending', pcAgo: stub.pcAgo, modelOk: true } };
+  }
+  return { status: 404, body: { ok: false, reason: 'not-found', error: `заглушка не знает маршрут ${url.pathname}` } };
+}
+async function onRequestPaused(p) {
+  if (!stub.enabled) {
+    await send('Fetch.continueRequest', { requestId: p.requestId }, S);
+    return;
+  }
+  const { status, body } = await stubResponse(p);
+  await send('Fetch.fulfillRequest', {
+    requestId: p.requestId,
+    responseCode: status,
+    responseHeaders: STUB_HEADERS,
+    ...(body === null ? {} : { body: Buffer.from(JSON.stringify(body)).toString('base64') })
+  }, S);
+}
+listeners.add(m => {
+  if (m.method !== 'Fetch.requestPaused' || m.sessionId !== S) return;
+  onRequestPaused(m.params).catch(err => stub.errors.push(`${m.params.request.url}: ${err.message}`));
+});
+await send('Fetch.enable', {
+  patterns: ['/off/search*', '/off/product*', '/food*'].map(p => ({ urlPattern: SHTURMAN_BASE + p, requestStage: 'Request' }))
+}, S);
 
 const report = {};
 let failed = false;
@@ -486,25 +555,10 @@ try {
   await evaluate('window.scrollTo(0, 0)');
   await sleep(200);
 
-  // 8. «Своя еда, ПК не в сети»: fetch к SHTURMAN_BASE подменён на pending с
+  // 8. «Своя еда, ПК не в сети»: воркер подменён через Fetch на pending с
   // pcAgo: 7200 (2 часа), задолго до порога 120 с в useFoodPolling.ts.
-  const SHTURMAN_BASE_FOR_MOCK = 'https://shturman.vault-78edd5.workers.dev';
-  await send('Page.addScriptToEvaluateOnNewDocument', {
-    source: `(() => {
-      const BASE = ${JSON.stringify(SHTURMAN_BASE_FOR_MOCK)};
-      const orig = window.fetch.bind(window);
-      window.fetch = async (input, init) => {
-        const url = typeof input === 'string' ? input : (input && input.url) || '';
-        if (url.startsWith(BASE)) {
-          const idMatch = url.match(/[?&]id=([^&]+)/);
-          const id = idMatch ? decodeURIComponent(idMatch[1]) : 'food:unknown';
-          const body = JSON.stringify({ ok: true, id, state: 'pending', pcAgo: 7200, modelOk: true });
-          return new Response(body, { status: 200, headers: { 'content-type': 'application/json' } });
-        }
-        return orig(input, init);
-      };
-    })()`
-  }, S);
+  stub.enabled = true;
+  stub.pcAgo = 7200;
 
   const pendingRequest = {
     id: 'shots-custom-pending',
@@ -574,9 +628,10 @@ try {
 
   // 10. Сцена `journal`: цикл меню выключен (значение по умолчанию), день из
   // одних записей по наклейке. Seed: две записи kind 'label' с долями 100 % и
-  // 60 %, в книге своей еды их состав и факты с наклейки, в очереди один
-  // pending-заказ. Мок fetch из сцены 8 остался на странице и отвечает
-  // pending, поэтому заказ не превращается в запись во время снимка.
+  // 60 %, в книге своей еды их состав и факты с наклейки, в очереди два
+  // pending-заказа: по наклейке и по товару (с кнопкой «Записать сейчас без
+  // витаминов»). Подмена воркера из сцены 8 остаётся включённой и отвечает
+  // pending, поэтому заказы не превращаются в записи во время снимка.
   const labelFixture = JSON.parse(
     readFileSync(path.resolve('test/fixtures/label-result.json'), 'utf8')
   );
@@ -605,6 +660,20 @@ try {
     source: labelFixture.source,
     titleHy: food.label.titleHy
   });
+  /* Заказ по товару: факты Snickers из нормализованной выдачи поиска. */
+  const snickersOff = offFixture.items.find(i => i.code === '5000159461122');
+  const pendingProductRequest = {
+    id: 'shots-product-pending',
+    kind: 'product',
+    text: '',
+    grams: 50,
+    product: snickersOff,
+    fraction: 1,
+    askedAt: new Date().toISOString(),
+    target: { date: todayLocalDate, slot: 'lunch' },
+    status: 'pending',
+    pcAgo: null
+  };
   const foodA = labelFoodOf('shots-label-food-a', labelFixture.title, labelFixture.label.titleHy, 3);
   const foodB = labelFoodOf('shots-label-food-b', 'Куриный суп с лапшой', 'Հավի ապուր արիշտայով', 4);
   const pendingLabelRequest = {
@@ -626,7 +695,7 @@ try {
       labelExtraOf('shots-label-extra-a', foodA, 1),
       labelExtraOf('shots-label-extra-b', foodB, 0.6)
     ])} } };
-    s.foodRequests = [${JSON.stringify(pendingLabelRequest)}];
+    s.foodRequests = [${JSON.stringify(pendingLabelRequest)}, ${JSON.stringify(pendingProductRequest)}];
     localStorage.setItem(k, JSON.stringify(s)); return 'ok'; })()`);
   await goto(URL_APP);
   await sleep(800); // первый круг опроса, как в сцене 8
@@ -646,6 +715,8 @@ try {
       fractions,
       pendingRows: document.querySelectorAll('.day-extras__pending').length,
       pendingText: document.querySelector('.day-extras__pending')?.textContent${squash} ?? null,
+      productLogNowButtons: [...document.querySelectorAll('.day-extras__pending button')]
+        .filter(b => b.textContent.trim() === 'Записать сейчас без витаминов').length,
       itemMeta: [...document.querySelectorAll('.day-extras__item .day-extras__meta')].map(m => m.textContent${squash})
     };
   })()`);
@@ -653,7 +724,8 @@ try {
   if (journal.mealCards !== 0 || journal.hasSlotSwitch || journal.hasCycleBanner || journal.hasAddFromMenu) failed = true;
   if (!journal.hasActionsBar || !journal.hasCameraButton) failed = true;
   if (journal.fractions.join('|') !== 'целиком|60%') failed = true;
-  if (journal.pendingRows !== 1 || !/Запрос в очереди/.test(journal.pendingText ?? '')) failed = true;
+  if (journal.pendingRows !== 2 || !/Запрос в очереди/.test(journal.pendingText ?? '')) failed = true;
+  if (journal.productLogNowButtons !== 1) failed = true;
   if (!journal.itemMeta.some(t => t.includes('блюдо №3') && t.includes('микро по составу') && t.includes('наклейка ·'))) failed = true;
   await evaluate(`document.querySelector('.day-extras')?.scrollIntoView({ block: 'start' })`);
   await sleep(300);
@@ -751,6 +823,153 @@ try {
     report['sheet:label-done:closed'] = false;
     failed = true;
   }
+
+  // 12. Сцена `product-search`: шторка «Своя еда», поле «сникерс». Seed: токен,
+  // в книге одна еда-товар («Сникерс»), очередь пуста. «Из книги» должна
+  // показать эту еду, «Open Food Facts» - список из заглушки поиска.
+  stub.pcAgo = 10;
+  const round2 = x => Math.round(x * 100) / 100;
+  const bookProduct = offFixture.items.find(i => i.name === 'Сникерс');
+  const bookGrams = bookProduct.servingG ?? 50;
+  const bookFood = {
+    id: 'shots-book-snickers',
+    title: bookProduct.name,
+    source: 'Open Food Facts',
+    spec: 3,
+    jobId: 'food:shots-book-snickers',
+    request: { text: '', grams: bookGrams },
+    components: [],
+    createdAt: new Date().toISOString(),
+    product: {
+      ...bookProduct,
+      grams: bookGrams,
+      perPortion: {
+        kcal: round2(bookProduct.per100.kcal * bookGrams / 100),
+        p: round2(bookProduct.per100.p * bookGrams / 100),
+        f: round2(bookProduct.per100.f * bookGrams / 100),
+        c: round2(bookProduct.per100.c * bookGrams / 100)
+      }
+    }
+  };
+  await evaluate(`(() => { const k = 'eda.state.v1'; const s = JSON.parse(localStorage.getItem(k));
+    s.settings.shturmanToken = 'shots';
+    s.customFoods = { ${JSON.stringify(bookFood.id)}: ${JSON.stringify(bookFood)} };
+    s.foodRequests = [];
+    localStorage.setItem(k, JSON.stringify(s)); return 'ok'; })()`);
+  await goto(URL_APP);
+  await evaluate(`(async () => { const sleep = ms => new Promise(r => setTimeout(r, ms));
+    const b = document.querySelector('button[aria-label="Своя еда"]');
+    if (!b) throw new Error('нет кнопки «Своя еда»');
+    b.click(); await sleep(600);
+    const input = document.querySelector('.custom-food-search__input');
+    if (!input) throw new Error('нет поля поиска .custom-food-search__input');
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    setter.call(input, 'сникерс'); input.dispatchEvent(new Event('input', { bubbles: true })); await sleep(300);
+    const find = [...document.querySelectorAll('[role=dialog] button')].find(x => x.textContent.trim() === 'Найти');
+    if (!find) throw new Error('нет кнопки «Найти»');
+    find.click(); await sleep(800); return 'ok'; })()`);
+  report.productSearch = await evaluate(`(() => {
+    const titles = [...document.querySelectorAll('.custom-food__section-title')].map(h => h.textContent.trim());
+    return {
+      sections: titles,
+      bookRows: document.querySelectorAll('.custom-food-book li').length,
+      bookRelog: [...document.querySelectorAll('.custom-food-book button')].filter(b => b.textContent.trim() === 'Записать ещё').length,
+      offRows: document.querySelectorAll('.off-result').length,
+      skippedText: document.querySelector('.custom-food-off__skipped')?.textContent${squash} ?? null
+    };
+  })()`);
+  const productSearch = report.productSearch;
+  if (productSearch.bookRows !== 1 || productSearch.bookRelog !== 1) failed = true;
+  if (productSearch.offRows !== offFixture.items.length) failed = true;
+  if (productSearch.skippedText !== `Ещё ${offFixture.skipped} без КБЖУ не показаны.`) failed = true;
+  if (!productSearch.sections.includes('Из книги') || !productSearch.sections.includes('Open Food Facts')) failed = true;
+  await shot(`${String(n++).padStart(2, '0')}-sheet-product-search`);
+
+  // 13. Сцена `product-card`: строка Snickers открывает карточку. У Snickers порция
+  // и упаковка по 50 г совпадают, поэтому пресетов два: «Порция 50 г» и «100 г».
+  // Предупреждений нет (plausible), атрибуция ODbL на месте.
+  await evaluate(`(async () => { const sleep = ms => new Promise(r => setTimeout(r, ms));
+    const row = [...document.querySelectorAll('.off-result')].find(r => r.querySelector('.off-result__name')?.textContent.trim() === 'Snickers');
+    if (!row) throw new Error('нет строки Snickers среди .off-result');
+    row.click(); await sleep(800); return 'ok'; })()`);
+  report.productCard = await evaluate(`(() => {
+    const card = document.querySelector('.product-card');
+    return {
+      present: card !== null,
+      name: card?.querySelector('.product-card__name')?.textContent.trim() ?? null,
+      presets: [...(card?.querySelectorAll('.product-card__preset') ?? [])].map(b => b.textContent${squash}),
+      presetCount: card?.querySelectorAll('.product-card__preset').length ?? 0,
+      warnings: card?.querySelectorAll('.product-card__warning').length ?? 0,
+      attribution: card?.querySelector('.product-card__attribution')?.textContent${squash} ?? null,
+      attributionLink: card?.querySelector('.product-card__attribution a')?.getAttribute('href') ?? null
+    };
+  })()`);
+  const productCard = report.productCard;
+  if (!productCard.present || productCard.name !== 'Snickers') failed = true;
+  if (productCard.presetCount !== 2 || productCard.presets.join('|') !== 'Порция 50 г|100 г') failed = true;
+  if (productCard.warnings !== 0) failed = true;
+  if (!productCard.attribution || !productCard.attribution.includes('Данные: Open Food Facts (ODbL)')) failed = true;
+  if (productCard.attributionLink !== 'https://world.openfoodfacts.org/product/5000159461122') failed = true;
+  await shot(`${String(n++).padStart(2, '0')}-sheet-product-card`);
+  await evaluate(`document.querySelector('.product-card__attribution')?.scrollIntoView({ block: 'end' })`);
+  await sleep(300);
+  await shot(`${String(n++).padStart(2, '0')}-sheet-product-card-bottom`);
+
+  // «Записать и запросить витамины»: заглушка отвечает pending, в очереди
+  // появляется заказ kind 'product', карточка закрывается.
+  await evaluate(`(async () => { ${helpers} await click('Записать и запросить витамины'); await sleep(500); return 'ok'; })()`);
+  report.productAsk = await evaluate(`(() => { const s = JSON.parse(localStorage.getItem('eda.state.v1'));
+    return {
+      queue: s.foodRequests.map(r => r.kind + ':' + r.status),
+      grams: s.foodRequests[0]?.grams ?? null,
+      cardClosed: document.querySelector('.product-card') === null
+    }; })()`);
+  if (report.productAsk.queue.join('|') !== 'product:pending' || report.productAsk.grams !== 50 || !report.productAsk.cardClosed) failed = true;
+  if (stub.calls.foodAsk !== 1) failed = true;
+  if (!(await closeDialog())) {
+    report['sheet:product-card:closed'] = false;
+    failed = true;
+  }
+
+  // 14. Сцена `product-logged`: pending-заказ по товару в сводке, нажатие
+  // «Записать сейчас без витаминов» делает ровно одну запись kind 'product' со
+  // ссылкой Open Food Facts; заказ уходит из очереди.
+  await evaluate(`(() => { const k = 'eda.state.v1'; const s = JSON.parse(localStorage.getItem(k));
+    s.settings.shturmanToken = 'shots';
+    s.customFoods = {};
+    s.log = {};
+    s.foodRequests = [${JSON.stringify(pendingProductRequest)}];
+    localStorage.setItem(k, JSON.stringify(s)); return 'ok'; })()`);
+  await goto(URL_APP);
+  report.productPendingRows = await evaluate(`document.querySelectorAll('.day-extras__pending').length`);
+  if (report.productPendingRows !== 1) failed = true;
+  await evaluate(`(async () => { const sleep = ms => new Promise(r => setTimeout(r, ms));
+    const b = [...document.querySelectorAll('.day-extras__pending button')].find(x => x.textContent.trim() === 'Записать сейчас без витаминов');
+    if (!b) throw new Error('нет кнопки «Записать сейчас без витаминов» в строке очереди');
+    b.click(); await sleep(600); return 'ok'; })()`);
+  report.productLogged = await evaluate(`(() => { const s = JSON.parse(localStorage.getItem('eda.state.v1'));
+    const extras = (s.log[${JSON.stringify(todayLocalDate)}]?.extras ?? []).filter(e => e.kind === 'product');
+    const link = document.querySelector('a.day-extras__attribution');
+    return {
+      productExtras: extras.length,
+      queue: s.foodRequests.length,
+      pendingRows: document.querySelectorAll('.day-extras__pending').length,
+      meta: [...document.querySelectorAll('.day-extras__item .day-extras__meta')].map(m => m.textContent${squash}),
+      linkText: link?.textContent.trim() ?? null,
+      linkHref: link?.getAttribute('href') ?? null
+    }; })()`);
+  const productLogged = report.productLogged;
+  if (productLogged.productExtras !== 1 || productLogged.queue !== 0 || productLogged.pendingRows !== 0) failed = true;
+  if (!productLogged.meta.some(t => t.includes('С упаковки, Open Food Facts') && t.includes('без витаминов'))) failed = true;
+  if (productLogged.linkText !== 'Open Food Facts' || productLogged.linkHref !== snickersOff.url) failed = true;
+  await evaluate(`document.querySelector('.day-extras')?.scrollIntoView({ block: 'start' })`);
+  await sleep(300);
+  await shot(`${String(n++).padStart(2, '0')}-product-logged`, { full: true });
+  report.stubCalls = stub.calls;
+  if (stub.errors.length > 0) {
+    report.stubErrors = stub.errors;
+    failed = true;
+  }
 } catch (err) {
   report.error = String(err);
   failed = true;
@@ -762,6 +981,7 @@ try {
 }
 
 console.log(`Снимков: ${files.length}, каталог ${OUT}`);
+console.log(`Товар: пресетов ${report.productCard?.presetCount ?? 'нет'}, атрибуция «${report.productCard?.attribution ?? 'нет'}», pending-строк в журнале ${report.journal?.pendingRows ?? 'нет'}`);
 console.log(`Полос: ${report.panel?.fills ?? '—'}, с нулевой высотой: ${report.panel?.zeroHeight ?? '—'}, пустых при проценте > 5: ${report.panel?.emptyWithPct ?? '—'}`);
 if (report.error) console.error(report.error);
 process.exit(failed ? 1 : 0);
