@@ -29,6 +29,14 @@ export function formatPer100(value: number): string {
   return String(Number(value.toFixed(1)))
 }
 
+/** Значение, напечатанное на упаковке, в строку «Напечатано также»: так же до
+    десятых, как КБЖУ на 100 г. В карточку попадает только напечатанное больше
+    нуля, и округление не вправе превратить его в «0»: это читалось бы как
+    измеренный ноль, поэтому совсем малое число пишется как «< 0.1». */
+export function formatPrinted(value: number): string {
+  return value > 0 && value < 0.05 ? '< 0.1' : formatPer100(value)
+}
+
 /** Подпись под списком: сколько товаров отсеял воркер (нет КБЖУ). Пусто, если ни одного. */
 export function offSkippedText(skipped: number): string | null {
   return skipped > 0 ? `Ещё ${skipped} без КБЖУ не показаны.` : null

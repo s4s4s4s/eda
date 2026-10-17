@@ -10,12 +10,11 @@
 
 import { useState } from 'react'
 import { newProductRequest, offWarningText } from '../core/food.ts'
-import { formatNutrientAmount } from '../core/export/format.ts'
 import type { FoodClientFailureReason, OffClientFailureReason } from '../core/foodClient.ts'
 import type { FoodRequest, OffProduct, PrintedMicroKey, Slot } from '../core/types.ts'
 import { NUTRIENT_TITLE, NUTRIENT_UNIT, OFF_SOURCE, PRINTED_MICRO_KEYS, SLOT_TITLE, SLOTS } from '../core/types.ts'
 import { FractionPicker } from './FractionPicker.tsx'
-import { formatPer100, gramsPresetsFor, offFailureText, parseProductGrams, PRODUCT_MAX_GRAMS } from './foodLogic.ts'
+import { formatPer100, formatPrinted, gramsPresetsFor, offFailureText, parseProductGrams, PRODUCT_MAX_GRAMS } from './foodLogic.ts'
 
 export type ProductAskResult =
   | { ok: true }
@@ -43,7 +42,7 @@ function printedText(product: OffProduct): string {
   for (const key of PRINTED_MICRO_KEYS) {
     const value = product.printedMicro[key as PrintedMicroKey]
     if (value === undefined) continue
-    parts.push(`${NUTRIENT_TITLE[key].toLowerCase()} ${formatNutrientAmount(value)} ${NUTRIENT_UNIT[key]}`)
+    parts.push(`${NUTRIENT_TITLE[key].toLowerCase()} ${formatPrinted(value)} ${NUTRIENT_UNIT[key]}`)
   }
   return parts.join(', ')
 }

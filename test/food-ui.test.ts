@@ -11,7 +11,7 @@ import { newProductRequest } from '../src/core/food'
 import type { OffProductResult, OffSearchResult } from '../src/core/foodClient'
 import type { FoodRequest, OffProduct } from '../src/core/types'
 import {
-  createFlash, createOffSearch, gramsPresetsFor, offInvalidText, offSkippedText, offViewFromResult, OFF_SEARCH_LIMIT,
+  createFlash, createOffSearch, formatPrinted, gramsPresetsFor, offInvalidText, offSkippedText, offViewFromResult, OFF_SEARCH_LIMIT,
   parseProductGrams, PRODUCT_MAX_GRAMS
 } from '../src/ui/foodLogic'
 import type { OffSearchDeps, OffSearchState } from '../src/ui/foodLogic'
@@ -125,6 +125,13 @@ function viewChecks(): void {
   group('offViewFromResult: invalid не теряется ни в списке, ни в пустом ответе')
 }
 
+function printedChecks(): void {
+  assert(formatPrinted(4.3) === '4.3' && formatPrinted(7.9) === '7.9', 'напечатанное идёт до десятых без хвоста нулей')
+  assert(formatPrinted(251.5) === '251.5' && formatPrinted(6.7) === '6.7', 'миллиграммы тоже до десятых')
+  assert(formatPrinted(0.04) === '< 0.1' && formatPrinted(0.05) === '0.1', 'малое напечатанное не округляется в ноль')
+  group('formatPrinted: до десятых, малое значение не становится нулём')
+}
+
 function gramsChecks(): void {
   assert(PRODUCT_MAX_GRAMS === 5000, 'верхняя граница 5000')
   const cases: [string, number | null][] = [
@@ -187,6 +194,7 @@ function requestStatusChecks(): void {
 async function main(): Promise<void> {
   await searchChecks()
   viewChecks()
+  printedChecks()
   gramsChecks()
   flashChecks()
   requestStatusChecks()
