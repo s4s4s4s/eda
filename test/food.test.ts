@@ -13,12 +13,12 @@ import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 
 import {
-  applyFoodAsk, applyFoodPoll, customExtraFrom, customFoodFromResult, customFoodTotals,
-  discardFoodRequest, menuExtraFrom, newFoodRequest, parseFoodResult,
-  removeCustomFood, retryFoodRequest, saveCustomFood, withComponentGrams
+  applyFoodAsk, applyFoodPoll, customExtraFrom, customFoodDeviation, customFoodFromResult, customFoodTotals,
+  discardFoodRequest, labelEnergyCheck, labelEnergyWarning, LABEL_ENERGY_TOLERANCE_KCAL, LABEL_ENERGY_TOLERANCE_PCT, labelExtraFrom, logDoneLabelRequests, menuExtraFrom, newFoodRequest,
+  newLabelRequest, parseFoodResult, removeCustomFood, retryFoodRequest, saveCustomFood, withComponentGrams
 } from '../src/core/food'
 import type { FoodPollResponse } from '../src/core/food'
-import { askFood, pollFood, SHTURMAN_BASE } from '../src/core/foodClient'
+import { askFood, askLabel, pollFood, SHTURMAN_BASE } from '../src/core/foodClient'
 import { NUTRIENT_KEYS } from '../src/core/types'
 import type { AppState, Meal, Product, ProductIndex } from '../src/core/types'
 
@@ -45,17 +45,23 @@ function findRepoRoot(startDir: string): string {
 
 const REPO_ROOT = findRepoRoot(process.cwd())
 const FIXTURE_PATH = path.join(REPO_ROOT, 'test', 'fixtures', 'food-result.json')
+const LABEL_FIXTURE_PATH = path.join(REPO_ROOT, 'test', 'fixtures', 'label-result.json')
 
 function loadFixture(): unknown {
   return JSON.parse(readFileSync(FIXTURE_PATH, 'utf8'))
 }
 
+function loadLabelFixture(): Record<string, unknown> {
+  return JSON.parse(readFileSync(LABEL_FIXTURE_PATH, 'utf8')) as Record<string, unknown>
+}
+
 function emptyState(): AppState {
   return {
-    version: 5,
+    version: 6,
     settings: {
       cycleStartDate: '2026-08-01', cycleShift: 0, targetKcal: 3200, targetProteinG: 120,
-      shortcutName: '', cycleStartConfirmed: true, shturmanToken: 'secret-token'
+      shortcutName: '', cycleStartConfirmed: true, shturmanToken: 'secret-token',
+      menuCycleEnabled: false, targetFatG: 0, targetCarbsG: 0
     },
     log: {},
     preferences: { ingredients: {}, dishes: {} },
@@ -293,6 +299,223 @@ function menuExtraFromChecks(): void {
   group('menuExtraFrom: снапшот полной порции блюда меню с mealId/fromCycleDay/fromSlot')
 }
 
+// ---- наклейка (spec 2) ------------------------------------------------------
+
+function throws(fn: () => unknown): boolean {
+  try { fn() } catch { return true }
+  return false
+}
+
+function parseLabelFixtureChecks(): void {
+  const fixture = loadLabelFixture()
+  const result = parseFoodResult(fixture)
+  assert(result.spec === 2, `spec ожидался 2, получено ${result.spec}`)
+  assert(result.label !== undefined, 'label обязан перенестись в результат')
+  assert(result.label!.basis === 'portion' && result.label!.portionG === 370, 'basis/portionG обязаны прийти из фикстуры')
+  assert(result.label!.dishNo === 3, `dishNo ожидался 3, получено ${result.label!.dishNo}`)
+  assert(result.label!.perPortion.kcal === 442.1, 'perPortion.kcal обязан прийти из фикстуры')
+  assert(result.fit !== undefined && result.fit.poor === false, 'fit обязан перенестись в результат')
+  assert(result.components.length === 3, `ожидалось 3 компонента, получено ${result.components.length}`)
+
+  // spec 2 допускает пустой состав: КБЖУ есть и без него
+  const empty = parseFoodResult({ ...fixture, components: [], fit: undefined })
+  assert(empty.components.length === 0 && empty.fit === undefined, 'spec 2 с пустым составом и без fit обязан приниматься')
+  group('parseFoodResult: принимает фикстуру label-result.json (spec 2, label, fit) и spec 2 с пустым составом')
+}
+
+function parseLabelRejectsChecks(): void {
+  const fixture = loadLabelFixture()
+  const label = fixture.label as Record<string, unknown>
+  assert(throws(() => parseFoodResult({ ...fixture, spec: 3 })), 'spec 3 обязан отвергаться')
+  assert(throws(() => parseFoodResult({ ...fixture, spec: 0 })), 'spec 0 обязан отвергаться')
+  assert(throws(() => parseFoodResult({ ...fixture, label: undefined })), 'spec 2 без label обязан отвергаться')
+  const { perPortion: _perPortion, ...withoutPerPortion } = label
+  assert(throws(() => parseFoodResult({ ...fixture, label: withoutPerPortion })), 'label без perPortion обязан отвергаться')
+  assert(throws(() => parseFoodResult({ ...fixture, label: { ...label, basis: 'kg' } })), "basis 'kg' обязан отвергаться")
+  assert(throws(() => parseFoodResult({ ...fixture, label: { ...label, portionG: 0 } })), 'portionG 0 обязан отвергаться')
+  assert(throws(() => parseFoodResult({ ...fixture, label: { ...label, printed: { kcal: -1, p: 0, f: 0, c: 0 } } })), 'отрицательные printed обязаны отвергаться')
+  assert(throws(() => parseFoodResult({ ...fixture, label: { ...label, ingredients: 'лук' } })), 'ingredients не списком обязан отвергаться')
+  assert(throws(() => parseFoodResult({ ...fixture, fit: { poor: 'no' } })), 'битый fit обязан отвергаться')
+
+  // spec 1 по-прежнему требует непустой состав
+  const textFixture = loadFixture() as Record<string, unknown>
+  assert(throws(() => parseFoodResult({ ...textFixture, components: [] })), 'пустые components при spec 1 обязаны отвергаться')
+  group('parseFoodResult: отвергает spec 3, label без perPortion, basis kg, битый fit, пустые components при spec 1')
+}
+
+function parseDishNoChecks(): void {
+  const fixture = loadLabelFixture()
+  const label = fixture.label as Record<string, unknown>
+  const withDish = (dishNo: unknown) => ({ ...fixture, label: { ...label, dishNo } })
+
+  const absent = { ...label }
+  delete absent.dishNo
+  assert(parseFoodResult({ ...fixture, label: absent }).label!.dishNo === undefined, 'отсутствующий dishNo обязан остаться отсутствующим')
+  assert(parseFoodResult(withDish(null)).label!.dishNo === null, 'dishNo null обязан приниматься')
+  assert(parseFoodResult(withDish(1)).label!.dishNo === 1, 'dishNo 1 обязан приниматься')
+  assert(parseFoodResult(withDish(12)).label!.dishNo === 12, 'dishNo 12 обязан приниматься')
+  for (const bad of [0, 13, 3.5, -1, '3', NaN, true]) {
+    assert(throws(() => parseFoodResult(withDish(bad))), `dishNo ${JSON.stringify(bad)} обязан отвергаться`)
+  }
+  group('parseFoodResult: dishNo - отсутствует, null или целое 1..12, иное отказ')
+}
+
+function labelEnergyCheckChecks(): void {
+  const ref = labelEnergyCheck({ kcal: 442.1, p: 47.7, f: 19.7, c: 18.5 })
+  assert(ref.ok, 'эталон Avocado 442.1/47.7/19.7/18.5 обязан сходиться')
+  assert(ref.deviationPct !== null && Math.abs(ref.deviationPct) < 0.01, `отклонение эталона ожидалось 0, получено ${ref.deviationPct}`)
+  assert(approx(ref.atwaterKcal, 442.1, 1e-6), `atwater эталона ожидался 442.1, получено ${ref.atwaterKcal}`)
+
+  const zeros = labelEnergyCheck({ kcal: 0, p: 0, f: 0, c: 0 })
+  assert(zeros.ok && zeros.deviationPct === null && zeros.atwaterKcal === 0, 'все нули: ok, отклонения нет')
+  const kcalOnly = labelEnergyCheck({ kcal: 100, p: 0, f: 0, c: 0 })
+  assert(!kcalOnly.ok && kcalOnly.deviationPct === null, 'ккал без БЖУ: не сходится, отклонение null')
+
+  // допуск: max(2 ккал, 2 % от атуотера)
+  assert(labelEnergyCheck({ kcal: 100, p: 24.525, f: 0, c: 0 }).ok, '100 ккал при atwater 98.1: ok')
+  assert(labelEnergyCheck({ kcal: 50, p: 12.125, f: 0, c: 0 }).ok, '50 ккал при atwater 48.5: ok по абсолютному допуску')
+  assert(!labelEnergyCheck({ kcal: 50, p: 11.75, f: 0, c: 0 }).ok, '50 ккал при atwater 47: не ok')
+  assert(labelEnergyCheck({ kcal: 2, p: 0, f: 0, c: 0 }).ok, 'atwater 0 и 2 ккал: ok')
+  assert(!labelEnergyCheck({ kcal: 2.5, p: 0, f: 0, c: 0 }).ok, 'atwater 0 и 2.5 ккал: не ok')
+  assert(LABEL_ENERGY_TOLERANCE_KCAL === 2 && LABEL_ENERGY_TOLERANCE_PCT === 2, 'константы допуска')
+  group('labelEnergyCheck: эталон ok и 0 %, нули, допуск max(2 ккал, 2 %)')
+}
+
+/* Опечатка в одной цифре обязана ловиться. */
+function labelEnergyMisreadChecks(): void {
+  const misread = labelEnergyCheck({ kcal: 442.1, p: 41.7, f: 19.7, c: 18.5 })
+  assert(!misread.ok, `белок 41.7 вместо 47.7 обязан давать ok:false (отклонение ${misread.deviationPct}%)`)
+  const fat = labelEnergyCheck({ kcal: 442.1, p: 47.7, f: 18.7, c: 18.5 })
+  assert(!fat.ok, `жиры 18.7 вместо 19.7 обязаны давать ok:false (отклонение ${fat.deviationPct}%)`)
+  group('labelEnergyCheck: белок 41.7 и жиры 18.7 не ok')
+}
+
+function labelEnergyWarningChecks(): void {
+  assert(labelEnergyWarning({ kcal: 442.1, p: 47.7, f: 19.7, c: 18.5 }) === null, 'эталон: предупреждения нет')
+  const text = labelEnergyWarning({ kcal: 442.1, p: 41.7, f: 19.7, c: 18.5 })
+  assert(text === 'Числа с наклейки не сходятся: ккал 442, а по БЖУ 418. Проверь снимок.', `текст предупреждения: ${text}`)
+  group('labelEnergyWarning: null при ok, округлённый текст при расхождении')
+}
+
+function labelFoodFrom(): ReturnType<typeof customFoodFromResult> {
+  return customFoodFromResult(parseFoodResult(loadLabelFixture()), 'food:label-job', 'label-food-1', '2026-10-17T12:00:00')
+}
+
+function labelTotalsChecks(): void {
+  const food = labelFoodFrom()
+  assert(food.label !== undefined && food.fit !== undefined, 'customFoodFromResult обязан копировать label и fit')
+  const totals = customFoodTotals(food)
+  assert(totals.kbju === food.label!.perPortion || (totals.kbju.kcal === 442.1 && totals.kbju.p === 47.7 && totals.kbju.f === 19.7 && totals.kbju.c === 18.5),
+    `kbju еды по наклейке обязано быть perPortion, получено ${JSON.stringify(totals.kbju)}`)
+  const sumKcal = food.components.reduce((s, c) => s + c.per100.kbju.kcal * c.grams / 100, 0)
+  assert(Math.abs(sumKcal - 442.1) > 1, 'проверка осмысленна только если сумма компонентов отличается от напечатанного')
+  assert(NUTRIENT_KEYS.every(k => totals.nutrients[k] !== undefined), 'nutrients обязаны быть по всем ключам')
+
+  // правка граммов не двигает КБЖУ еды по наклейке
+  const edited = withComponentGrams(food, 0, food.components[0].grams * 3)
+  const after = customFoodTotals(edited)
+  assert(after.kbju.kcal === 442.1 && after.kbju.p === 47.7, 'withComponentGrams не должен менять kbju еды с label')
+  assert(after.nutrients.fiber.value !== totals.nutrients.fiber.value || edited.components[0].grams !== food.components[0].grams,
+    'нутриенты по составу обязаны следовать за граммами')
+  group('customFoodTotals: еда с label отдаёт perPortion, withComponentGrams kbju не меняет')
+}
+
+function customFoodDeviationChecks(): void {
+  const food = labelFoodFrom()
+  const base = customFoodDeviation(food)
+  assert(base !== null && base.poor === false, 'подогнанная фикстура не должна быть poor')
+  assert(base!.massDeviationPct !== null && Math.abs(base!.massDeviationPct! - (-17.6)) < 0.11, `massDeviationPct фикстуры ожидался около -17.6, получено ${base!.massDeviationPct}`)
+
+  // состав, раздутый в полтора раза: ккал по USDA уходят больше чем на 30 %
+  const inflated = { ...food, components: food.components.map(c => ({ ...c, grams: c.grams * 1.5 })) }
+  const poor = customFoodDeviation(inflated)
+  assert(poor !== null && poor.poor === true, 'расхождение 50 % обязано давать poor:true')
+  assert(poor!.deviationPct.kcal !== null && poor!.deviationPct.kcal! > 30, `kcal-отклонение ожидалось больше 30, получено ${poor!.deviationPct.kcal}`)
+
+  // нет наклейки или нет состава - сравнивать не с чем
+  const text = customFoodFromResult(parseFoodResult(loadFixture()), 'job', 'text-1', '2026-10-17T12:00:00')
+  assert(customFoodDeviation(text) === null, 'у еды без label отклонения нет')
+  assert(customFoodDeviation({ ...food, components: [] }) === null, 'у еды без состава отклонения нет')
+
+  // напечатанный ноль: отклонение от нуля не определено
+  const zeroFat = customFoodDeviation({ ...food, label: { ...food.label!, perPortion: { ...food.label!.perPortion, f: 0 } } })
+  assert(zeroFat!.deviationPct.f === null, 'отклонение от нулевого напечатанного обязано быть null')
+
+  // без веса порции массы-отклонения нет
+  const noMass = customFoodDeviation({ ...food, label: { ...food.label!, portionG: null } })
+  assert(noMass!.massDeviationPct === null, 'без portionG massDeviationPct обязан быть null')
+  group('customFoodDeviation: poor на расхождении 50 %, null без label/состава, нули и вес порции')
+}
+
+function labelExtraChecks(): void {
+  const food = labelFoodFrom()
+  const extra = labelExtraFrom(food, 'dinner', 0.75, 'x-1', '2026-10-17T19:00:00')
+  assert(extra.kind === 'label' && extra.titleHy === food.label!.titleHy, 'extra обязана нести titleHy с наклейки')
+  assert(extra.kbju.kcal === 442.1 && extra.fraction === 0.75, 'extra: полная порция по наклейке и доля как передана')
+  assert(extra.kind === 'label' && extra.customFoodId === 'label-food-1' && extra.source === food.source, 'extra обязана ссылаться на еду и источник')
+  const text = customFoodFromResult(parseFoodResult(loadFixture()), 'job', 'text-1', '2026-10-17T12:00:00')
+  assert(throws(() => labelExtraFrom(text, 'dinner', 1, 'x-2', '2026-10-17T19:00:00')), 'labelExtraFrom без label обязан бросать')
+  group('labelExtraFrom: kind label, titleHy, kbju по наклейке; без label бросает')
+}
+
+function labelRequestChecks(): void {
+  const target = { date: '2026-10-17', slot: 'lunch' as const }
+  const text = newFoodRequest('t-1', 'тирамису', 120, target, '2026-10-17T10:00:00')
+  assert(text.kind === 'text' && text.fraction === 1, "newFoodRequest обязан давать kind 'text' и fraction 1")
+
+  const req = newLabelRequest('l-1', '', 350, target, 0.5, '2026-10-17T10:00:00')
+  assert(req.kind === 'label' && req.text === '' && req.grams === 350 && req.fraction === 0.5 && req.status === 'pending', 'newLabelRequest: kind label, пустая заметка допустима')
+  for (const bad of [0, 1.5, -0.1, NaN]) {
+    assert(throws(() => newLabelRequest('l-2', '', null, target, bad, '2026-10-17T10:00:00')), `newLabelRequest с долей ${bad} обязан бросать`)
+  }
+
+  // повтор наклейки возможен только пересъёмкой: состояние не меняется
+  const state: AppState = { ...emptyState(), foodRequests: [{ ...req, status: 'failed', error: 'не читается' }] }
+  assert(retryFoodRequest(state, 'l-1', 'l-new', '2026-10-17T11:00:00') === state, 'retryFoodRequest на label обязан вернуть то же состояние')
+  group('newLabelRequest/newFoodRequest: kind и fraction; retryFoodRequest на label ничего не меняет')
+}
+
+function logDoneLabelRequestsChecks(): void {
+  const target = { date: '2026-10-16', slot: 'dinner' as const }
+  const fixture = loadLabelFixture()
+  let state = emptyState()
+  state = applyFoodAsk(state, newLabelRequest('lab-done', '', null, target, 0.5, '2026-10-16T18:00:00'))
+  state = applyFoodAsk(state, newLabelRequest('lab-wait', '', null, target, 1, '2026-10-16T18:01:00'))
+  state = applyFoodAsk(state, newFoodRequest('txt-done', 'тирамису', 120, target, '2026-10-16T18:02:00'))
+  const done = (id: string, result: unknown): FoodPollResponse => ({ ok: true, id, state: 'done', result, pcAgo: 1, modelOk: true })
+  state = applyFoodPoll(state, 'lab-done', done('lab-done', fixture), '2026-10-16T18:30:00')
+  state = applyFoodPoll(state, 'txt-done', done('txt-done', loadFixture()), '2026-10-16T18:30:00')
+
+  const ids = ['food-A', 'extra-A', 'food-B', 'extra-B']
+  let n = 0
+  const seen: string[] = []
+  const next = logDoneLabelRequests(state, '2026-10-17T09:00:00', () => { const id = ids[n++]; seen.push(id); return id }, () => null)
+
+  assert(n === 2, `nextId обязан вызываться дважды на один заказ (еда и запись), вызвано ${n}`)
+  assert(next.foodRequests.find(r => r.id === 'lab-done') === undefined, 'записанный заказ по наклейке обязан уйти из очереди')
+  assert(next.foodRequests.some(r => r.id === 'lab-wait'), 'заказ по наклейке без результата остаётся в очереди')
+  assert(next.foodRequests.some(r => r.id === 'txt-done' && r.status === 'done'), 'текстовый done не трогается')
+  assert(next.customFoods['food-A'] !== undefined && next.customFoods['food-A'].jobId === 'food:lab-done', 'еда обязана попасть в книгу с jobId food:<id>')
+  const day = next.log['2026-10-16']
+  assert(day !== undefined && day.cycleDay === null, 'день обязан появиться на дату заказа с cycleDay из колбэка (null)')
+  const extra = day.extras.find(e => e.id === 'extra-A')
+  assert(extra !== undefined && extra.kind === 'label', 'запись kind label обязана появиться в дне')
+  assert(extra!.fraction === 0.5 && extra!.slot === 'dinner', 'запись обязана нести долю и приём заказа')
+  assert(extra!.kbju.kcal === 442.1, 'запись обязана нести напечатанные числа')
+  assert(day.extras.length === 1, 'текстовый done не должен записаться в журнал')
+  assert(next.log['2026-10-17'] === undefined, 'запись идёт на дату заказа, а не на now')
+
+  // детерминированность: те же входы - то же состояние
+  let m = 0
+  const again = logDoneLabelRequests(state, '2026-10-17T09:00:00', () => ids[m++], () => null)
+  assert(JSON.stringify(again) === JSON.stringify(next), 'logDoneLabelRequests обязана быть детерминированной при том же nextId')
+
+  // без заказов по наклейке состояние то же
+  const plain = emptyState()
+  assert(logDoneLabelRequests(plain, '2026-10-17T09:00:00', () => 'x', () => 1).log === plain.log, 'без заказов по наклейке журнал не меняется')
+  group('logDoneLabelRequests: пишет extra label с долей заказа, убирает заказ, текстовые done не трогает')
+}
+
 // ---- foodClient -------------------------------------------------------------
 
 function fakeFetch(status: number, body: unknown): { calls: { url: string; init: RequestInit }[]; fetchFn: typeof fetch } {
@@ -351,6 +574,41 @@ async function clientStatusChecks(): Promise<void> {
   group('foodClient: 401 -> unauthorized, 404 -> not-found, 400 -> bad-request, throw -> network, не-JSON -> bad-response, успех -> {ok:true,response}, заголовок и URL верны')
 }
 
+async function askLabelChecks(): Promise<void> {
+  const okBody: FoodPollResponse = { ok: true, id: 'food:l-1', state: 'pending', pcAgo: 4, modelOk: true }
+  {
+    const { fetchFn, calls } = fakeFetch(200, okBody)
+    const result = await askLabel(SHTURMAN_BASE, 'tok', { id: 'l-1', mime: 'image/jpeg', image: 'QUJD', grams: 350 }, fetchFn)
+    assert(result.ok === true, 'успешный ответ обязан давать ok: true')
+    assert(calls.length === 1 && calls[0].url === `${SHTURMAN_BASE}/food`, 'ожидался один POST на /food')
+    assert(calls[0].init.method === 'POST', 'метод обязан быть POST')
+    const headers = calls[0].init.headers as Record<string, string>
+    assert(headers.authorization === 'Bearer tok' && headers['content-type'] === 'application/json', 'заголовки authorization и content-type обязаны быть выставлены')
+    const sent = JSON.parse(String(calls[0].init.body)) as Record<string, unknown>
+    assert(sent.kind === 'label' && sent.id === 'l-1' && sent.mime === 'image/jpeg' && sent.image === 'QUJD', 'тело обязано нести kind, id, mime, image')
+    assert(sent.note === '' && sent.grams === 350, 'note по умолчанию пустая, grams как передан')
+    assert(!('text' in sent), 'поле text в теле наклейки не посылается')
+  }
+  {
+    const { fetchFn, calls } = fakeFetch(200, okBody)
+    await askLabel(SHTURMAN_BASE, 'tok', { id: 'l-2', mime: 'image/png', image: 'QUJD', note: 'без соуса' }, fetchFn)
+    const sent = JSON.parse(String(calls[0].init.body)) as Record<string, unknown>
+    assert(sent.note === 'без соуса' && sent.grams === null, 'note передаётся, grams по умолчанию null')
+  }
+  {
+    const { fetchFn } = fakeFetch(413, { ok: false, error: 'снимок слишком большой' })
+    const result = await askLabel(SHTURMAN_BASE, 'tok', { id: 'l-3', mime: 'image/jpeg', image: 'QUJD' }, fetchFn)
+    assert(!result.ok && result.reason === 'bad-request' && result.error === 'Снимок слишком большой, попробуй переснять ближе.',
+      `413 обязан давать bad-request с текстом клиента, получено ${JSON.stringify(result)}`)
+  }
+  {
+    const { fetchFn } = fakeFetch(400, { ok: false, error: 'поле «text» обязательно' })
+    const result = await askLabel(SHTURMAN_BASE, 'tok', { id: 'l-4', mime: 'image/jpeg', image: 'QUJD' }, fetchFn)
+    assert(!result.ok && result.reason === 'bad-request' && result.error === 'поле «text» обязательно', '400 старого воркера обязан дойти как bad-request с его текстом')
+  }
+  group('askLabel: POST с kind label без text, 413 -> понятный bad-request, 400 старого воркера доходит')
+}
+
 async function main(): Promise<void> {
   console.log('food — домен «своя еда» и клиент воркера')
   parseFoodResultAcceptsFixtureChecks()
@@ -362,7 +620,19 @@ async function main(): Promise<void> {
   retryFoodRequestChecks()
   discardAndRemoveChecks()
   menuExtraFromChecks()
+  parseLabelFixtureChecks()
+  parseLabelRejectsChecks()
+  parseDishNoChecks()
+  labelEnergyCheckChecks()
+  labelTotalsChecks()
+  customFoodDeviationChecks()
+  labelExtraChecks()
+  labelRequestChecks()
+  logDoneLabelRequestsChecks()
   await clientStatusChecks()
+  await askLabelChecks()
+  labelEnergyMisreadChecks()
+  labelEnergyWarningChecks()
   console.log(`\nВсе проверки food пройдены (${passed} групп).`)
 }
 

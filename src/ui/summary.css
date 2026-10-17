@@ -384,6 +384,73 @@
   font-size: var(--text-15);
 }
 
+/* Кнопка доли в строке журнала: чип с долей, по нажатию раскрывает выбор. */
+.day-extras__fraction {
+  flex: none;
+  min-height: var(--tap-min);
+  min-width: var(--tap-min);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+  font: inherit;
+  font-size: var(--text-13);
+  color: var(--fg);
+}
+
+.day-extras__fraction[aria-expanded="true"] {
+  border-color: var(--accent);
+}
+
+/* Предупреждение и редактор доли занимают всю ширину строки под основной
+   линией (строка .list__row переносится, flex-wrap в .day-extras__item). */
+.day-extras__warning {
+  flex: 1 1 100%;
+  margin: 0;
+  font-size: var(--text-13);
+  color: var(--danger);
+}
+
+.day-extras__editor {
+  flex: 1 1 100%;
+}
+
+/* Заказ по наклейке, который ещё не стал записью: строка внутри карточки
+   журнала, приглушённая, чтобы не читаться как съеденное. */
+.day-extras__pending {
+  opacity: .85;
+}
+
+/* ---- липкая панель действий дня ---- */
+
+/* Прижата к низу экрана над панелью вкладок: съёмка наклейки всегда под
+   большим пальцем. Фон нужен, чтобы под панелью не просвечивали карточки. */
+.day-actions {
+  position: sticky;
+  bottom: calc(var(--tabbar-h) + max(var(--space-2), env(safe-area-inset-bottom)));
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  background: var(--bg);
+}
+
+.day-actions .btn {
+  flex: 1 1 10rem;
+}
+
+.day-actions .btn--primary {
+  flex-grow: 2;
+}
+
+@media (min-width: 48rem) {
+  /* На широком экране панель вкладок уходит в боковую колонку (layout.css). */
+  .day-actions {
+    bottom: var(--space-2);
+  }
+}
+
 /* ---- микронутриенты за день ---- */
 
 /* Последний блок сводки: справка, а не то, с чем работают каждый день. Сам

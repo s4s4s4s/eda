@@ -23,6 +23,9 @@ interface WeekSheetProps {
   targetKcal: number
   targetProteinG: number
   norms: NutrientNorms
+  /** Включён ли цикл меню повара. Без него приёмов никто не ждёт: неделя не
+      говорит «N из 4 приёмов» и не оговаривает неполные дни. По умолчанию true. */
+  menuCycleEnabled?: boolean
   onClose: () => void
 }
 
@@ -71,6 +74,19 @@ function mealsWord(n: number): string {
     case 3:
     case 4: return 'приёма'
     default: return 'приёмов'
+  }
+}
+
+/** Русское склонение слова «запись» по числу (запись/записи/записей). */
+function entriesWord(n: number): string {
+  const mod100 = n % 100
+  if (mod100 >= 11 && mod100 <= 14) return 'записей'
+  switch (n % 10) {
+    case 1: return 'запись'
+    case 2:
+    case 3:
+    case 4: return 'записи'
+    default: return 'записей'
   }
 }
 
@@ -192,7 +208,17 @@ function SummarySection({
   )
 }
 
-function DayRow({ day, isToday, targetKcal }: { day: DaySummary; isToday: boolean; targetKcal: number }) {
+function DayRow({
+  day,
+  isToday,
+  targetKcal,
+  menuCycleEnabled
+}: {
+  day: DaySummary
+  isToday: boolean
+  targetKcal: number
+  menuCycleEnabled: boolean
+}) {
   const label = formatDayLabel(day.date)
 
   if (!day.hasLog) {
@@ -221,8 +247,14 @@ function DayRow({ day, isToday, targetKcal }: { day: DaySummary; isToday: boolea
       </div>
       {ratio !== null && <CoverageBar ratio={ratio} />}
       <span className="week-day__meals">
-        {day.loggedSlots.length} из {SLOTS.length} приёмов
-        {day.extrasCount > 0 && ` · добавлено: ${day.extrasCount}`}
+        {menuCycleEnabled ? (
+          <>
+            {day.loggedSlots.length} из {SLOTS.length} приёмов
+            {day.extrasCount > 0 && ` · добавлено: ${day.extrasCount}`}
+          </>
+        ) : (
+          `${day.loggedSlots.length + day.extrasCount} ${entriesWord(day.loggedSlots.length + day.extrasCount)}`
+        )}
       </span>
     </li>
   )
@@ -354,8 +386,19 @@ function WeekCoverageSection({
   )
 }
 
-export default function WeekSheet({ log, today, targetKcal, targetProteinG, norms, onClose }: WeekSheetProps) {
-  const summary = useMemo(() => weekSummary(log, today), [log, today])
+export default function WeekSheet({
+  log,
+  today,
+  targetKcal,
+  targetProteinG,
+  norms,
+  menuCycleEnabled = true,
+  onClose
+}: WeekSheetProps) {
+  const summary = useMemo(
+    () => weekSummary(log, today, 7, { expectMenuSlots: menuCycleEnabled }),
+    [log, today, menuCycleEnabled]
+  )
   const orderedDays = useMemo(() => [...summary.days].reverse(), [summary.days])
   const deficitRows = useMemo(() => buildDeficitRows(summary.nutrients, norms), [summary.nutrients, norms])
   const coverage = useMemo(() => weekCoverage(summary, norms), [summary, norms])
@@ -374,7 +417,13 @@ export default function WeekSheet({ log, today, targetKcal, targetProteinG, norm
         <div className="card">
           <ul className="week-days">
             {orderedDays.map(day => (
-              <DayRow key={day.date} day={day} isToday={day.date === today} targetKcal={targetKcal} />
+              <DayRow
+                key={day.date}
+                day={day}
+                isToday={day.date === today}
+                targetKcal={targetKcal}
+                menuCycleEnabled={menuCycleEnabled}
+              />
             ))}
           </ul>
         </div>

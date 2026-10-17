@@ -6,6 +6,8 @@ import './ui/layout.css'
 import './ui/summary.css'
 import './ui/meal.css'
 import './ui/sheets.css'
+import './ui/fraction-picker.css'
+import './ui/label.css'
 import App from './ui/App.tsx'
 import { announceUpdateReady } from './ui/swUpdate.ts'
 

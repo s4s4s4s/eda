@@ -86,7 +86,7 @@ function replaceDay(state: AppState, date: string, day: DayLog): AppState {
 /** Записывает добавленную еду в день date. Запись с тем же id перезаписывается
     (повторное сохранение одного разбора не удваивает калории), новая встаёт в
     конец — порядок списка на экране повторяет порядок добавления. */
-export function addExtra(state: AppState, date: string, extra: ExtraLogEntry, cycleDayForDate: number): AppState {
+export function addExtra(state: AppState, date: string, extra: ExtraLogEntry, cycleDayForDate: number | null): AppState {
   const existingDay: DayLog = state.log[date] ?? { cycleDay: cycleDayForDate, meals: {}, extras: [] }
   const known = existingDay.extras.findIndex(e => e.id === extra.id)
   const extras = known === -1
@@ -103,6 +103,19 @@ export function removeExtra(state: AppState, date: string, extraId: string): App
   if (!existingDay) return state
   const extras = existingDay.extras.filter(e => e.id !== extraId)
   if (extras.length === existingDay.extras.length) return state
+  return replaceDay(state, date, { cycleDay: existingDay.cycleDay, meals: existingDay.meals, extras })
+}
+
+/** Правит долю одной добавленной записи (шкала процентов в журнале). Снапшот
+    КБЖУ и нутриентов остаётся прежним: полная порция × новая доля. Записи с
+    таким id нет - состояние возвращается тем же объектом, как в removeExtra. */
+export function setExtraFraction(state: AppState, date: string, extraId: string, fraction: number): AppState {
+  if (!Number.isFinite(fraction) || fraction <= 0 || fraction > 1) {
+    throw new Error(`setExtraFraction: доля обязана быть в (0, 1], получено ${fraction}`)
+  }
+  const existingDay = state.log[date]
+  if (!existingDay || !existingDay.extras.some(e => e.id === extraId)) return state
+  const extras = existingDay.extras.map(e => (e.id === extraId ? { ...e, fraction } : e))
   return replaceDay(state, date, { cycleDay: existingDay.cycleDay, meals: existingDay.meals, extras })
 }
 

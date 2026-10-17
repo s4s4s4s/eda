@@ -146,8 +146,10 @@ function roundTripChecks(): void {
   original.foodRequests = [
     {
       id: '99999999-8888-4777-8666-555555555555',
+      kind: 'text',
       text: 'сырники со сметаной',
       grams: null,
+      fraction: 1,
       askedAt: '2026-08-05T21:30:00',
       target: { date: '2026-08-05', slot: 'snack' },
       status: 'pending',
@@ -166,7 +168,7 @@ function roundTripChecks(): void {
   assert(restored.source === 'stored', `source ожидался 'stored', получено '${restored.source}'`)
   assert(restored.dropped === 0, `round-trip не имеет права ничего потерять, dropped = ${restored.dropped}`)
   assert(JSON.stringify(restored.state) === JSON.stringify(original), 'round-trip serialize/deserialize должен вернуть то же состояние')
-  group('serialize -> deserialize: round-trip версии 5 сохраняет состояние целиком (добавленная еда, книга, очередь заказов)')
+  group('serialize -> deserialize: round-trip версии 6 сохраняет состояние целиком (добавленная еда, книга, очередь заказов)')
 }
 
 // ---- мусор не роняет ------------------------------------------------------
@@ -499,6 +501,255 @@ function migrationV4ToV5Checks(): void {
   assert(dayTotal(day).kcal === 700 + 450, `сумма дня после миграции ожидалась 1150 ккал, получено ${dayTotal(day).kcal}`)
 
   group('deserialize: миграция v4 -> v5 достраивает extras/customFoods/foodRequests/shturmanToken пустыми, ничего не теряя')
+}
+
+// ---- версия 5 -> 6: наклейки Avocado, дневник без цикла меню ----------------
+
+/** Глубокое равенство без оглядки на порядок ключей: санитизация собирает
+    объекты заново, и порядок полей в них не договор. Сравниваются JSON-значения. */
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false
+  if (Array.isArray(a) !== Array.isArray(b)) return false
+  const ka = Object.keys(a as object).sort()
+  const kb = Object.keys(b as object).sort()
+  if (ka.length !== kb.length || ka.some((key, i) => key !== kb[i])) return false
+  return ka.every(key => deepEqual((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]))
+}
+
+function migrationV5ToV6Checks(): void {
+  const full = snapshotOfFirstKeys(NUTRIENT_KEYS.length)
+  const log = {
+    '2026-09-10': {
+      cycleDay: 3,
+      meals: {
+        breakfast: storedEntry('breakfast', { nutrients: full, productsRevision: '2026-08-17' }),
+        lunch: storedEntry('lunch', { status: 'partial', fraction: 0.5, nutrients: full })
+      },
+      extras: [
+        storedExtra('dobavka-menu', { nutrients: full, productsRevision: '2026-08-17' }),
+        storedExtra('dobavka-svoya', {
+          kind: 'custom', customFoodId: 'food-1', source: 'USDA SR Legacy 2018-04', nutrients: full,
+          mealId: undefined, fromCycleDay: undefined, fromSlot: undefined
+        })
+      ]
+    }
+  }
+  const customFoods = {
+    'food-1': storedCustomFood('food-1')
+  }
+  const foodRequests = [
+    {
+      id: 'req-pending', text: 'сырники', grams: 200, askedAt: '2026-09-10T21:00:00',
+      target: { date: '2026-09-10', slot: 'snack' }, status: 'pending', pcAgo: 8
+    },
+    {
+      id: 'req-failed', text: 'плов', grams: null, askedAt: '2026-09-10T21:05:00',
+      target: { date: '2026-09-10', slot: 'dinner' }, status: 'failed', error: 'не нашлось', pcAgo: null
+    }
+  ]
+  const preferences = { ingredients: { losos: 'love' }, dishes: { ovsyanka: { score: 8, comment: 'вкусно', ratedAt: '2026-09-02' } } }
+  const settings = {
+    cycleStartDate: '2026-08-20', cycleShift: 1, targetKcal: 3100, targetProteinG: 130,
+    shortcutName: 'ЗаписатьЕду', cycleStartConfirmed: true, shturmanToken: 'sekret'
+  }
+  // сериализованная строка версии 5 целиком: именно её отдаёт localStorage старой сборки
+  const v5Text = JSON.stringify({ version: 5, settings, log, preferences, customFoods, foodRequests })
+
+  const result = deserialize(v5Text)
+  const state = result.state
+  assert(result.source === 'stored', `source ожидался 'stored', получено '${result.source}'`)
+  assert(result.dropped === 0, `миграция v5 -> v6 не имеет права ничего потерять, dropped = ${result.dropped}`)
+  assert(state.version === 6 && state.version === CURRENT_VERSION, `версия после миграции ожидалась 6, получено ${state.version}`)
+
+  assert(deepEqual(state.settings, { ...settings, menuCycleEnabled: false, targetFatG: 0, targetCarbsG: 0 }),
+    `настройки: остальные поля нетронуты, новые false/0/0, получено ${JSON.stringify(state.settings)}`)
+  assert(deepEqual(state.log, JSON.parse(JSON.stringify(log))), 'журнал (приёмы и extras menu/custom) после миграции равен исходному')
+  assert(deepEqual(state.preferences, preferences), 'книга предпочтений после миграции равна исходной')
+  assert(deepEqual(state.customFoods, JSON.parse(JSON.stringify(customFoods))), 'книга своей еды после миграции равна исходной')
+  assert(deepEqual(state.foodRequests, foodRequests.map(r => ({ ...r, kind: 'text', fraction: 1 }))),
+    `очередь: исходные заказы с добавленными kind 'text' и fraction 1, получено ${JSON.stringify(state.foodRequests)}`)
+  assert(state.customFoods['food-1'].label === undefined && state.customFoods['food-1'].fit === undefined,
+    'у еды версии 5 наклейки нет и она не выдумывается')
+
+  // и повторный круг не меняет ничего: версия 6 стабильна
+  const again = deserialize(serialize(state))
+  assert(again.dropped === 0 && deepEqual(again.state, state), 'повторный serialize/deserialize состояния 6 даёт то же состояние')
+  group('deserialize: миграция v5 -> v6 достраивает настройки false/0/0 и заказы kind/fraction, ничего не теряя')
+}
+
+// ---- наклейки: запись журнала, еда, заказ переживают round-trip -----------------
+
+/** Валидные факты с наклейки (реальная наклейка Avocado, 370 г). */
+function storedLabelFacts(extra: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    titleHy: 'Հավի շոգեխաշած',
+    basis: 'portion',
+    portionG: 370,
+    printed: { kcal: 442.1, p: 47.7, f: 19.7, c: 18.5 },
+    perPortion: { kcal: 442.1, p: 47.7, f: 19.7, c: 18.5 },
+    ingredients: ['куриное филе', 'морковь', 'лук'],
+    remark: 'КБЖУ напечатано на порцию',
+    dishNo: 3,
+    ...extra
+  }
+}
+
+function storedFit(extra: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    usdaKbju: { kcal: 430, p: 45, f: 18, c: 20 },
+    deviationPct: { kcal: -2.7, p: -5.7, f: -8.6, c: 8.1 },
+    massDeviationPct: 0.3,
+    poor: false,
+    ...extra
+  }
+}
+
+function storedLabelFood(id: string, food: Record<string, unknown> = {}): Record<string, unknown> {
+  return storedCustomFood(id, {
+    title: 'Тушёная курица',
+    source: 'Наклейка + USDA SR Legacy 2018-04',
+    spec: 2,
+    request: { text: '', grams: null },
+    label: storedLabelFacts(),
+    fit: storedFit(),
+    ...food
+  })
+}
+
+function storedLabelExtra(id: string, extra: Record<string, unknown> = {}): Record<string, unknown> {
+  return storedExtra(id, {
+    kind: 'label', customFoodId: 'food-label', source: 'Наклейка + USDA SR Legacy 2018-04', titleHy: 'Հավի շոգեխաշած',
+    kbju: { kcal: 442.1, p: 47.7, f: 19.7, c: 18.5 },
+    mealId: undefined, fromCycleDay: undefined, fromSlot: undefined,
+    ...extra
+  })
+}
+
+function labelEntriesRoundTripChecks(): void {
+  const state = defaultState()
+  state.settings.cycleStartDate = '2026-09-01'
+  state.settings.menuCycleEnabled = true
+  state.settings.targetFatG = 90
+  state.settings.targetCarbsG = 350
+  const labelFood = storedLabelFood('food-label') as unknown as AppState['customFoods'][string]
+  state.customFoods['food-label'] = labelFood
+  state.log['2026-09-12'] = {
+    cycleDay: null,
+    meals: {},
+    extras: [{ ...storedLabelExtra('label-1', { fraction: 0.75 }), nutrients: emptyNutrientTotals() }] as unknown as AppState['log'][string]['extras']
+  }
+  state.foodRequests.push({
+    id: 'req-label', kind: 'label', text: '', grams: null, fraction: 0.5, askedAt: '2026-09-12T13:00:00',
+    target: { date: '2026-09-12', slot: 'lunch' }, status: 'done', pcAgo: 12,
+    result: {
+      ok: true, spec: 2, source: 'Наклейка + USDA SR Legacy 2018-04', title: 'Тушёная курица',
+      request: { text: '', grams: null }, components: [],
+      kbju: { kcal: 442.1, p: 47.7, f: 19.7, c: 18.5 }, nutrients: emptyNutrientTotals(),
+      label: storedLabelFacts() as unknown as NonNullable<AppState['customFoods'][string]['label']>
+    }
+  })
+
+  const result = deserialize(serialize(state))
+  assert(result.source === 'stored' && result.dropped === 0, `round-trip состояния 6 с наклейкой: dropped = ${result.dropped}, source = ${result.source}`)
+  assert(deepEqual(result.state, JSON.parse(JSON.stringify(state))), 'состояние 6 с записью label, едой label+fit и заказом label переживает round-trip без потерь')
+
+  const extra = result.state.log['2026-09-12'].extras[0]
+  assert(extra.kind === 'label' && extra.titleHy === 'Հավի շոգեխաշած' && extra.customFoodId === 'food-label', 'запись label сохранила titleHy и ссылку на еду')
+  const food = result.state.customFoods['food-label']
+  assert(food.label?.perPortion.kcal === 442.1 && food.fit?.poor === false && food.components.length === 1, 'еда с label+fit цела вместе с составом')
+  const req = result.state.foodRequests[0]
+  assert(req.kind === 'label' && req.text === '' && req.fraction === 0.5, 'заказ label с пустым text и долей 0.5 цел')
+  assert(req.result?.label?.titleHy === 'Հավի շոգեխաշած' && req.result.components.length === 0,
+    'результат заказа label с пустым составом цел: наклейка даёт КБЖУ и без разложения')
+  assert(result.state.settings.menuCycleEnabled === true && result.state.settings.targetFatG === 90 && result.state.settings.targetCarbsG === 350,
+    'новые настройки переживают round-trip')
+  group('serialize/deserialize: запись label, еда label+fit и заказ label переживают round-trip без потерь')
+}
+
+function labelDishNoChecks(): void {
+  const dishNoOf = (dishNo: unknown, hasKey = true): { dishNo: number | null | undefined; dropped: number; kept: boolean } => {
+    const label = storedLabelFacts()
+    if (hasKey) label.dishNo = dishNo
+    else delete label.dishNo
+    const result = deserialize(JSON.stringify({
+      version: CURRENT_VERSION,
+      settings: defaultState().settings,
+      log: {},
+      preferences: { ingredients: {}, dishes: {} },
+      customFoods: { 'food-label': storedLabelFood('food-label', { label }) },
+      foodRequests: []
+    }))
+    const food = result.state.customFoods['food-label']
+    return { dishNo: food?.label?.dishNo, dropped: result.dropped, kept: !!food }
+  }
+
+  const ok = dishNoOf(3)
+  assert(ok.kept && ok.dishNo === 3 && ok.dropped === 0, `dishNo 3 обязан пережить round-trip, получено ${JSON.stringify(ok)}`)
+  assert(dishNoOf(1).dishNo === 1 && dishNoOf(12).dishNo === 12, 'границы 1 и 12 допустимы')
+  for (const bad of [99, 2.5, 0, 13, -1, '3', NaN, true, {}]) {
+    const r = dishNoOf(bad)
+    assert(r.kept && r.dishNo === null && r.dropped === 0, `битый dishNo ${JSON.stringify(bad)} обязан стать null, не унося еду: ${JSON.stringify(r)}`)
+  }
+  assert(dishNoOf(null).dishNo === null, 'явный null остаётся null')
+  const absent = dishNoOf(undefined, false)
+  assert(absent.kept && absent.dishNo === undefined, 'у еды без dishNo поле не выдумывается')
+  group('sanitizeLabelFacts: dishNo 3 переживает round-trip, 99 и 2.5 становятся null, еда не выпадает')
+}
+
+function labelGarbageChecks(): void {
+  const raw = {
+    version: CURRENT_VERSION,
+    settings: { ...defaultState().settings, shturmanToken: 'sekret' },
+    log: {
+      '2026-09-12': {
+        cycleDay: null,
+        meals: {},
+        extras: [
+          storedLabelExtra('label-celaya'),
+          storedLabelExtra('label-bez-titleHy', { titleHy: undefined }),
+          storedLabelExtra('label-bez-ssylki', { customFoodId: '' })
+        ]
+      }
+    },
+    preferences: { ingredients: {}, dishes: {} },
+    customFoods: {
+      'food-celaya': storedLabelFood('food-celaya'),
+      'food-basis-kg': storedLabelFood('food-basis-kg', { label: storedLabelFacts({ basis: 'kg' }) }),
+      'food-minus': storedLabelFood('food-minus', { label: storedLabelFacts({ perPortion: { kcal: -1, p: 1, f: 1, c: 1 } }) }),
+      'food-bityy-fit': storedLabelFood('food-bityy-fit', { fit: storedFit({ poor: 'da' }) }),
+      'food-pustoy-sostav-bez-label': storedLabelFood('food-pustoy-sostav-bez-label', { label: undefined, fit: undefined, components: [] })
+    },
+    foodRequests: [
+      { id: 'req-label-ok', kind: 'label', text: '', grams: null, fraction: 0.5, askedAt: '2026-09-12T13:00:00', target: { date: '2026-09-12', slot: 'lunch' }, status: 'pending', pcAgo: null },
+      { id: 'req-label-fraction-0', kind: 'label', text: '', grams: null, fraction: 0, askedAt: '2026-09-12T13:00:00', target: { date: '2026-09-12', slot: 'lunch' }, status: 'pending', pcAgo: null },
+      { id: 'req-label-bez-fraction', kind: 'label', text: '', grams: null, askedAt: '2026-09-12T13:00:00', target: { date: '2026-09-12', slot: 'lunch' }, status: 'pending', pcAgo: null },
+      { id: 'req-text-pustoy', kind: 'text', text: '', grams: null, fraction: 1, askedAt: '2026-09-12T13:00:00', target: { date: '2026-09-12', slot: 'lunch' }, status: 'pending', pcAgo: null },
+      { id: 'req-chuzhoy-kind', kind: 'video', text: 'суп', grams: null, fraction: 1, askedAt: '2026-09-12T13:00:00', target: { date: '2026-09-12', slot: 'lunch' }, status: 'pending', pcAgo: null },
+      { id: 'req-text-fraction-musor', text: 'суп', grams: null, fraction: 7, askedAt: '2026-09-12T13:00:00', target: { date: '2026-09-12', slot: 'lunch' }, status: 'pending', pcAgo: null }
+    ]
+  }
+
+  const result = deserialize(JSON.stringify(raw))
+  const state = result.state
+
+  const extraIds = state.log['2026-09-12'].extras.map(e => e.id)
+  assert(JSON.stringify(extraIds) === JSON.stringify(['label-celaya']), `из записей label уцелеть обязана только целая, получено ${JSON.stringify(extraIds)}`)
+
+  assert(JSON.stringify(Object.keys(state.customFoods).sort()) === JSON.stringify(['food-bityy-fit', 'food-celaya']),
+    `из еды уцелеть обязаны целая и с битым fit, получено ${JSON.stringify(Object.keys(state.customFoods))}`)
+  assert(state.customFoods['food-bityy-fit'].fit === undefined && state.customFoods['food-bityy-fit'].label?.basis === 'portion',
+    'битый fit отбрасывается, а наклейка и сама еда остаются: fit пересчитывается клиентом')
+  assert(state.customFoods['food-celaya'].fit?.deviationPct.p === -5.7, 'целый fit сохранился дословно')
+
+  const reqs = state.foodRequests
+  assert(JSON.stringify(reqs.map(r => r.id)) === JSON.stringify(['req-label-ok', 'req-text-fraction-musor']),
+    `из заказов уцелеть обязаны целый label и текстовый с мусорной долей, получено ${JSON.stringify(reqs.map(r => r.id))}`)
+  assert(reqs[1].kind === 'text' && reqs[1].fraction === 1, 'текстовый заказ без достоверной доли получает kind text и долю 1')
+
+  // записи: без titleHy и без ссылки; еда: basis kg, минус, пустой состав без label; заказы: доля 0, нет доли, пустой text, чужой вид
+  assert(result.dropped === 2 + 3 + 4, `отброшенных ожидалось 9 (2 записи + 3 еды + 4 заказа), получено ${result.dropped}`)
+  group('labelGarbage: битая запись label, еда с basis kg, заказ label с долей 0 и текстовый с пустым text выпадают и считаются')
 }
 
 // ---- добавленная еда: битая запись выпадает, соседняя остаётся ---------------
@@ -1029,6 +1280,10 @@ function main(): void {
   migrationV2ToV3Checks()
   migrationV3ToV4Checks()
   migrationV4ToV5Checks()
+  migrationV5ToV6Checks()
+  labelEntriesRoundTripChecks()
+  labelDishNoChecks()
+  labelGarbageChecks()
   droppedExtrasChecks()
   extrasOnlyDaySurvivesChecks()
   customFoodsGarbageChecks()

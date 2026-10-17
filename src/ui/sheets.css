@@ -1,4 +1,4 @@
-/* Шторки: настройки и выгрузка. Обе живут в общей теме — отдельной светлой
+/* Шторки: настройки и выгрузка. Обе живут в общей теме - отдельной светлой
    панели посреди тёмного приложения больше нет. Значения только из токенов
    theme.css, по месту цвета не задаются. */
 
@@ -22,7 +22,7 @@
   animation: sheet-fade var(--dur-sheet) var(--ease);
 }
 
-/* Шторка выезжает снизу — оттуда же, откуда её открыли пальцем. */
+/* Шторка выезжает снизу - оттуда же, откуда её открыли пальцем. */
 .sheet__panel {
   position: relative;
   width: 100%;
@@ -121,6 +121,27 @@
   letter-spacing: .08em;
   text-transform: uppercase;
   color: var(--fg-faint);
+}
+
+/* ---- выключатель в настройках: подпись слева, переключатель справа ---- */
+
+/* Строка внутри .field (SettingsSheet, «Цикл меню повара»). Нажимается вся
+   подпись: label оборачивает строку целиком, поэтому зона нажатия шире
+   самого флажка. */
+.settings-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: var(--tap-min);
+}
+
+.settings-switch__input {
+  flex: none;
+  width: var(--space-6);
+  height: var(--space-6);
+  margin: 0;
+  accent-color: var(--accent);
 }
 
 .cycle-shift {
@@ -262,7 +283,7 @@
   line-height: var(--lh-text);
 }
 
-/* Оговорка к живому каналу: тише кнопки, но читаемо — это не сноска мелким
+/* Оговорка к живому каналу: тише кнопки, но читаемо - это не сноска мелким
    шрифтом внизу договора, а часть того, что человек решает перед нажатием. */
 .export-channel__caveat {
   display: block;
@@ -280,7 +301,7 @@
   color: var(--ok);
 }
 
-/* «Отправлено, но подтверждения ещё нет» — своё состояние, не успех. */
+/* «Отправлено, но подтверждения ещё нет» - своё состояние, не успех. */
 .export-channel__status--pending {
   color: var(--accent);
 }
@@ -505,7 +526,7 @@
   color: var(--fg-dim);
 }
 
-/* День без записей — приглушённая строка, не нулевой день: ни полосы, ни цифр. */
+/* День без записей - приглушённая строка, не нулевой день: ни полосы, ни цифр. */
 .week-day--empty {
   flex-direction: row;
   align-items: baseline;
@@ -537,7 +558,7 @@
   padding: 0;
 }
 
-/* Оговорка про неполные дни над «Итогами недели» — приглушённая строка,
+/* Оговорка про неполные дни над «Итогами недели» - приглушённая строка,
    как и соседние подписи (.week-day__meals, .export-nutrient__hint): это
    уточнение к цифрам, а не сама цифра. */
 .week-section__caveat {
@@ -557,7 +578,7 @@
   font-style: italic;
 }
 
-/* «Итоги недели»: все позиции, сгруппированные так же, как в MealScreen —
+/* «Итоги недели»: все позиции, сгруппированные так же, как в MealScreen -
    первая группа не получает лишний отступ сверху (.nutrient-group уже несёт
    margin-top var(--space-4), она рассчитана на соседей внутри одного списка). */
 .week-coverage .nutrient-group:first-child {
@@ -597,7 +618,7 @@
   border-bottom: none;
 }
 
-/* Вся строка — цель нажатия: раскрывает RatingEditor на месте, без перехода
+/* Вся строка - цель нажатия: раскрывает RatingEditor на месте, без перехода
    на отдельный экран. */
 .book-dish__head {
   display: flex;
@@ -631,7 +652,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* «Не оценено» — отдельное состояние, не ноль и не прочерк: приглушённый
+/* «Не оценено» - отдельное состояние, не ноль и не прочерк: приглушённый
    курсив, тот же приём, что и у «нет данных» в остальном приложении. */
 .book-dish__rating--empty {
   color: var(--fg-faint);
@@ -688,7 +709,7 @@
   gap: var(--space-2);
 }
 
-/* Точка «сегодня» на чипе дня — тот же приём, что и slot-switch__now-dot на
+/* Точка «сегодня» на чипе дня - тот же приём, что и slot-switch__now-dot на
    главном экране: отдельный признак «идёт сейчас», который может не совпадать
    с выбранным. */
 .add-from-menu__today-dot {
@@ -802,7 +823,7 @@
   color: var(--danger);
 }
 
-/* Без токена — только объяснение и путь в настройки, никакой формы. */
+/* Без токена - только объяснение и путь в настройки, никакой формы. */
 .custom-food-no-token {
   display: flex;
   flex-direction: column;
@@ -843,8 +864,25 @@
 }
 
 .custom-food-book-row__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
   font-size: var(--text-17);
   font-weight: 600;
+}
+
+.custom-food-book-row__badge {
+  font-size: var(--text-13);
+  font-weight: 400;
+  color: var(--fg-dim);
+}
+
+.custom-food-book-row__hy {
+  flex-basis: 100%;
+  font-size: var(--text-13);
+  font-weight: 400;
+  color: var(--fg-dim);
 }
 
 .custom-food-book-row__actions {
@@ -910,20 +948,37 @@
   font-weight: 600;
 }
 
-.custom-food-request__text {
+/* Общая строка состояния заказа (RequestStatus.tsx): внутри карточки шторки и
+   внутри очереди в журнале дня. */
+.request-status {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.request-status__text {
   font-size: var(--text-15);
   font-weight: 600;
 }
 
-.custom-food-request__status {
+.request-status__message {
   margin: 0;
   font-size: var(--text-13);
   line-height: var(--lh-text);
   color: var(--fg-dim);
 }
 
-.custom-food-request--failed .custom-food-request__status {
+.request-status--stuck .request-status__message {
   color: var(--danger);
+}
+
+.request-status__actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.request-status__actions .btn {
+  flex: 1;
 }
 
 .custom-food-request__actions {
@@ -1004,4 +1059,42 @@
 
 .add-from-menu__submit {
   width: 100%;
+}
+
+/* Блок «С наклейки» в готовом разборе: напечатанное, а не насчитанное по USDA. */
+.custom-food-label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-8);
+}
+
+.custom-food-label__title {
+  margin: 0;
+  font-size: var(--text-13);
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+}
+
+.custom-food-label__hy {
+  margin: 0;
+  font-size: var(--text-15);
+  font-weight: 600;
+}
+
+.custom-food-label__line {
+  margin: 0;
+  font-size: var(--text-15);
+  line-height: var(--lh-text);
+}
+
+.custom-food-label__note {
+  margin: 0;
+  font-size: var(--text-13);
+  line-height: var(--lh-text);
+  color: var(--fg-faint);
 }

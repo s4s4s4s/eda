@@ -1,6 +1,7 @@
-/* Шторка настроек: дата старта цикла, ручной сдвиг, цель по калориям, цель по
-   белку, имя команды Shortcuts, честная строка про хранение данных. Каркас
-   (подложка, панель, хват, шапка, закрытие) — общий, в Sheet.tsx. */
+/* Шторка настроек: выключатель цикла меню повара, дата старта цикла и ручной
+   сдвиг (только при включённом цикле), цели по калориям, белку, жирам и
+   углеводам, имя команды Shortcuts, честная строка про хранение данных.
+   Каркас (подложка, панель, хват, шапка, закрытие) общий, в Sheet.tsx. */
 
 import { useState } from 'react'
 import { cycleDay, todayLocal } from '../core/cycle.ts'
@@ -57,6 +58,7 @@ function dishesWord(n: number): string {
 
 export default function SettingsSheet({ settings, cycleDays, log, customFoods, onChange, onClearLog, onClose }: SettingsSheetProps) {
   const today = todayLocal(new Date())
+  const cycleOn = settings.menuCycleEnabled
   const todayCycleDay = cycleDay(settings.cycleStartDate, today, settings.cycleShift, cycleDays)
   const footprint = logFootprint(log, customFoods)
 
@@ -68,6 +70,14 @@ export default function SettingsSheet({ settings, cycleDays, log, customFoods, o
     onChange({ ...settings, ...partial })
   }
 
+  /* Цель в граммах: пустое поле - это 0, то есть «цели нет», отрицательное
+     число целью быть не может и не принимается. */
+  function patchGrams(key: 'targetFatG' | 'targetCarbsG', raw: string): void {
+    const v = Number(raw)
+    if (!Number.isFinite(v) || v < 0) return
+    patch(key === 'targetFatG' ? { targetFatG: v } : { targetCarbsG: v })
+  }
+
   return (
     <Sheet title="Настройки" onClose={onClose}>
       {/* Поля сгруппированы в карточки (iOS grouped): «Цикл», «Цели»,
@@ -76,27 +86,53 @@ export default function SettingsSheet({ settings, cycleDays, log, customFoods, o
       <div className="card settings-group">
         <h2 className="settings-group__title">Цикл</h2>
         <label className="field">
-          <span className="field__label">Дата первого дня цикла</span>
-          <input
-            type="date"
-            className="field__input"
-            value={settings.cycleStartDate}
-            onChange={e => patch({ cycleStartDate: e.target.value })}
-          />
+          <span className="settings-switch">
+            <span className="field__label">Цикл меню повара</span>
+            <input
+              type="checkbox"
+              role="switch"
+              className="settings-switch__input"
+              aria-label="Цикл меню повара"
+              checked={cycleOn}
+              onChange={e => patch({ menuCycleEnabled: e.target.checked })}
+            />
+          </span>
+          <span className="field__hint">
+            {cycleOn
+              ? 'Сводка показывает карточки приёмов по меню повара на сегодняшний день цикла.'
+              : 'Еда записывается по наклейкам и своей едой, без меню повара и карточек приёмов.'}
+          </span>
         </label>
 
-        <div className="field">
-          <span className="field__label">Сдвинуть цикл</span>
-          <div className="cycle-shift">
-            <button type="button" className="btn btn--secondary" onClick={() => patch({ cycleShift: settings.cycleShift - 1 })}>
-              −1 день
-            </button>
-            <span className="cycle-shift__today">сегодня - день {todayCycleDay} из {cycleDays}</span>
-            <button type="button" className="btn btn--secondary" onClick={() => patch({ cycleShift: settings.cycleShift + 1 })}>
-              +1 день
-            </button>
-          </div>
-        </div>
+        {/* Дата старта и сдвиг имеют смысл только при цикле: без него день
+            цикла нигде не показывается и ни во что не пишется. Значения при
+            выключении не стираются и вернутся вместе с циклом. */}
+        {cycleOn && (
+          <>
+            <label className="field">
+              <span className="field__label">Дата первого дня цикла</span>
+              <input
+                type="date"
+                className="field__input"
+                value={settings.cycleStartDate}
+                onChange={e => patch({ cycleStartDate: e.target.value })}
+              />
+            </label>
+
+            <div className="field">
+              <span className="field__label">Сдвинуть цикл</span>
+              <div className="cycle-shift">
+                <button type="button" className="btn btn--secondary" onClick={() => patch({ cycleShift: settings.cycleShift - 1 })}>
+                  −1 день
+                </button>
+                <span className="cycle-shift__today">сегодня - день {todayCycleDay} из {cycleDays}</span>
+                <button type="button" className="btn btn--secondary" onClick={() => patch({ cycleShift: settings.cycleShift + 1 })}>
+                  +1 день
+                </button>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       <div className="card settings-group">
@@ -132,6 +168,34 @@ export default function SettingsSheet({ settings, cycleDays, log, customFoods, o
           <span className="field__hint">
             Личная цель под набор массы. Норма, которой хватает, чтобы не заболеть, ниже - 56 г,
             но она про другое.
+          </span>
+        </label>
+
+        <label className="field">
+          <span className="field__label">Цель по жирам, г/сут</span>
+          <input
+            type="number"
+            className="field__input"
+            value={settings.targetFatG}
+            min={0}
+            step={5}
+            onChange={e => patchGrams('targetFatG', e.target.value)}
+          />
+        </label>
+
+        <label className="field">
+          <span className="field__label">Цель по углеводам, г/сут</span>
+          <input
+            type="number"
+            className="field__input"
+            value={settings.targetCarbsG}
+            min={0}
+            step={5}
+            onChange={e => patchGrams('targetCarbsG', e.target.value)}
+          />
+          <span className="field__hint">
+            0 - без цели: на сводке только число, без полосы. При включённом цикле меню
+            жиры и углеводы сравниваются с планом меню на день, а не с этими целями.
           </span>
         </label>
       </div>

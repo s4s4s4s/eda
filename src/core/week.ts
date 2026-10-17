@@ -116,7 +116,7 @@ function addDaysLocal(dateStr: string, offsetDays: number): string {
    ключа даты в дневнике. Ключ переживает и отмену последней записи в старых
    хранилищах, и санитизацию, выбросившую все записи дня как битые; день с нулём
    приёмов, посчитанный записанным, вошёл бы в средние нулём и занизил их. */
-function summarizeDay(date: string, dayLog: DayLog | undefined): DaySummary {
+function summarizeDay(date: string, dayLog: DayLog | undefined, expectMenuSlots: boolean): DaySummary {
   /* Добавленная еда делает день записанным наравне с приёмом: день, в котором
      человек записал только съеденный сверх меню десерт, — день с данными, и
      его калории обязаны войти в средние. Статусы приёмов при этом не
@@ -135,7 +135,8 @@ function summarizeDay(date: string, dayLog: DayLog | undefined): DaySummary {
     }
   }
   const loggedSlots = SLOTS.filter((slot) => dayLog.meals[slot] !== undefined)
-  const missingSlots = SLOTS.filter((slot) => dayLog.meals[slot] === undefined)
+  /* Без цикла меню приёмов никто не ждёт: нечего считать пропущенным. */
+  const missingSlots = expectMenuSlots ? SLOTS.filter((slot) => dayLog.meals[slot] === undefined) : []
   return {
     date,
     cycleDay: dayLog.cycleDay,
@@ -149,12 +150,21 @@ function summarizeDay(date: string, dayLog: DayLog | undefined): DaySummary {
 }
 
 /** Недельная (или dayCount-дневная) сводка дневника, оканчивающаяся на endDate включительно.
-    День без записей присутствует в days с hasLog: false, но не входит ни в одно среднее. */
-export function weekSummary(log: AppState['log'], endDate: string, dayCount = 7): WeekSummary {
+    День без записей присутствует в days с hasLog: false, но не входит ни в одно среднее.
+    expectMenuSlots === false (цикл меню выключен): у записанного дня missingSlots пуст,
+    день не бывает неполным, expectedSlots не растёт, а partialDays в weekCoverage не
+    получает вклада от пропущенных приёмов. По умолчанию ждём все четыре приёма. */
+export function weekSummary(
+  log: AppState['log'],
+  endDate: string,
+  dayCount = 7,
+  opts: { expectMenuSlots?: boolean } = {}
+): WeekSummary {
+  const expectMenuSlots = opts.expectMenuSlots ?? true
   const days: DaySummary[] = []
   for (let i = dayCount - 1; i >= 0; i--) {
     const date = addDaysLocal(endDate, -i)
-    days.push(summarizeDay(date, log[date]))
+    days.push(summarizeDay(date, log[date], expectMenuSlots))
   }
 
   const loggedDays = days.filter((d) => d.hasLog)
@@ -165,7 +175,7 @@ export function weekSummary(log: AppState['log'], endDate: string, dayCount = 7)
 
   const incompleteDays = loggedDays.filter((d) => d.missingSlots.length > 0).length
   const loggedSlots = loggedDays.reduce((sum, d) => sum + d.loggedSlots.length, 0)
-  const expectedSlots = daysWithLog * SLOTS.length
+  const expectedSlots = expectMenuSlots ? daysWithLog * SLOTS.length : 0
 
   const nutrients: WeekNutrient[] = NUTRIENT_KEYS.map((key) => {
     let sum = 0

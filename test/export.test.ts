@@ -16,6 +16,7 @@ import { CSV_FALLBACK_NOTE, CSV_NOT_A_DAY_ERROR, csvChannel } from '../src/core/
 import { buildShortcutUrl, healthNutrients, healthShortcutChannel, NO_HEALTHKIT_TYPE, readCallback } from '../src/core/export/health-shortcut.ts'
 import { buildChannels, sendViaChannel, SKIPPED_MEAL_REASON } from '../src/core/export/index.ts'
 import type { ExtraLogEntry, Kbju, MealLogEntry } from '../src/core/types.ts'
+import { fractionFromPercent, fractionLabel, percentFromFraction, PERCENT_PRESETS } from '../src/ui/fractions.ts'
 
 let passed = 0
 function assert(cond: boolean, msg: string): void {
@@ -174,6 +175,42 @@ function dayClipboardExtrasChecks(): void {
   assert(text.indexOf('Омлет') < text.indexOf('+ Тирамису, порция'), 'добавленное идёт после приёмов')
   assert(text.indexOf('+ Обед дня 5') < text.indexOf('Итого'), 'итог остаётся последним числом дня')
   group('dayClipboardText: добавленная еда печатается строками «+ название (доля)» съеденными числами')
+}
+
+// ---- доля в процентах: подписи и шкала ---------------------------------------
+
+/** Подпись доли добавки в тексте дня (extraFractionSuffix) проверяется через
+    dayClipboardText: функция не экспортируется, а её контракт - «33%» / «3/4». */
+function fractionPercentChecks(): void {
+  const extras = [
+    extraEntry({ id: 'x-1', title: 'Треть', fraction: 0.33 }),
+    extraEntry({ id: 'x-2', title: 'Три четверти', fraction: 0.75 })
+  ]
+  const text = dayClipboardText(dayPayload([], kbju(0, 0, 0, 0), undefined, extras))
+  assert(text.includes('+ Треть (33%)'), `доля 0.33 печатается «33%», получено:
+${text}`)
+  assert(text.includes('+ Три четверти (3/4)'), `доля 0.75 печатается «3/4», получено:
+${text}`)
+
+  assert(fractionLabel(1) === 'целиком', `fractionLabel(1): ${fractionLabel(1)}`)
+  assert(fractionLabel(0.75) === '3/4' && fractionLabel(0.5) === '1/2' && fractionLabel(0.25) === '1/4', 'три доли шкалы читаются дробью')
+  assert(fractionLabel(0.8) === '80%', `fractionLabel(0.8): ${fractionLabel(0.8)}`)
+  assert(fractionLabel(0.33) === '33%', `fractionLabel(0.33): ${fractionLabel(0.33)}`)
+
+  assert(fractionFromPercent(0) === null, 'ноль процентов не доля')
+  assert(fractionFromPercent(101) === null, '101% не доля')
+  assert(fractionFromPercent(-5) === null, 'отрицательный процент не доля')
+  assert(fractionFromPercent(50.5) === null, 'нецелый процент отклоняется')
+  assert(fractionFromPercent(Number.NaN) === null, 'NaN отклоняется')
+  assert(fractionFromPercent(1) === 0.01 && fractionFromPercent(100) === 1, 'границы 1 и 100 допустимы')
+  assert(fractionFromPercent(80) === 0.8, 'целый процент превращается в долю')
+
+  assert(percentFromFraction(0.8) === 80 && percentFromFraction(0.333) === 33, 'доля округляется до целого процента')
+  assert(PERCENT_PRESETS.join(',') === '25,50,75,100', `быстрые значения: ${PERCENT_PRESETS.join(',')}`)
+  for (const pct of PERCENT_PRESETS) {
+    assert(percentFromFraction(fractionFromPercent(pct) as number) === pct, `быстрое значение ${pct} обратимо`)
+  }
+  group('доля в процентах: подписи «33%» / «3/4» / «80%», fractionFromPercent отклоняет 0, 101, нецелые')
 }
 
 // ---- format.ts: CSV ----------------------------------------------------------
@@ -624,6 +661,7 @@ async function main(): Promise<void> {
   mealClipboardTextChecks()
   dayClipboardTextChecks()
   dayClipboardExtrasChecks()
+  fractionPercentChecks()
   csvChecks()
   csvExtrasChecks()
   csvNutrientCellsChecks()

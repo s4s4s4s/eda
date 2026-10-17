@@ -17,7 +17,12 @@
 // сводка дня (рост ккал, полосы прогресса, статус карточки) → «Съел: Завтрак»
 // из карточки сводки, без открытия приёма → каждая шторка из шапки →
 // «Добавить блюдо из другого дня»/«Своя еда» из сводки → широкий экран
-// (боковая колонка вместо горизонтальной полосы). Итог — PNG-файлы,
+// (боковая колонка вместо горизонтальной полосы) → сцена `journal` (цикл
+// выключен: две записи по наклейке с долями 100 % и 60 %, один заказ в очереди,
+// правка доли в журнале, шторка съёмки) → сцена `label-done` (готовый заказ по
+// наклейке в шторке «Своя еда», блок «С наклейки»). Сцены меню идут с
+// seed-состоянием `settings.menuCycleEnabled: true`: по умолчанию цикл выключен
+// и ни карточек приёмов, ни баннера даты цикла на сводке нет. Итог: PNG-файлы,
 // report.json и код возврата: 1, если хоть одна полоса с процентом получила
 // нулевую ширину или высоту, либо какая-то из проверок сценария провалилась.
 import { spawn } from 'node:child_process';
@@ -234,8 +239,15 @@ async function ensureSummary() {
 const report = {};
 let failed = false;
 try {
-  // 1. Первый запуск как есть — баннер про дату цикла, главный экран —
-  // сводка дня (DaySummary), прогресс дня наверху прокручен в кадр.
+  // 1. Первый запуск с включённым циклом меню: баннер про дату цикла, главный
+  // экран это сводка дня (DaySummary), прогресс дня наверху прокручен в кадр.
+  // Приложение пишет начальное состояние в localStorage при первом запуске;
+  // включаем цикл в нём (seed) и перезагружаем: дата цикла остаётся
+  // неподтверждённой, баннер на месте.
+  await goto(URL_APP);
+  await evaluate(`(() => { const k = 'eda.state.v1'; const s = JSON.parse(localStorage.getItem(k));
+    s.settings.menuCycleEnabled = true;
+    localStorage.setItem(k, JSON.stringify(s)); return 'ok'; })()`);
   await goto(URL_APP);
   report.firstRunBanner = await evaluate(`document.querySelector('.cycle-start-notice')?.textContent${squash} ?? null`);
   await evaluate('window.scrollTo(0, 0)');
@@ -245,6 +257,7 @@ try {
   // 2. Дата цикла позавчера — сегодня день 3, приёмы на экране из середины цикла.
   const cycleStart = localDateShifted(-2);
   await evaluate(`(() => { const k = 'eda.state.v1'; const s = JSON.parse(localStorage.getItem(k));
+    s.settings.menuCycleEnabled = true;
     s.settings.cycleStartDate = ${JSON.stringify(cycleStart)}; s.settings.cycleStartConfirmed = true;
     localStorage.setItem(k, JSON.stringify(s)); return 'ok'; })()`);
   await goto(URL_APP);
@@ -515,7 +528,7 @@ try {
   await evaluate(`(async () => { ${helpers}
     const openBtn = [...document.querySelectorAll('button[aria-label]')].find(b => b.getAttribute('aria-label') === 'Своя еда');
     openBtn.click(); await sleep(500); return 'ok'; })()`);
-  report.customPending = await evaluate(`document.querySelector('.custom-food-request__status')?.textContent${squash} ?? null`);
+  report.customPending = await evaluate(`document.querySelector('.request-status__message')?.textContent${squash} ?? null`);
   if (!report.customPending || !/не в сети/.test(report.customPending)) failed = true;
   await shot(`${String(n++).padStart(2, '0')}-sheet-custom-pending`);
   const pendingClosed = await closeDialog();
@@ -558,6 +571,186 @@ try {
 
   await send('Emulation.setDeviceMetricsOverride', VIEW, S);
   await sleep(200);
+
+  // 10. Сцена `journal`: цикл меню выключен (значение по умолчанию), день из
+  // одних записей по наклейке. Seed: две записи kind 'label' с долями 100 % и
+  // 60 %, в книге своей еды их состав и факты с наклейки, в очереди один
+  // pending-заказ. Мок fetch из сцены 8 остался на странице и отвечает
+  // pending, поэтому заказ не превращается в запись во время снимка.
+  const labelFixture = JSON.parse(
+    readFileSync(path.resolve('test/fixtures/label-result.json'), 'utf8')
+  );
+  const labelFoodOf = (id, title, titleHy, dishNo) => ({
+    id,
+    title,
+    source: labelFixture.source,
+    spec: labelFixture.spec,
+    jobId: `food:${id}`,
+    request: labelFixture.request,
+    components: labelFixture.components,
+    createdAt: new Date().toISOString(),
+    label: { ...labelFixture.label, titleHy, dishNo },
+    fit: labelFixture.fit
+  });
+  const labelExtraOf = (id, food, fraction) => ({
+    id,
+    kind: 'label',
+    slot: 'lunch',
+    fraction,
+    title: food.title,
+    kbju: labelFixture.kbju,
+    nutrients: labelFixture.nutrients,
+    loggedAt: new Date().toISOString(),
+    customFoodId: food.id,
+    source: labelFixture.source,
+    titleHy: food.label.titleHy
+  });
+  const foodA = labelFoodOf('shots-label-food-a', labelFixture.title, labelFixture.label.titleHy, 3);
+  const foodB = labelFoodOf('shots-label-food-b', 'Куриный суп с лапшой', 'Հավի ապուր արիշտայով', 4);
+  const pendingLabelRequest = {
+    id: 'shots-label-pending',
+    kind: 'label',
+    text: '',
+    grams: null,
+    fraction: 1,
+    askedAt: new Date().toISOString(),
+    target: { date: todayLocalDate, slot: 'lunch' },
+    status: 'pending',
+    pcAgo: null
+  };
+  await evaluate(`(() => { const k = 'eda.state.v1'; const s = JSON.parse(localStorage.getItem(k));
+    s.settings.menuCycleEnabled = false;
+    s.settings.shturmanToken = 'shots';
+    s.customFoods = ${JSON.stringify({ [foodA.id]: foodA, [foodB.id]: foodB })};
+    s.log = { ${JSON.stringify(todayLocalDate)}: { cycleDay: null, meals: {}, extras: ${JSON.stringify([
+      labelExtraOf('shots-label-extra-a', foodA, 1),
+      labelExtraOf('shots-label-extra-b', foodB, 0.6)
+    ])} } };
+    s.foodRequests = [${JSON.stringify(pendingLabelRequest)}];
+    localStorage.setItem(k, JSON.stringify(s)); return 'ok'; })()`);
+  await goto(URL_APP);
+  await sleep(800); // первый круг опроса, как в сцене 8
+  await evaluate('window.scrollTo(0, 0)');
+  await sleep(200);
+
+  report.journal = await evaluate(`(() => {
+    const fractions = [...document.querySelectorAll('.day-extras__fraction')].map(b => b.textContent.trim());
+    const primary = document.querySelector('.day-actions button.btn--primary[aria-label="Сфоткать наклейку"]');
+    return {
+      mealCards: document.querySelectorAll('.day-meal').length,
+      hasSlotSwitch: document.querySelector('nav.slot-switch') !== null,
+      hasCycleBanner: document.querySelector('.cycle-start-notice') !== null,
+      hasAddFromMenu: document.querySelector('button[aria-label="Добавить блюдо из другого дня"]') !== null,
+      hasActionsBar: document.querySelector('.day-actions') !== null,
+      hasCameraButton: primary !== null,
+      fractions,
+      pendingRows: document.querySelectorAll('.day-extras__pending').length,
+      pendingText: document.querySelector('.day-extras__pending')?.textContent${squash} ?? null,
+      itemMeta: [...document.querySelectorAll('.day-extras__item .day-extras__meta')].map(m => m.textContent${squash})
+    };
+  })()`);
+  const journal = report.journal;
+  if (journal.mealCards !== 0 || journal.hasSlotSwitch || journal.hasCycleBanner || journal.hasAddFromMenu) failed = true;
+  if (!journal.hasActionsBar || !journal.hasCameraButton) failed = true;
+  if (journal.fractions.join('|') !== 'целиком|60%') failed = true;
+  if (journal.pendingRows !== 1 || !/Запрос в очереди/.test(journal.pendingText ?? '')) failed = true;
+  if (!journal.itemMeta.some(t => t.includes('блюдо №3') && t.includes('микро по составу') && t.includes('наклейка ·'))) failed = true;
+  await evaluate(`document.querySelector('.day-extras')?.scrollIntoView({ block: 'start' })`);
+  await sleep(300);
+  await shot(`${String(n++).padStart(2, '0')}-journal`, { full: true });
+
+  // Правка доли в журнале: вторая запись (60 %) раскрывает выбор доли, быстрое
+  // значение 75 % меняет подпись кнопки на «3/4», ккал дня растут.
+  await evaluate('window.scrollTo(0, 0)');
+  const kcalBeforeFraction = await dayEatenKcalNow();
+  report.journalFraction = await evaluate(`(async () => { ${helpers}
+    const fractionBtn = document.querySelectorAll('.day-extras__fraction')[1];
+    if (!fractionBtn) throw new Error('нет кнопки доли у второй записи');
+    fractionBtn.click(); await sleep(350);
+    const presets = [...document.querySelectorAll('.fraction-picker__preset')];
+    const labels = presets.map(b => b.textContent.trim());
+    const p75 = presets.find(b => b.textContent.trim() === '75%');
+    if (!p75) throw new Error('нет быстрого значения 75% среди: ' + labels.join(' | '));
+    p75.click(); await sleep(350);
+    return { presets: labels, after: document.querySelectorAll('.day-extras__fraction')[1]?.textContent.trim() ?? null };
+  })()`);
+  const kcalAfterFraction = await dayEatenKcalNow();
+  report.journalFraction.kcalBefore = kcalBeforeFraction;
+  report.journalFraction.kcalAfter = kcalAfterFraction;
+  if (report.journalFraction.presets.join('|') !== '25%|50%|75%|100%') failed = true;
+  if (report.journalFraction.after !== '3/4') failed = true;
+  if (!(kcalBeforeFraction !== null && kcalAfterFraction !== null && kcalAfterFraction > kcalBeforeFraction)) failed = true;
+  await evaluate(`document.querySelector('.fraction-picker')?.scrollIntoView({ block: 'center' })`);
+  await sleep(300);
+  await shot(`${String(n++).padStart(2, '0')}-journal-fraction-picker`);
+
+  // Шторка съёмки открывается кнопкой панели действий.
+  await evaluate('window.scrollTo(0, 0)');
+  await evaluate(`(async () => { const sleep = ms => new Promise(r => setTimeout(r, ms));
+    const b = document.querySelector('.day-actions button[aria-label="Сфоткать наклейку"]');
+    if (!b) throw new Error('нет кнопки «Сфоткать наклейку» в .day-actions');
+    b.click(); await sleep(500); return 'ok'; })()`);
+  report.captureSheet = await evaluate(`document.querySelector('[role=dialog]')?.textContent${squash}.slice(0, 200) ?? null`);
+  if (!report.captureSheet || !report.captureSheet.includes('Сфоткать наклейку')) failed = true;
+  await shot(`${String(n++).padStart(2, '0')}-sheet-label-capture`);
+  if (!(await closeDialog())) {
+    report['sheet:label-capture:closed'] = false;
+    failed = true;
+  }
+
+  // 11. Сцена `label-done`: готовый заказ по наклейке в шторке «Своя еда»
+  // (в приложении такой заказ обычно уже стал записью, строка живёт для случая
+  // отключённой автозаписи). Seed: токен, одна done-заявка kind 'label' с
+  // результатом из test/fixtures/label-result.json (вывод resolve-label.mjs),
+  // pending-заказов нет, поэтому опрос ничего не применяет.
+  const doneLabelRequest = {
+    id: 'shots-label-done',
+    kind: 'label',
+    text: '',
+    grams: null,
+    fraction: 0.6,
+    askedAt: new Date().toISOString(),
+    target: { date: todayLocalDate, slot: 'lunch' },
+    status: 'done',
+    result: labelFixture,
+    pcAgo: 30
+  };
+  await evaluate(`(() => { const k = 'eda.state.v1'; const s = JSON.parse(localStorage.getItem(k));
+    s.settings.shturmanToken = 'shots';
+    s.foodRequests = [${JSON.stringify(doneLabelRequest)}];
+    localStorage.setItem(k, JSON.stringify(s)); return 'ok'; })()`);
+  await goto(URL_APP);
+  await evaluate(`(async () => { const sleep = ms => new Promise(r => setTimeout(r, ms));
+    const b = document.querySelector('button[aria-label="Своя еда"]');
+    if (!b) throw new Error('нет кнопки «Своя еда»');
+    b.click(); await sleep(600); return 'ok'; })()`);
+  report.labelDone = await evaluate(`(() => {
+    const row = document.querySelector('.custom-food-request--done');
+    const block = row?.querySelector('.custom-food-label');
+    return {
+      hasRow: row !== null,
+      blockText: block?.textContent${squash} ?? null,
+      components: row?.querySelectorAll('.custom-food-component').length ?? 0,
+      presets: row?.querySelectorAll('.fraction-picker__preset').length ?? 0,
+      hasRetry: [...(row?.querySelectorAll('button') ?? [])].some(b => b.textContent.trim() === 'Повторить')
+    };
+  })()`);
+  const labelDone = report.labelDone;
+  if (!labelDone.hasRow || !labelDone.blockText) failed = true;
+  else {
+    if (!labelDone.blockText.includes('блюдо №3')) failed = true;
+    if (!labelDone.blockText.includes('Микронутриенты: оценка по составу (USDA), не измерены')) failed = true;
+    if (labelDone.components !== labelFixture.components.length) failed = true;
+    if (labelDone.presets !== 4 || labelDone.hasRetry) failed = true;
+  }
+  await shot(`${String(n++).padStart(2, '0')}-sheet-label-done`);
+  await evaluate(`document.querySelector('.custom-food-label')?.scrollIntoView({ block: 'start' })`);
+  await sleep(300);
+  await shot(`${String(n++).padStart(2, '0')}-sheet-label-done-block`);
+  if (!(await closeDialog())) {
+    report['sheet:label-done:closed'] = false;
+    failed = true;
+  }
 } catch (err) {
   report.error = String(err);
   failed = true;

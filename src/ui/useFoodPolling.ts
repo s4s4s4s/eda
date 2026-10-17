@@ -4,12 +4,12 @@
    в AppState и переживают закрытие шторки и перезапуск приложения, поэтому
    опрос не должен зависеть от того, что сейчас на экране.
 
-   Адресация наряда — асимметрия между askFood и pollFood, и это знание
+   Адресация наряда - асимметрия между askFood и pollFood, и это знание
    вызывающей стороны (см. комментарии в foodClient.ts и types.ts у
    FoodRequest.id): askFood получает «сырой» uuid (FoodRequest.id как есть),
-   а pollFood — тот же uuid с префиксом «food:», под которым воркер держит
+   а pollFood - тот же uuid с префиксом «food:», под которым воркер держит
    наряд в своей очереди. Дублировать это правило в другом месте (например,
-   в App.tsx при отправке) нельзя — тогда два места могли бы разойтись. */
+   в App.tsx при отправке) нельзя - тогда два места могли бы разойтись. */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
@@ -18,7 +18,7 @@ import { pollFood } from '../core/foodClient.ts'
 import type { AppState } from '../core/types.ts'
 
 /** Пока последний известный pcAgo хотя бы одного заказа в очереди не превышает
-    порог — это «компьютер недавно был на связи», опрашиваем часто. Иначе —
+    порог - это «компьютер недавно был на связи», опрашиваем часто. Иначе -
     редко, чтобы выключенный на сутки компьютер не стоил бесплатному воркеру
     тысяч запросов (см. комментарий в разделе 1.7 плана). */
 const FAST_POLL_MS = 4_000
@@ -31,30 +31,33 @@ function wireId(id: string): string {
 }
 
 /** Заказ считается «недавно на связи», только если pcAgo уже известен (не
-    null) и не превышает порог — свежесозданный заказ, который ещё ни разу не
+    null) и не превышает порог - свежесозданный заказ, который ещё ни разу не
     опрашивался, здесь не в счёт: он получит первый ответ уже на этом ходе
     опроса, вне зависимости от выбранного интервала. */
 function isRecentlyOnline(pcAgo: number | null): boolean {
   return pcAgo !== null && pcAgo <= RECENT_PC_THRESHOLD_S
 }
 
-/** Опрашивает все `status === 'pending'` заказы: на монтировании (и заново —
+/** Опрашивает все `status === 'pending'` заказы: на монтировании (и заново -
     когда меняется сам набор заказов в очереди) и дальше по таймеру с
     адаптивным интервалом. Возвращает строку последней временной ошибки
     опроса (сеть, неверный токен) или null, если последний круг опроса прошёл
-    без сетевых неполадок. Статус заказов при такой ошибке не меняется —
+    без сетевых неполадок. afterPoll (необязательный) применяется к состоянию
+    сразу после applyFoodPoll каждого ответа: App передаёт сюда
+    logDoneLabelRequests. Статус заказов при такой ошибке не меняется -
     applyFoodPoll вызывается только для успешных ответов воркера. */
 export function useFoodPolling(
   state: AppState,
   setState: Dispatch<SetStateAction<AppState>>,
   base: string,
-  token: string
+  token: string,
+  afterPoll?: (state: AppState) => AppState
 ): string | null {
   const [pollError, setPollError] = useState<string | null>(null)
 
   /* Свежие state/base/token нужны внутри асинхронного цикла опроса, но сам
      эффект не должен перезапускаться на каждое изменение state (иначе поход
-     за новым состоянием обрывал бы уже идущий круг опроса) — поэтому они
+     за новым состоянием обрывал бы уже идущий круг опроса) - поэтому они
      читаются через ref, а не идут в зависимости useEffect. */
   const stateRef = useRef(state)
   stateRef.current = state
@@ -62,10 +65,14 @@ export function useFoodPolling(
   baseRef.current = base
   const tokenRef = useRef(token)
   tokenRef.current = token
+  /* afterPoll приходит новой функцией на каждый рендер App, а эффект не должен
+     из-за этого перезапускаться: он тоже читается через ref. */
+  const afterPollRef = useRef(afterPoll)
+  afterPollRef.current = afterPoll
 
   /* Эффект перезапускается, только когда меняется САМ НАБОР заказов в
-     очереди, — не на каждое сохранение состояния. Именно это оправдывает
-     повторный запуск цикла: появился новый заказ — его нужно опросить сразу,
+     очереди, - не на каждое сохранение состояния. Именно это оправдывает
+     повторный запуск цикла: появился новый заказ - его нужно опросить сразу,
      а не ждать до конца текущего медленного интервала. */
   const pendingIds = useMemo(
     () => state.foodRequests.filter(r => r.status === 'pending').map(r => r.id).join(','),
@@ -88,7 +95,13 @@ export function useFoodPolling(
         const result = await pollFood(baseRef.current, tokenRef.current, wireId(request.id))
         if (cancelled) return
         if (result.ok) {
-          setState(prev => applyFoodPoll(prev, request.id, result.response, now))
+          /* Заказ по наклейке, пришедший как done, тут же превращается в запись
+             журнала (afterPoll), в том же обновлении состояния: между ответом
+             воркера и записью нет кадра, где заказ готов, а записи ещё нет. */
+          setState(prev => {
+            const polled = applyFoodPoll(prev, request.id, result.response, now)
+            return afterPollRef.current ? afterPollRef.current(polled) : polled
+          })
         } else {
           roundError = result.error
         }
@@ -118,9 +131,9 @@ export function useFoodPolling(
         window.clearTimeout(timeoutId)
         timeoutId = undefined
       }
-      // вкладка вернулась на передний план — опрашиваем сразу, не дожидаясь
+      // вкладка вернулась на передний план - опрашиваем сразу, не дожидаясь
       // истечения интервала, который тикал бы всё это время впустую; ушла в
-      // фон — просто гасим таймер, start() выше уже проверяет document.hidden
+      // фон - просто гасим таймер, start() выше уже проверяет document.hidden
       if (!document.hidden) start()
     }
 

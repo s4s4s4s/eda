@@ -1,7 +1,9 @@
 /* Сводка дня - главный экран (DESIGN.md, «Навигация: сводка первая» и
    «Иерархия сводки дня»). Сверху вниз: герой-карточка (кольцо калорий и три
    полосы макросов), четыре карточки приёмов со статусом и кнопкой «Съел» у
-   незаписанных, «Добавлено» с двумя кнопками, микронутриенты за день.
+   незаписанных (только при включённом цикле меню), «Журнал дня» с долей у
+   каждой записи и очередью заказов по наклейкам, липкая панель действий
+   («Сфоткать наклейку», «Своя еда»), микронутриенты за день.
 
    Зрительный центр ровно один - кольцо: «сколько осталось» читается с одного
    взгляда, остальное на экране мельче него. Честность (DESIGN.md, «Честность -
@@ -10,11 +12,18 @@
    чисел у него нет вовсе, потому что в план дня он не засчитан. Ничего не
    поздравляет: набранная цель - это заливка кольца, а не фраза. */
 
+import { useState } from 'react'
+import { labelEnergyWarning } from '../core/food.ts'
 import { SLOT_TITLE, SLOTS } from '../core/types.ts'
-import type { ExtraLogEntry, MealStatus, NutrientNorms, NutrientTotals, Slot } from '../core/types.ts'
+import type {
+  CustomFood, ExtraLogEntry, FoodRequest, MealStatus, NutrientNorms, NutrientTotals, Slot
+} from '../core/types.ts'
+import { FractionPicker } from './FractionPicker.tsx'
 import { fractionLabel } from './fractions.ts'
 import MacroBar from './MacroBar.tsx'
 import { NutrientsBlock } from './NutrientsBlock.tsx'
+import RequestStatus from './RequestStatus.tsx'
+import type { RequestActionResult } from './RequestStatus.tsx'
 import Ring from './Ring.tsx'
 import SlotIcon from './SlotIcon.tsx'
 import { SLOT_TIME_RANGE } from './slots.ts'
@@ -64,7 +73,40 @@ interface DaySummaryProps {
   dayNutrients: NutrientTotals
   norms: NutrientNorms
   productsRevision: string
+
+  /* Новые пропсы под наклейки. Все необязательные: без них сводка ведёт себя
+     как раньше (цикл включён, кнопки съёмки нет, доля не правится). */
+
+  /** Включён ли цикл меню (Settings.menuCycleEnabled). По умолчанию true.
+      Выключен: нет карточек приёмов и кнопки «Добавить блюдо из другого дня»,
+      а знаменатель жиров и углеводов берётся из целей, а не из плана меню. */
+  menuCycleEnabled?: boolean
+  /** Цели по жирам и углеводам, г/сут (Settings.targetFatG/targetCarbsG),
+      0 или не задано = цели нет. Используются только при выключенном цикле. */
+  targetFatG?: number
+  targetCarbsG?: number
+  /** Книга своей еды (AppState.customFoods): из неё берутся номер блюда и
+      сверка 4/9/4 для записей kind === 'label'. Без неё этих строк нет. */
+  customFoods?: Record<string, CustomFood>
+  /** Незавершённые заказы по наклейкам на дату сводки (kind === 'label',
+      статусы pending, failed, expired), в порядке показа. Готовые заказы
+      сюда не передаются: они уже стали записями журнала. */
+  labelRequests?: FoodRequest[]
+  /** Открыть шторку съёмки. Не задан - кнопки «Сфоткать наклейку» нет. */
+  onOpenLabelCapture?: () => void
+  /** Правка доли записи прямо в журнале, fraction в (0, 1]. Не задан - доля
+      показывается текстом, без кнопки. */
+  onSetExtraFraction?: (extraId: string, fraction: number) => void
+  /** «Переснять» у заказа, который не удался или протух (id заказа). */
+  onRetakeLabel?: (requestId: string) => void
+  /** «Убрать» у такого заказа (id заказа). */
+  onDiscardRequest?: (requestId: string) => void
 }
+
+/** У заказов по наклейке «Повторить» не бывает (RequestStatus показывает
+    «Переснять»), так что этот обработчик не вызывается. */
+const NO_RETRY = async (): Promise<RequestActionResult> => ({ ok: true })
+const NOOP = (): void => {}
 
 /* Иконки - inline SVG в currentColor и размером в em (класс .icon), как в
    TabBar.tsx и SlotIcon.tsx: эмодзи-глифы каждая система рисует по-своему. */
@@ -107,6 +149,7 @@ function PlusIcon() {
 function DayHero({
   dayEatenKcal, targetKcal, dayProteinG, targetProteinG,
   dayFatG, dayCarbsG, dayPlannedFatG, dayPlannedCarbsG,
+  menuCycleEnabled, targetFatG, targetCarbsG,
   hasDayLog, onOpenDayExport
 }: {
   dayEatenKcal: number
@@ -117,9 +160,18 @@ function DayHero({
   dayCarbsG: number
   dayPlannedFatG: number
   dayPlannedCarbsG: number
+  menuCycleEnabled: boolean
+  targetFatG: number
+  targetCarbsG: number
   hasDayLog: boolean
   onOpenDayExport: () => void
 }) {
+  /* Знаменатель жиров и углеводов: с циклом меню это план меню на день, без
+     него плана нет, и работает личная цель из настроек. Цель 0 - «цели нет»,
+     MacroBar тогда рисует число без полосы. */
+  const fatDenominator = menuCycleEnabled ? dayPlannedFatG : targetFatG
+  const carbsDenominator = menuCycleEnabled ? dayPlannedCarbsG : targetCarbsG
+  const denominatorCaption = menuCycleEnabled ? 'из плана меню' : 'цель'
   const hasTarget = targetKcal > 0
   const rest = targetKcal - dayEatenKcal
   const over = hasTarget && rest < 0
@@ -175,12 +227,12 @@ function DayHero({
           color="--macro-protein" caption="цель"
         />
         <MacroBar
-          label="Жиры" eatenG={dayFatG} targetG={dayPlannedFatG}
-          color="--macro-fat" caption="из плана меню"
+          label="Жиры" eatenG={dayFatG} targetG={fatDenominator}
+          color="--macro-fat" caption={denominatorCaption}
         />
         <MacroBar
-          label="Углеводы" eatenG={dayCarbsG} targetG={dayPlannedCarbsG}
-          color="--macro-carbs" caption="из плана меню"
+          label="Углеводы" eatenG={dayCarbsG} targetG={carbsDenominator}
+          color="--macro-carbs" caption={denominatorCaption}
         />
       </div>
     </section>
@@ -286,13 +338,97 @@ function DayMealCard({
   )
 }
 
+/** Камера: кнопка «Сфоткать наклейку». */
+function CameraIcon() {
+  return (
+    <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+      <path d="M4 8a1 1 0 0 1 1-1h2.5l1.2-2h6.6l1.2 2H19a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z" />
+      <circle cx="12" cy="13" r="3.5" />
+    </svg>
+  )
+}
+
+/** Подпись источника записи в журнале. У 'label': «наклейка · {titleHy}» (без
+    названия просто «наклейка»), номер блюда рациона, если он распознан, и
+    пометка, что микронутриенты оценены по составу, а не измерены. */
+function extraSourceText(e: ExtraLogEntry, food: CustomFood | undefined): string {
+  switch (e.kind) {
+    case 'menu':
+      return `день ${e.fromCycleDay}, ${SLOT_TITLE[e.fromSlot].toLowerCase()}`
+    case 'custom':
+      return 'своя еда'
+    case 'label': {
+      const parts = [e.titleHy !== '' ? `наклейка · ${e.titleHy}` : 'наклейка']
+      const dishNo = food?.label?.dishNo
+      if (dishNo !== undefined && dishNo !== null) parts.push(`блюдо №${dishNo}`)
+      parts.push('микро по составу')
+      return parts.join(' · ')
+    }
+  }
+}
+
+/** Строка журнала: название, мета, кнопка доли и «убрать». Кнопка доли
+    раскрывает FractionPicker прямо под строкой. */
+function ExtraRow({
+  entry, food, editing, onToggleEdit, onSetFraction, onRemove
+}: {
+  entry: ExtraLogEntry
+  food: CustomFood | undefined
+  editing: boolean
+  onToggleEdit: () => void
+  onSetFraction: ((fraction: number) => void) | undefined
+  onRemove: () => void
+}) {
+  // сверка 4/9/4 только для записи по наклейке, чья еда ещё лежит в книге
+  const warning = entry.kind === 'label' && food?.label ? labelEnergyWarning(food.label.printed) : null
+  return (
+    <li className="day-extras__item list__row">
+      <span className="day-extras__name">{entry.title}</span>
+      <span className="day-extras__meta nums">
+        {Math.round(entry.kbju.kcal * entry.fraction)} ккал · {extraSourceText(entry, food)}
+      </span>
+      {onSetFraction !== undefined
+        ? (
+          <button
+            type="button"
+            className="day-extras__fraction nums"
+            aria-expanded={editing}
+            aria-label={`Доля: ${fractionLabel(entry.fraction)}. Изменить`}
+            onClick={onToggleEdit}
+          >
+            {fractionLabel(entry.fraction)}
+          </button>
+        )
+        : <span className="day-extras__meta nums">{fractionLabel(entry.fraction)}</span>}
+      <button type="button" className="day-extras__remove" onClick={onRemove}>
+        убрать
+      </button>
+      {warning !== null && <p className="day-extras__warning" role="note">{warning}</p>}
+      {editing && onSetFraction !== undefined && (
+        <div className="day-extras__editor">
+          <FractionPicker value={entry.fraction} onChange={onSetFraction} idPrefix={`extra-${entry.id}`} />
+        </div>
+      )}
+    </li>
+  )
+}
+
 export default function DaySummary({
   daySlots, currentSlot, onSelectSlot, onLog,
   dayEatenKcal, targetKcal, dayProteinG, targetProteinG,
   dayFatG, dayCarbsG, dayPlannedFatG, dayPlannedCarbsG,
   hasDayLog, onOpenDayExport, extras, onRemoveExtra, onOpenAddFromMenu, onOpenCustomFood,
-  dayNutrients, norms, productsRevision
+  dayNutrients, norms, productsRevision,
+  menuCycleEnabled = true, targetFatG = 0, targetCarbsG = 0, customFoods,
+  labelRequests = [], onOpenLabelCapture, onSetExtraFraction, onRetakeLabel, onDiscardRequest
 }: DaySummaryProps) {
+  /* Одна раскрытая правка доли на экране: две открытые клавиатуры подряд
+     никому не нужны. */
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const queued = labelRequests.filter(r => r.kind === 'label' && r.status !== 'done')
+  const hasJournal = extras.length > 0 || queued.length > 0
+
   return (
     <>
       <DayHero
@@ -304,57 +440,94 @@ export default function DaySummary({
         dayCarbsG={dayCarbsG}
         dayPlannedFatG={dayPlannedFatG}
         dayPlannedCarbsG={dayPlannedCarbsG}
+        menuCycleEnabled={menuCycleEnabled}
+        targetFatG={targetFatG}
+        targetCarbsG={targetCarbsG}
         hasDayLog={hasDayLog}
         onOpenDayExport={onOpenDayExport}
       />
 
-      <ul className="day-meals">
-        {SLOTS.map(s => {
-          const progress = daySlots.find(d => d.slot === s)
-          if (!progress) return null
-          return (
-            <li key={s}>
-              <DayMealCard
-                progress={progress}
-                isCurrent={s === currentSlot}
-                onSelectSlot={onSelectSlot}
-                onLog={onLog}
-              />
-            </li>
-          )
-        })}
-      </ul>
+      {menuCycleEnabled && (
+        <ul className="day-meals">
+          {SLOTS.map(s => {
+            const progress = daySlots.find(d => d.slot === s)
+            if (!progress) return null
+            return (
+              <li key={s}>
+                <DayMealCard
+                  progress={progress}
+                  isCurrent={s === currentSlot}
+                  onSelectSlot={onSelectSlot}
+                  onLog={onLog}
+                />
+              </li>
+            )
+          })}
+        </ul>
+      )}
 
-      {/* Съеденное сверх меню: не трогает статус приёмов, поэтому живёт
-          отдельным блоком под карточками, а не внутри одной из них. */}
+      {/* Журнал дня: съеденное сверх меню и, без цикла, вообще вся еда дня.
+          Статус приёмов не трогает. Под записями «призрачные» строки заказов
+          по наклейкам, которые ещё не стали записями. */}
       <section className="day-extras">
-        {extras.length > 0 && (
+        {hasJournal && (
           <>
-            <h2 className="day-extras__title">Добавлено</h2>
+            <h2 className="day-extras__title">Журнал дня</h2>
             <div className="card">
               <ul className="list">
                 {extras.map(e => (
-                  <li key={e.id} className="day-extras__item list__row">
-                    <span className="day-extras__name">{e.title}</span>
-                    <span className="day-extras__meta nums">
-                      {fractionLabel(e.fraction)} · {Math.round(e.kbju.kcal * e.fraction)} ккал ·{' '}
-                      {e.kind === 'menu'
-                        ? `день ${e.fromCycleDay}, ${SLOT_TITLE[e.fromSlot].toLowerCase()}`
-                        : 'своя еда'}
-                    </span>
-                    <button
-                      type="button"
-                      className="day-extras__remove"
-                      onClick={() => onRemoveExtra(e.id)}
-                    >
-                      убрать
-                    </button>
+                  <ExtraRow
+                    key={e.id}
+                    entry={e}
+                    food={e.kind === 'menu' ? undefined : customFoods?.[e.customFoodId]}
+                    editing={editingId === e.id}
+                    onToggleEdit={() => setEditingId(editingId === e.id ? null : e.id)}
+                    onSetFraction={onSetExtraFraction ? f => onSetExtraFraction(e.id, f) : undefined}
+                    onRemove={() => onRemoveExtra(e.id)}
+                  />
+                ))}
+                {queued.map(r => (
+                  <li key={r.id} className="day-extras__pending list__row">
+                    <RequestStatus
+                      request={r}
+                      onRetry={NO_RETRY}
+                      onRetake={onRetakeLabel ?? NOOP}
+                      onDiscard={onDiscardRequest ?? NOOP}
+                    />
                   </li>
                 ))}
               </ul>
             </div>
           </>
         )}
+      </section>
+
+      {/* Липкая панель действий: съёмка наклейки - главное действие дня и
+          всегда под большим пальцем. */}
+      <div className="day-actions">
+        {onOpenLabelCapture !== undefined && (
+          <button
+            type="button"
+            className="btn btn--primary"
+            aria-label="Сфоткать наклейку"
+            onClick={onOpenLabelCapture}
+          >
+            <CameraIcon />
+            Сфоткать наклейку
+          </button>
+        )}
+        <button
+          type="button"
+          className="btn btn--secondary"
+          aria-label="Своя еда"
+          onClick={onOpenCustomFood}
+        >
+          <PlusIcon />
+          Своя еда
+        </button>
+      </div>
+
+      {menuCycleEnabled && (
         <div className="day-extras__actions">
           <button
             type="button"
@@ -365,17 +538,8 @@ export default function DaySummary({
             <PlusIcon />
             Добавить блюдо из другого дня
           </button>
-          <button
-            type="button"
-            className="btn btn--secondary"
-            aria-label="Своя еда"
-            onClick={onOpenCustomFood}
-          >
-            <PlusIcon />
-            Своя еда
-          </button>
         </div>
-      </section>
+      )}
 
       {/* Микронутриенты за день - последний блок сводки: справка, а не то, с
           чем работают каждый день. Сам блок переделывает своя задача

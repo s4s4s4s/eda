@@ -1,37 +1,52 @@
 /* Шторка «Своя еда» (задача E4b): книга своей еды сверху, форма нового заказа
-   на разбор, очередь заказов с честными состояниями опроса. Каркас — общий
-   Sheet.tsx. Сетевые вызовы (askFood) делает App.tsx через onAskNew/onRetry —
+   на разбор, очередь заказов с честными состояниями опроса. Каркас - общий
+   Sheet.tsx. Сетевые вызовы (askFood) делает App.tsx через onAskNew/onRetry -
    здесь только форма и отображение результата; опрос (pollFood) целиком живёт
    в useFoodPolling.ts и работает независимо от того, открыта ли эта шторка.
 
-   Тексты состояний очереди — дословно из раздела «E4b» плана «своя еда»:
-   отступать от них нельзя, это единственное место, где человек узнаёт, что
-   вообще происходит с его запросом на дальнем компьютере. */
+   Тексты состояний очереди (pending, failed, expired) живут в RequestStatus.tsx
+   и взяты дословно из DESIGN.md: отступать от них нельзя, это единственное
+   место, где человек узнаёт, что вообще происходит с его запросом на дальнем
+   компьютере.
+
+   Заказы по наклейке (kind === 'label') обычно до этой шторки в состоянии done
+   не доживают: опрос сразу превращает их в запись журнала (afterPoll в
+   useFoodPolling.ts). Готовая строка для них здесь остаётся на случай, когда
+   автозапись выключена. */
 
 import { useState } from 'react'
-import { customFoodFromResult, customFoodTotals, withComponentGrams } from '../core/food.ts'
-import type { CustomFood, FoodRequest, FoodResultOk, NutrientTotals } from '../core/types.ts'
+import {
+  customFoodFromResult, customFoodTotals, labelEnergyWarning, withComponentGrams
+} from '../core/food.ts'
+import type {
+  CustomFood, FoodRequest, FoodResultOk, LabelFacts, LabelFit, NutrientTotals
+} from '../core/types.ts'
 import { NUTRIENT_KEYS, SLOT_TITLE, SLOTS } from '../core/types.ts'
 import type { Slot } from '../core/types.ts'
-import { FRACTIONS, fractionLabel } from './fractions.ts'
+import { FractionPicker } from './FractionPicker.tsx'
+import RequestStatus from './RequestStatus.tsx'
+import type { RequestActionResult } from './RequestStatus.tsx'
 import Sheet from './Sheet.tsx'
 
-type AskResult = { ok: true } | { ok: false; error: string }
+type AskResult = RequestActionResult
 
 interface CustomFoodSheetProps {
-  /** Пустая строка — разбор своей еды не настроен (см. Settings.shturmanToken). */
+  /** Пустая строка - разбор своей еды не настроен (см. Settings.shturmanToken). */
   token: string
   customFoods: Record<string, CustomFood>
   foodRequests: FoodRequest[]
-  /** Куда по умолчанию попадёт новый заказ и куда — уже готовая еда, пока
+  /** Куда по умолчанию попадёт новый заказ и куда - уже готовая еда, пока
       человек не поправил дату/приём в самой строке. */
   defaultTarget: { date: string; slot: Slot }
-  /** Последняя временная ошибка опроса (сеть, токен) — из useFoodPolling.
+  /** Последняя временная ошибка опроса (сеть, токен) - из useFoodPolling.
       Статус заказов ею не меняется, это отдельная, не привязанная к
       конкретному заказу строка. */
   pollError: string | null
   onAskNew: (text: string, grams: number | null, target: { date: string; slot: Slot }) => Promise<AskResult>
+  /** «Повторить» у текстового заказа в failed/expired. */
   onRetry: (id: string) => Promise<AskResult>
+  /** «Переснять» у заказа по наклейке в failed/expired: App открывает съёмку. */
+  onRetake: (id: string) => void
   onDiscard: (id: string) => void
   onSave: (requestId: string, editedFood: CustomFood, target: { date: string; slot: Slot }, fraction: number) => void
   onRemoveCustomFood: (foodId: string) => void
@@ -40,58 +55,36 @@ interface CustomFoodSheetProps {
   onClose: () => void
 }
 
-/** Доля добавления: то же самое, что «Съел часть» (FRACTIONS/fractionLabel из
-    MealScreen.tsx), плюс «целиком» — как в AddFromMenuSheet.tsx. ADD_FRACTIONS
-    там не экспортирован, поэтому список повторён здесь тем же способом, а не
-    завозится импортом одного файла шторки в другую. */
-const ADD_FRACTIONS: number[] = [1, ...FRACTIONS.map(f => f.value)]
-
 const MAX_GRAMS = 5000
 
 function round(n: number): number {
   return Math.round(n)
 }
 
-/** Русское склонение по числу — та же форма, что entryWord в App.tsx и
-    daysWord в SettingsSheet.tsx, своя копия по той же причине (разные файлы,
-    разные задачи одновременно). */
-function pluralRu(n: number, one: string, few: string, many: string): string {
-  const mod100 = n % 100
-  if (mod100 >= 11 && mod100 <= 14) return many
-  switch (n % 10) {
-    case 1: return one
-    case 2:
-    case 3:
-    case 4: return few
-    default: return many
-  }
-}
-
-/** «45 минут» / «3 часа» / «2 дня» — грубая (округлённая до одной единицы)
-    длительность простоя компьютера для текста pending при pcAgo > 120 с. */
-function formatOfflineDuration(pcAgoSeconds: number): string {
-  if (pcAgoSeconds < 3600) {
-    const n = Math.max(1, Math.round(pcAgoSeconds / 60))
-    return `${n} ${pluralRu(n, 'минута', 'минуты', 'минут')}`
-  }
-  if (pcAgoSeconds < 86_400) {
-    const n = Math.max(1, Math.round(pcAgoSeconds / 3600))
-    return `${n} ${pluralRu(n, 'час', 'часа', 'часов')}`
-  }
-  const n = Math.max(1, Math.round(pcAgoSeconds / 86_400))
-  return `${n} ${pluralRu(n, 'день', 'дня', 'дней')}`
+/** Одна цифра после запятой: на наклейке числа напечатаны так («442.1»), и
+    округление до целых в блоке «С наклейки» спрятало бы сверку 4/9/4. */
+function round1(n: number): number {
+  return Math.round(n * 10) / 10
 }
 
 /** Полнота нутриентов своей еды: сколько ключей NUTRIENT_KEYS набрали полный
-    known === total по компонентам блюда (total === 0 — ключа нет ни у одного
+    known === total по компонентам блюда (total === 0 - ключа нет ни у одного
     компонента, известным он не считается). Та же честность, что и у
-    покрытия норм на главном экране, но без норм — здесь их не с чем сравнивать. */
+    покрытия норм на главном экране, но без норм - здесь их не с чем сравнивать. */
 function nutrientCompletenessLabel(nutrients: NutrientTotals): string {
   const known = NUTRIENT_KEYS.filter(key => {
     const n = nutrients[key]
     return n.total > 0 && n.known === n.total
   }).length
   return `известно ${known} из ${NUTRIENT_KEYS.length} нутриентов`
+}
+
+/** Строка про плохую подгонку состава; null, если подгонка в норме. */
+function poorFitText(fit: LabelFit | undefined): string | null {
+  if (!fit?.poor) return null
+  const kcal = fit.deviationPct.kcal
+  const kcalPart = kcal === null ? '' : `: ккал ${kcal > 0 ? '+' : ''}${round(kcal)} %`
+  return `Состав по USDA расходится с наклейкой${kcalPart}, в журнал идут числа с наклейки`
 }
 
 /* ---- книга своей еды ---- */
@@ -110,7 +103,13 @@ function BookRow({
   return (
     <li className="card custom-food-book-row">
       <div className="custom-food-book-row__head">
-        <span className="custom-food-book-row__title">{food.title}</span>
+        <span className="custom-food-book-row__title">
+          {food.title}
+          {food.label && <span className="chip custom-food-book-row__badge">наклейка</span>}
+          {food.label && food.label.titleHy !== '' && (
+            <span className="custom-food-book-row__hy" lang="hy">{food.label.titleHy}</span>
+          )}
+        </span>
         <div className="custom-food-book-row__actions">
           <button
             type="button"
@@ -140,19 +139,7 @@ function BookRow({
               </button>
             ))}
           </div>
-          <div className="custom-food-book-row__group" role="group" aria-label="Доля">
-            {ADD_FRACTIONS.map(value => (
-              <button
-                key={value}
-                type="button"
-                className={value === fraction ? 'chip chip--tap chip--selected nums' : 'chip chip--tap nums'}
-                aria-pressed={value === fraction}
-                onClick={() => setFraction(value)}
-              >
-                {fractionLabel(value)}
-              </button>
-            ))}
-          </div>
+          <FractionPicker value={fraction} onChange={setFraction} idPrefix={`book-${food.id}`} />
           <button
             type="button"
             className="btn btn--primary custom-food-book-row__confirm"
@@ -187,7 +174,7 @@ function NewFoodForm({
   if (trimmedGrams !== '') {
     const parsed = Number(trimmedGrams)
     if (!Number.isFinite(parsed) || parsed <= 0 || parsed > MAX_GRAMS) {
-      gramsError = `Граммы — число больше 0 и не больше ${MAX_GRAMS}.`
+      gramsError = `Граммы: число больше 0 и не больше ${MAX_GRAMS}.`
     } else {
       gramsValue = parsed
     }
@@ -245,61 +232,31 @@ function NewFoodForm({
 
 /* ---- очередь заказов ---- */
 
-function PendingRequestRow({ request }: { request: FoodRequest }) {
-  const statusText = request.pcAgo === null
-    ? 'Запрос в очереди, компьютер ещё ни разу не выходил на связь.'
-    : request.pcAgo <= 120
-      ? `Запрос в очереди, компьютер на связи (${request.pcAgo} с назад). Обычно разбор занимает около минуты.`
-      : `Запрос в очереди, компьютер не в сети уже ${formatOfflineDuration(request.pcAgo)} — разбор придёт, когда он включится; запрос живёт сутки.`
+/** Блок «С наклейки»: что напечатано, а не что насчитала USDA. */
+function LabelFactsBlock({ label, fit }: { label: LabelFacts; fit: LabelFit | undefined }) {
+  const basisText = label.basis === 'portion' ? 'на порцию' : 'на 100 г'
+  const mismatch = labelEnergyWarning(label.printed)
+  const poorFit = poorFitText(fit)
 
   return (
-    <li className="card custom-food-request">
-      <span className="custom-food-request__text">
-        {request.text}{request.grams !== null ? ` · ${request.grams} г` : ''}
-      </span>
-      <p className="custom-food-request__status">{statusText}</p>
-    </li>
-  )
-}
-
-function FailedOrExpiredRequestRow({
-  request, onRetry, onDiscard
-}: {
-  request: FoodRequest
-  onRetry: (id: string) => Promise<AskResult>
-  onDiscard: (id: string) => void
-}) {
-  const [retrying, setRetrying] = useState(false)
-  const [retryError, setRetryError] = useState<string | null>(null)
-
-  const statusText = request.status === 'failed'
-    ? (request.error ?? 'Разбор не удался')
-    : 'Компьютер не взял запрос за сутки.'
-
-  async function handleRetry(): Promise<void> {
-    setRetrying(true)
-    setRetryError(null)
-    const result = await onRetry(request.id)
-    setRetrying(false)
-    if (!result.ok) setRetryError(result.error)
-  }
-
-  return (
-    <li className="card custom-food-request custom-food-request--failed">
-      <span className="custom-food-request__text">
-        {request.text}{request.grams !== null ? ` · ${request.grams} г` : ''}
-      </span>
-      <p className="custom-food-request__status">{statusText}</p>
-      <div className="custom-food-request__actions">
-        <button type="button" className="btn btn--secondary" disabled={retrying} onClick={handleRetry}>
-          Повторить
-        </button>
-        <button type="button" className="btn btn--secondary" onClick={() => onDiscard(request.id)}>
-          Убрать
-        </button>
-      </div>
-      {retryError && <p className="custom-food__error" role="alert">{retryError}</p>}
-    </li>
+    <section className="custom-food-label" aria-label="С наклейки">
+      <h4 className="custom-food-label__title">С наклейки</h4>
+      {label.titleHy !== '' && <p className="custom-food-label__hy" lang="hy">{label.titleHy}</p>}
+      {label.dishNo != null && <p className="custom-food-label__line">блюдо №{label.dishNo}</p>}
+      <p className="custom-food-label__line">
+        {label.portionG !== null ? `Вес: ${round1(label.portionG)} г` : 'Вес не напечатан'}
+      </p>
+      <p className="custom-food-label__line nums">
+        {`Напечатано (${basisText}): ${round1(label.printed.kcal)} ккал · Б ${round1(label.printed.p)} · Ж ${round1(label.printed.f)} · У ${round1(label.printed.c)}`}
+      </p>
+      {mismatch && <p className="custom-food__error" role="alert">{mismatch}</p>}
+      {label.ingredients.length > 0 && (
+        <p className="custom-food-label__line">{`Состав: ${label.ingredients.join(', ')}`}</p>
+      )}
+      {label.remark && <p className="custom-food-label__line">{label.remark}</p>}
+      <p className="custom-food-label__note">Микронутриенты: оценка по составу (USDA), не измерены</p>
+      {poorFit && <p className="custom-food__error" role="status">{poorFit}</p>}
+    </section>
   )
 }
 
@@ -312,15 +269,15 @@ function DoneRequestRow({
   onDiscard: (id: string) => void
 }) {
   /* customFoodFromResult даёт CustomFood, готовую лечь в книгу; id/createdAt
-     заведены здесь один раз при появлении строки (эффект стороны, не ядро —
-     ровно как handleAddFromMenu в App.tsx заводит id для extra). jobId — тот
+     заведены здесь один раз при появлении строки (эффект стороны, не ядро -
+     ровно как handleAddFromMenu в App.tsx заводит id для extra). jobId - тот
      же «наряд воркера», под которым заказ опрашивался (см. wireId в
      useFoodPolling.ts): food:<request.id>. */
   const [draftFood, setDraftFood] = useState<CustomFood>(() =>
     customFoodFromResult(result, `food:${request.id}`, crypto.randomUUID(), new Date().toISOString())
   )
   const [target, setTarget] = useState(request.target)
-  const [fraction, setFraction] = useState(1)
+  const [fraction, setFraction] = useState(request.fraction)
 
   const totals = customFoodTotals(draftFood)
 
@@ -331,6 +288,8 @@ function DoneRequestRow({
   return (
     <li className="card custom-food-request custom-food-request--done">
       <h3 className="custom-food-request__title">{draftFood.title}</h3>
+
+      {draftFood.label && <LabelFactsBlock label={draftFood.label} fit={draftFood.fit} />}
 
       <ul className="custom-food-components">
         {draftFood.components.map((component, index) => (
@@ -361,7 +320,9 @@ function DoneRequestRow({
       <p className="custom-food-request__totals">
         {round(totals.kbju.kcal)} ккал · Б {round(totals.kbju.p)} · Ж {round(totals.kbju.f)} · У {round(totals.kbju.c)}
       </p>
-      <p className="custom-food-request__completeness">{nutrientCompletenessLabel(totals.nutrients)}</p>
+      {!draftFood.label && (
+        <p className="custom-food-request__completeness">{nutrientCompletenessLabel(totals.nutrients)}</p>
+      )}
 
       <label className="field">
         <span className="field__label">Дата записи</span>
@@ -392,19 +353,7 @@ function DoneRequestRow({
 
       <div className="field">
         <span className="field__label">Доля</span>
-        <div className="custom-food-request__group" role="group" aria-label="Доля">
-          {ADD_FRACTIONS.map(value => (
-            <button
-              key={value}
-              type="button"
-              className={value === fraction ? 'chip chip--tap chip--selected nums' : 'chip chip--tap nums'}
-              aria-pressed={value === fraction}
-              onClick={() => setFraction(value)}
-            >
-              {fractionLabel(value)}
-            </button>
-          ))}
-        </div>
+        <FractionPicker value={fraction} onChange={setFraction} idPrefix={`request-${request.id}`} />
       </div>
 
       <div className="custom-food-request__actions">
@@ -424,29 +373,34 @@ function DoneRequestRow({
 }
 
 function RequestRow({
-  request, onRetry, onDiscard, onSave
+  request, onRetry, onRetake, onDiscard, onSave
 }: {
   request: FoodRequest
-  onRetry: (id: string) => Promise<AskResult>
-  onDiscard: (id: string) => void
-  onSave: (requestId: string, editedFood: CustomFood, target: { date: string; slot: Slot }, fraction: number) => void
+  onRetry: CustomFoodSheetProps['onRetry']
+  onRetake: CustomFoodSheetProps['onRetake']
+  onDiscard: CustomFoodSheetProps['onDiscard']
+  onSave: CustomFoodSheetProps['onSave']
 }) {
-  if (request.status === 'pending') return <PendingRequestRow request={request} />
   if (request.status === 'done') {
-    // status === 'done' у applyFoodPoll всегда идёт вместе с result — если
+    // status === 'done' у applyFoodPoll всегда идёт вместе с result - если
     // однажды разойдётся, честнее промолчать здесь, чем нарисовать пустую
     // карточку «готово» без единого числа в ней.
     if (!request.result) return null
     return <DoneRequestRow request={request} result={request.result} onSave={onSave} onDiscard={onDiscard} />
   }
-  return <FailedOrExpiredRequestRow request={request} onRetry={onRetry} onDiscard={onDiscard} />
+  const stuck = request.status === 'failed' || request.status === 'expired'
+  return (
+    <li className={stuck ? 'card custom-food-request custom-food-request--failed' : 'card custom-food-request'}>
+      <RequestStatus request={request} onRetry={onRetry} onRetake={onRetake} onDiscard={onDiscard} />
+    </li>
+  )
 }
 
 /* ---- шторка целиком ---- */
 
 export default function CustomFoodSheet({
   token, customFoods, foodRequests, defaultTarget, pollError,
-  onAskNew, onRetry, onDiscard, onSave, onRemoveCustomFood, onAddFromBook,
+  onAskNew, onRetry, onRetake, onDiscard, onSave, onRemoveCustomFood, onAddFromBook,
   onOpenSettings, onClose
 }: CustomFoodSheetProps) {
   const books = Object.values(customFoods)
@@ -484,7 +438,14 @@ export default function CustomFoodSheet({
             <h2 className="custom-food__section-title">Запросы на разбор</h2>
             <ul className="custom-food-requests__list">
               {foodRequests.map(request => (
-                <RequestRow key={request.id} request={request} onRetry={onRetry} onDiscard={onDiscard} onSave={onSave} />
+                <RequestRow
+                  key={request.id}
+                  request={request}
+                  onRetry={onRetry}
+                  onRetake={onRetake}
+                  onDiscard={onDiscard}
+                  onSave={onSave}
+                />
               ))}
             </ul>
           </section>

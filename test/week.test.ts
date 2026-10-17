@@ -495,6 +495,50 @@ function extrasMakeDayLoggedChecks(): void {
   group('summarizeDay: день из одной добавленной еды записан (hasLog), но все четыре приёма остаются missing')
 }
 
+/* Без цикла меню приёмов никто не ждёт: день из одних записей добавленной еды
+   не неполон и не тянет partialDays. По умолчанию поведение прежнее. */
+function expectMenuSlotsChecks(): void {
+  const mk = (id: string, kcal: number) => ({
+    id,
+    slot: 'dinner' as Slot,
+    fraction: 1,
+    title: `Блюдо ${id}`,
+    kbju: { kcal, p: 10, f: 10, c: 10 },
+    nutrients: { ...emptyNutrientTotals(), sugar: { value: 5, known: 1, total: 1 } },
+    loggedAt: '2026-08-07T21:00:00',
+    kind: 'custom' as const,
+    customFoodId: `food-${id}`,
+    source: 'USDA SR Legacy 2018-04'
+  })
+  let state = addExtra(emptyState(), '2026-08-07', mk('e1', 300), 7)
+  state = addExtra(state, '2026-08-07', mk('e2', 200), 7)
+  const norms: NutrientNorms = { sugar: norm(50) }
+
+  const off = weekSummary(state.log, '2026-08-07', 7, { expectMenuSlots: false })
+  const offDay = off.days.find((d) => d.date === '2026-08-07')!
+  assert(offDay.hasLog === true, 'без цикла день из двух добавок записан (hasLog)')
+  assert(offDay.extrasCount === 2, `extrasCount ожидался 2, получено ${offDay.extrasCount}`)
+  assert(offDay.missingSlots.length === 0, `без цикла missingSlots пуст, получено ${JSON.stringify(offDay.missingSlots)}`)
+  assert(off.incompleteDays === 0, `без цикла incompleteDays 0, получено ${off.incompleteDays}`)
+  assert(off.expectedSlots === 0, `без цикла expectedSlots 0, получено ${off.expectedSlots}`)
+  assert(off.avgKcal === 500, `калории дня входят в среднее: 500, получено ${off.avgKcal}`)
+  const offSugar = weekCoverage(off, norms).find((c) => c.key === 'sugar')!
+  assert(offSugar.daysWithData === 1 && offSugar.partialDays === 0,
+    `без цикла partialDays 0, получено ${offSugar.partialDays}`)
+
+  const on = weekSummary(state.log, '2026-08-07', 7)
+  const onDay = on.days.find((d) => d.date === '2026-08-07')!
+  assert(onDay.missingSlots.length === 4, `по умолчанию прежние 4 missing, получено ${onDay.missingSlots.length}`)
+  assert(on.incompleteDays === 1 && on.expectedSlots === 4, 'по умолчанию день неполон, ожидается 4 приёма')
+  const onSugar = weekCoverage(on, norms).find((c) => c.key === 'sugar')!
+  assert(onSugar.partialDays === 1, `по умолчанию partialDays 1, получено ${onSugar.partialDays}`)
+
+  const explicit = weekSummary(state.log, '2026-08-07', 7, { expectMenuSlots: true })
+  assert(JSON.stringify(explicit) === JSON.stringify(on), 'expectMenuSlots: true равно умолчанию')
+
+  group('weekSummary expectMenuSlots: без цикла день из записей полон, по умолчанию прежнее поведение')
+}
+
 function main(): void {
   console.log('week — недельная сводка: окно дат, средние только по дням с данными')
   emptyDiaryChecks()
@@ -517,6 +561,7 @@ function main(): void {
   coverageUlNotExceededChecks()
   coverageCdrrChecks()
   extrasMakeDayLoggedChecks()
+  expectMenuSlotsChecks()
   console.log(`\nВсе проверки week пройдены (${passed} групп).`)
 }
 

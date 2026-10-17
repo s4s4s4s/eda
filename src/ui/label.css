@@ -1,0 +1,52 @@
+/* Шторка «Сфоткать наклейку»: раскладка. Поверхности, поля и кнопки дают
+   .card, .field, .btn, .chip из theme.css и sheets.css. */
+
+.label-capture {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* Скрытый input открывается кнопкой внутри шторки (жест пользователя обязателен на iOS). */
+.label-capture__file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.label-capture__preview {
+  display: block;
+  width: 100%;
+  max-height: 40vh;
+  object-fit: contain;
+  border: 1px solid var(--border);
+  border-radius: var(--r-8);
+  background: var(--surface-2);
+}
+
+.label-capture__status {
+  margin: 0;
+  font-size: var(--text-15);
+  color: var(--fg-dim);
+}
+
+.label-capture__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.label-capture__group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.label-capture__fraction {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}

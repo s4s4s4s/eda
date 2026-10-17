@@ -1,5 +1,6 @@
 /* Шапка экрана - дата, чип дня цикла и партии, баннер первого запуска (дата
-   старта цикла не подтверждена). Общая для сводки дня и экрана приёма:
+   старта цикла не подтверждена). Чип и баннер есть только при включённом
+   цикле меню. Общая для сводки дня и экрана приёма:
    рендерится App-ом один раз над обоими видами, а не дублируется внутри
    каждого.
 
@@ -13,9 +14,13 @@ import { formatDateFull } from '../core/cycle.ts'
 
 interface ScreenHeaderProps {
   date: string
-  cycleDayNum: number
+  /** День цикла на сегодня; null - цикл меню выключен (Settings.menuCycleEnabled),
+      и тогда нет ни чипа дня цикла, ни баннера первого запуска: говорить про
+      дату старта цикла, которым человек не пользуется, незачем. */
+  cycleDayNum: number | null
   cycleDays: number
-  batchDayNum: number
+  /** День партии; null вместе с cycleDayNum. */
+  batchDayNum: number | null
   /** Дата первого дня цикла (Settings.cycleStartDate) - баннер первого
       запуска печатает её словами, а не выдуманным «сегодня - день 1», которая
       подставлена при установке и может уже разойтись с сегодня. */
@@ -40,15 +45,21 @@ export default function ScreenHeader({
           <div className="screen__date-line">{formatDateFull(date)}</div>
           {/* День цикла и день партии - справка, а не заголовок: чип
               приглушённым кеглем под датой, а не вторая крупная строка. */}
-          <div className="screen__day-line chip nums">
-            <span>День {cycleDayNum} из {cycleDays}</span>
-            <span className="screen__day-line-sep">·</span>
-            <span>партия: день {batchDayNum} из 4</span>
-          </div>
+          {cycleDayNum !== null && (
+            <div className="screen__day-line chip nums">
+              <span>День {cycleDayNum} из {cycleDays}</span>
+              {batchDayNum !== null && (
+                <>
+                  <span className="screen__day-line-sep">·</span>
+                  <span>партия: день {batchDayNum} из 4</span>
+                </>
+              )}
+            </div>
+          )}
         </div>
       </header>
 
-      {!cycleStartConfirmed && (
+      {cycleDayNum !== null && !cycleStartConfirmed && (
         <div className="cycle-start-notice" role="status">
           <p className="cycle-start-notice__text">
             {/* Дата подставлена при установке и могла разойтись с сегодня -

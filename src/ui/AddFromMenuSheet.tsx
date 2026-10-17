@@ -24,6 +24,10 @@ interface AddFromMenuSheetProps {
   /** День цикла, который идёт сегодня — он отмечен среди чипов, но не выбран
       автоматически: перенос обычно берут именно из ДРУГОГО дня. */
   currentCycleDay: number
+  /** Включён ли цикл меню (Settings.menuCycleEnabled), по умолчанию true.
+      Выключен: какой сегодня день цикла, неизвестно, и отметки «сегодня»
+      среди чипов нет; currentCycleDay тогда только начальный выбор чипа. */
+  menuCycleEnabled?: boolean
   /** Дата записи по умолчанию — сегодняшняя; в шторке её можно поменять.
       Выбранная дата определяет и редакцию меню у исходного дня (см. menuDayFor). */
   defaultDate: string
@@ -44,7 +48,7 @@ function round(n: number): number {
 }
 
 export default function AddFromMenuSheet({
-  menu, products, cycleDays, currentCycleDay, defaultDate, defaultSlot, onAdd, onClose
+  menu, products, cycleDays, currentCycleDay, menuCycleEnabled = true, defaultDate, defaultSlot, onAdd, onClose
 }: AddFromMenuSheetProps) {
   const [sourceDay, setSourceDay] = useState(currentCycleDay)
   const [sourceSlot, setSourceSlot] = useState<Slot | null>(null)
@@ -84,7 +88,7 @@ export default function AddFromMenuSheet({
                   onClick={() => handlePickDay(day)}
                 >
                   {day}
-                  {day === currentCycleDay && <span className="add-from-menu__today-dot" aria-hidden="true" />}
+                  {menuCycleEnabled && day === currentCycleDay && <span className="add-from-menu__today-dot" aria-hidden="true" />}
                 </button>
               ))}
             </div>

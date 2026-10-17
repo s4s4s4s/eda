@@ -3,7 +3,7 @@
  * снапшот КБЖУ, суммы. Никакого localStorage — только чистые функции над
  * AppState. Гоняются node-ом после сборки esbuild: `npm run test:log`.
  */
-import { addExtra, clearLog, dayNutrientTotals, dayTotal, eatenExtraKbju, eatenKbju, eatenNutrients, logFootprint, logMeal, removeExtra, unlogMeal } from '../src/core/log'
+import { addExtra, clearLog, dayNutrientTotals, dayTotal, eatenExtraKbju, eatenKbju, eatenNutrients, logFootprint, logMeal, removeExtra, setExtraFraction, unlogMeal } from '../src/core/log'
 import { emptyNutrientTotals } from '../src/core/nutrition'
 import type { AppState, CustomFood, ExtraLogEntry, Kbju, Meal, NutrientTotals, Nutrients, Product, ProductIndex } from '../src/core/types'
 
@@ -386,6 +386,39 @@ function removeExtraChecks(): void {
 
 /* Книга своей еды весит килобайт на компонент и лежит в том же localStorage.
    Человек, который смотрит на размер перед очисткой, обязан видеть её тоже. */
+function setExtraFractionChecks(): void {
+  const nutrients: NutrientTotals = { ...emptyNutrientTotals(), fiber: { value: 6, known: 1, total: 1 } }
+  const state0 = addExtra(emptyState(), '2026-08-05', customExtra('e1', 400, 1, nutrients), 5)
+  const other = addExtra(state0, '2026-08-05', customExtra('e2', 100, 1), 5)
+
+  const edited = setExtraFraction(other, '2026-08-05', 'e1', 0.4)
+  const day = edited.log['2026-08-05']
+  assert(day.extras.find(e => e.id === 'e1')!.fraction === 0.4, 'доля e1 обязана смениться на 0.4')
+  assert(day.extras.find(e => e.id === 'e2')!.fraction === 1, 'доля e2 обязана остаться')
+  assert(day.extras.find(e => e.id === 'e1')!.kbju.kcal === 400, 'снапшот полной порции не меняется')
+  assert(other.log['2026-08-05'].extras.find(e => e.id === 'e1')!.fraction === 1, 'входной state не мутируется')
+  assert(Math.abs(eatenExtraKbju(day.extras.find(e => e.id === 'e1')!).kcal - 160) < 1e-9, 'съеденное обязано считаться по новой доле')
+  assert(setExtraFraction(other, '2026-08-05', 'e1', 1).log['2026-08-05'].extras[0].fraction === 1, 'доля ровно 1 допустима')
+  assert(setExtraFraction(other, '2026-08-05', 'e1', 0.01).log['2026-08-05'].extras[0].fraction === 0.01, 'процентная доля 0.01 допустима')
+
+  // чужой id и чужая дата - то же состояние
+  assert(setExtraFraction(other, '2026-08-05', 'нет такого', 0.5) === other, 'чужой id обязан вернуть тот же state')
+  assert(setExtraFraction(other, '2026-09-09', 'e1', 0.5) === other, 'дата без записей обязана вернуть тот же state')
+
+  for (const bad of [0, 1.5, -0.2, NaN, Infinity]) {
+    let threw = false
+    try { setExtraFraction(other, '2026-08-05', 'e1', bad) } catch { threw = true }
+    assert(threw, `доля ${bad} обязана бросать`)
+  }
+  group('setExtraFraction: правка доли, чужой id/дата не меняют state, отказ на 0, 1.5, NaN')
+}
+
+function addExtraNullCycleDayChecks(): void {
+  const state = addExtra(emptyState(), '2026-08-06', customExtra('e1', 400, 1), null)
+  assert(state.log['2026-08-06'].cycleDay === null, 'addExtra с cycleDay null обязан сохранить null (цикл выключен)')
+  group('addExtra: cycleDayForDate null даёт день с cycleDay null')
+}
+
 function footprintCountsCustomFoodsChecks(): void {
   const idx = products(product('x', { kcal: 200, p: 10, f: 5, c: 20 }))
   const state = logMeal(emptyState(), '2026-08-05', 'lunch', meal('lunch', 'Обед', 200), idx, 'eaten', 1, 5, 't1')
@@ -429,6 +462,8 @@ function main(): void {
   addExtraChecks()
   removeExtraChecks()
   footprintCountsCustomFoodsChecks()
+  setExtraFractionChecks()
+  addExtraNullCycleDayChecks()
   console.log(`\nВсе проверки log пройдены (${passed} групп).`)
 }
 

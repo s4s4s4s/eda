@@ -6,13 +6,15 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { batchDay, currentSlot, cycleDay, todayLocal } from '../core/cycle.ts'
 import { buildChannels } from '../core/export/index.ts'
 import type { ExportPayload } from '../core/export/index.ts'
-import { addExtra, clearLog, dayNutrientTotals, dayTotal, logMeal, removeExtra, unlogMeal } from '../core/log.ts'
+import {
+  addExtra, clearLog, dayNutrientTotals, dayTotal, logMeal, removeExtra, setExtraFraction, unlogMeal
+} from '../core/log.ts'
 import { menuDayFor } from '../core/menu.ts'
 import {
-  applyFoodAsk, customExtraFrom, discardFoodRequest, menuExtraFrom, newFoodRequest,
-  removeCustomFood, retryFoodRequest, saveCustomFood
+  applyFoodAsk, customExtraFrom, discardFoodRequest, logDoneLabelRequests, menuExtraFrom, newFoodRequest,
+  newLabelRequest, removeCustomFood, retryFoodRequest, saveCustomFood
 } from '../core/food.ts'
-import { askFood, SHTURMAN_BASE } from '../core/foodClient.ts'
+import { askFood, askLabel, SHTURMAN_BASE } from '../core/foodClient.ts'
 import { emptyNutrientTotals, mealKbju, mealNutrients, scaleNutrientTotals } from '../core/nutrition.ts'
 import { clearRating, rateDish, ratingOf, setStance } from '../core/preferences.ts'
 import { mealVerdict } from '../core/verdict.ts'
@@ -32,6 +34,8 @@ import TabBar from './TabBar.tsx'
 import type { DaySlotProgress } from './slots.ts'
 import AddFromMenuSheet from './AddFromMenuSheet.tsx'
 import CustomFoodSheet from './CustomFoodSheet.tsx'
+import LabelCaptureSheet from './LabelCaptureSheet.tsx'
+import type { LabelAsk, LabelInitial } from './LabelCaptureSheet.tsx'
 import { useFoodPolling } from './useFoodPolling.ts'
 import Sheet from './Sheet.tsx'
 import SettingsSheet from './SettingsSheet.tsx'
@@ -76,6 +80,35 @@ function readClock(now: Date): Clock {
 interface ManualView {
   view: View
   pinnedTo: Slot
+}
+
+/** День цикла для даты записи. При выключенном цикле меню (Settings.menuCycleEnabled)
+    это null: записи без цикла ни к какому дню меню не привязаны (DayLog.cycleDay).
+    Берёт настройки параметром, а не из замыкания: опрос заказов зовёт его с
+    состоянием, только что пришедшим из setState. */
+function cycleDayForDate(settings: Settings, date: string, cycleDays: number): number | null {
+  return settings.menuCycleEnabled
+    ? cycleDay(settings.cycleStartDate, date, settings.cycleShift, cycleDays)
+    : null
+}
+
+/** Отказ воркера, который ещё не знает kind:'label': прежний разбор тела
+    (foodJob в Штурмане) требует поле text, а askLabel его не шлёт, заметка
+    уходит в note. Сверка по точному тексту, а не по любому 400: новый воркер
+    на битый снимок тоже отвечает 400, и выдавать это за «старый воркер» было
+    бы неправдой. */
+const OLD_WORKER_LABEL_REJECT = 'поле «text» обязательно'
+const OLD_WORKER_LABEL_ERROR = 'Воркер ещё не принимает наклейки: нужно обновить Штурмана.'
+
+/** Куда снимается наклейка: дата и приём по умолчанию для шторки съёмки.
+    replaceId - заказ, который «Переснять» заменяет: он убирается из очереди
+    только после того, как воркер принял новый снимок. */
+interface LabelCaptureTarget {
+  date: string
+  slot: Slot
+  replaceId: string | null
+  /** Перенос заказа при пересъёмке; null при обычном открытии. */
+  initial: LabelInitial | null
 }
 
 /** appUrl для x-callback-url Shortcuts: адрес приложения без query-параметров. */
@@ -138,6 +171,8 @@ export default function App() {
   const [addFromMenuOpen, setAddFromMenuOpen] = useState(false)
   /* Открытие шторки «Своя еда» (CustomFoodSheet) — задача E4b. */
   const [customFoodOpen, setCustomFoodOpen] = useState(false)
+  /* Шторка «Сфоткать наклейку»: null - закрыта. */
+  const [labelCapture, setLabelCapture] = useState<LabelCaptureTarget | null>(null)
   const [exportPayload, setExportPayload] = useState<ExportPayload | null>(null)
 
   /* Провал сохранения не глушим: экран обязан сказать, что записанного приёма
@@ -202,21 +237,28 @@ export default function App() {
      про сегодня. `today` меняется тем же таймером, что и autoSlot (см. выше),
      поэтому один эффект на него ловит и полночь, и открытие приложения в
      новый день. */
+  /* Цикл меню повара - выключатель в настройках. Выключен: дня цикла нет
+     (null), меню на сегодня нет, вид всегда сводка, переключателя приёмов и
+     баннера первого запуска нет. */
+  const cycleOn = state.settings.menuCycleEnabled
+
+  /* Тот же сброс и на переключение цикла: ручной выбор приёма, сделанный до
+     выключения, не должен всплыть после включения. */
   useEffect(() => {
     setManualView(null)
-  }, [today])
+  }, [today, cycleOn])
 
-  const cycleDayNum = useMemo(
-    () => cycleDay(state.settings.cycleStartDate, today, state.settings.cycleShift, menu.cycleDays),
-    [state.settings.cycleStartDate, state.settings.cycleShift, today, menu.cycleDays]
+  const cycleDayNum: number | null = useMemo(
+    () => cycleDayForDate(state.settings, today, menu.cycleDays),
+    [state.settings, today, menu.cycleDays]
   )
-  const batchDayNum = batchDay(cycleDayNum)
+  const batchDayNum = cycleDayNum === null ? null : batchDay(cycleDayNum)
 
   /* Ручной выбор вида живёт до следующего приёма по времени, а не вечно: он
      запомнил, какой приём был текущим в момент выбора, и когда время
      переводит стрелку на следующий, выбор отпускается сам — вид возвращается
      к сводке дня. Без этого вернуться к сводке можно было только вручную. */
-  const view: View = manualView && manualView.pinnedTo === autoSlot ? manualView.view : 'day'
+  const view: View = cycleOn && manualView && manualView.pinnedTo === autoSlot ? manualView.view : 'day'
   /* Приём, содержимое которого сейчас читается/пишется: сама сводка дня его
      не показывает, но хуки ниже (meal/entry/verdict/…) должны получать
      конкретный слот независимо от вида — на сводке это текущий по времени. */
@@ -230,7 +272,10 @@ export default function App() {
 
   /* Какая редакция меню действует на этот день, решает core/menu.ts: экран не
      перебирает редакции сам, иначе правило выбора разъехалось бы по копиям. */
-  const menuToday = useMemo(() => menuDayFor(menu, today, cycleDayNum), [menu, today, cycleDayNum])
+  const menuToday = useMemo(
+    () => (cycleDayNum === null ? undefined : menuDayFor(menu, today, cycleDayNum)),
+    [menu, today, cycleDayNum]
+  )
   const menuDay = menuToday?.day
   const meal: Meal | undefined = useMemo(
     () => menuDay?.meals.find(m => m.slot === activeSlot),
@@ -298,7 +343,9 @@ export default function App() {
      съеденное некуда было бы вписать. */
   const dayExtras = dayLog?.extras ?? []
 
-  const daySlots: DaySlotProgress[] = useMemo(() => SLOTS.map(s => {
+  /* При выключенном цикле карточек приёмов нет, и слоты не собираются вовсе:
+     пустой массив, а не четыре пустых слота (DaySummary их не рисует). */
+  const daySlots: DaySlotProgress[] = useMemo(() => (!cycleOn ? [] : SLOTS.map(s => {
     const slotMeal = menuDay?.meals.find(m => m.slot === s)
     const slotEntry = dayLog?.meals[s]
     /* Один и тот же источник правды на все плановые числа слота: меню, если
@@ -325,12 +372,12 @@ export default function App() {
       productsRevision: slotEntry?.productsRevision,
       extrasKcal
     }
-  }), [menuDay, dayLog, products])
+  })), [cycleOn, menuDay, dayLog, products])
 
-  /* План меню на день по жирам и углеводам - сумма по четырём приёмам. Целей
-     по ним в настройках нет и выдумывать их нельзя (DESIGN.md, «Честность -
-     часть дизайна»), поэтому знаменателем этих двух макросов на сводке дня
-     работает план меню, а не норма. */
+  /* План меню на день по жирам и углеводам - сумма по четырём приёмам: при
+     включённом цикле знаменатель этих двух макросов на сводке дня. При
+     выключенном слотов нет, сумма 0, и сводка берёт цели из настроек
+     (targetFatG/targetCarbsG). */
   const dayPlannedFatG = useMemo(
     () => daySlots.reduce((sum, s) => sum + s.plannedFatG, 0),
     [daySlots]
@@ -347,7 +394,8 @@ export default function App() {
      месте, где settings реально попадают в state. */
   const updateSettings = useCallback((settings: Settings) => {
     setState(prev => {
-      const cycleStartChanged = settings.cycleStartDate !== prev.settings.cycleStartDate
+      /* Без цикла поля даты в настройках нет, и подтверждать нечего. */
+      const cycleStartChanged = settings.menuCycleEnabled && settings.cycleStartDate !== prev.settings.cycleStartDate
       return {
         ...prev,
         settings: cycleStartChanged ? { ...settings, cycleStartConfirmed: true } : settings
@@ -396,7 +444,8 @@ export default function App() {
      переменной `meal` (та — только про activeSlot, открытый сейчас экран). */
   const handleLog = useCallback((targetSlot: Slot, status: MealStatus, fraction: number) => {
     const targetMeal = menuDay?.meals.find(m => m.slot === targetSlot)
-    if (!targetMeal) return
+    // без цикла меню на день нет, и записывать приём меню не во что
+    if (!targetMeal || cycleDayNum === null) return
     const now = new Date()
     setState(prev => logMeal(
       prev, today, targetSlot, targetMeal, products, status, fraction, cycleDayNum, now.toISOString(), productsRevision
@@ -418,19 +467,35 @@ export default function App() {
   ) => {
     const now = new Date().toISOString()
     const extra = menuExtraFrom(meal, products, target.slot, fraction, fromCycleDay, crypto.randomUUID(), now, productsRevision)
-    const targetCycleDay = cycleDay(state.settings.cycleStartDate, target.date, state.settings.cycleShift, menu.cycleDays)
+    const targetCycleDay = cycleDayForDate(state.settings, target.date, menu.cycleDays)
     setState(prev => addExtra(prev, target.date, extra, targetCycleDay))
     setAddFromMenuOpen(false)
-  }, [products, productsRevision, state.settings.cycleStartDate, state.settings.cycleShift, menu.cycleDays])
+  }, [products, productsRevision, state.settings, menu.cycleDays])
 
   const handleRemoveExtra = useCallback((extraId: string) => {
     setState(prev => removeExtra(prev, today, extraId))
   }, [today])
 
+  /* Правка доли записи прямо в «Журнале дня». Дата явная: сводка показывает
+     один день, но обработчик не должен молча зависеть от того, какой это день. */
+  const handleSetExtraFraction = useCallback((date: string, extraId: string, fraction: number) => {
+    setState(prev => setExtraFraction(prev, date, extraId, fraction))
+  }, [])
+
   /* Опрос заказов на разбор своей еды идёт независимо от того, открыта ли
      CustomFoodSheet: foodRequests лежат в AppState и переживают закрытие
      шторки (см. useFoodPolling.ts, раздел 1.7 плана «своя еда»). */
-  const foodPollError = useFoodPolling(state, setState, SHTURMAN_BASE, state.settings.shturmanToken)
+  const foodPollError = useFoodPolling(
+    state, setState, SHTURMAN_BASE, state.settings.shturmanToken,
+    /* Готовый разбор наклейки сразу становится записью журнала с долей,
+       выбранной при съёмке: подтверждать его отдельно человеку не нужно.
+       День цикла считается по настройкам того же состояния, что пришло из
+       опроса, а не по замыканию этого рендера. */
+    polled => logDoneLabelRequests(
+      polled, new Date().toISOString(), () => crypto.randomUUID(),
+      date => cycleDayForDate(polled.settings, date, menu.cycleDays)
+    )
+  )
 
   /* Новый заказ на разбор: id заводится здесь (эффект стороны — не ядро),
      askFood зовёт воркер, и только при успехе заказ попадает в состояние
@@ -470,6 +535,50 @@ export default function App() {
     setState(prev => discardFoodRequest(prev, id))
   }, [])
 
+  /* Снимок наклейки на разбор: id заводится здесь, askLabel зовёт воркер, и
+     только при успехе заказ попадает в очередь (newLabelRequest). Сам снимок
+     в состояние не попадает: он живёт в шторке и уходит только воркеру.
+     replaceId - заказ, который «Переснять» заменяет: он убирается тем же
+     обновлением состояния и только при успехе, неудачная попытка прежний
+     заказ не стирает. */
+  const handleAskLabel = useCallback(async (
+    ask: LabelAsk, replaceId: string | null
+  ): Promise<{ ok: true } | { ok: false; error: string }> => {
+    const id = crypto.randomUUID()
+    const result = await askLabel(SHTURMAN_BASE, state.settings.shturmanToken, {
+      id, mime: ask.mime, image: ask.image, note: ask.note, grams: ask.grams
+    })
+    if (!result.ok) {
+      const oldWorker = result.reason === 'bad-request' && result.error === OLD_WORKER_LABEL_REJECT
+      return { ok: false, error: oldWorker ? OLD_WORKER_LABEL_ERROR : result.error }
+    }
+    const now = new Date().toISOString()
+    setState(prev => {
+      const asked = applyFoodAsk(prev, newLabelRequest(id, ask.note, ask.grams, ask.target, ask.fraction, now))
+      return replaceId === null ? asked : discardFoodRequest(asked, replaceId)
+    })
+    return { ok: true }
+  }, [state.settings.shturmanToken])
+
+  /* «Переснять» у заказа по наклейке, который не удался или протух: снимок
+     после разбора у воркера вырезан, повторить нечем, поэтому открывается
+     съёмка на ту же дату и приём. Зовётся и со сводки, и из шторки «Своя
+     еда» - та закрывается, две шторки друг над другом не открываются. */
+  const handleRetakeLabel = useCallback((requestId: string) => {
+    const request = state.foodRequests.find(r => r.id === requestId)
+    if (!request) return
+    setCustomFoodOpen(false)
+    setLabelCapture({ date: request.target.date, slot: request.target.slot, replaceId: request.id,
+      initial: { fraction: request.fraction, note: request.text, grams: request.grams } })
+  }, [state.foodRequests])
+
+  /* Заказы по наклейкам на сегодняшнюю сводку: ещё не ставшие записью
+     (готовые logDoneLabelRequests уже перенёс в журнал). */
+  const todayLabelRequests = useMemo(
+    () => state.foodRequests.filter(r => r.kind === 'label' && r.status !== 'done' && r.target.date === today),
+    [state.foodRequests, today]
+  )
+
   /* «Сохранить и записать» на готовом разборе: кладёт еду в книгу, пишет
      extra на целевую дату/приём и убирает выполненный заказ — три перехода
      одним действием (saveCustomFood в core/food.ts). Целевая дата может
@@ -479,9 +588,9 @@ export default function App() {
     requestId: string, editedFood: CustomFood, target: { date: string; slot: Slot }, fraction: number
   ) => {
     const now = new Date().toISOString()
-    const targetCycleDay = cycleDay(state.settings.cycleStartDate, target.date, state.settings.cycleShift, menu.cycleDays)
+    const targetCycleDay = cycleDayForDate(state.settings, target.date, menu.cycleDays)
     setState(prev => saveCustomFood(prev, requestId, editedFood, target, fraction, crypto.randomUUID(), now, targetCycleDay))
-  }, [state.settings.cycleStartDate, state.settings.cycleShift, menu.cycleDays])
+  }, [state.settings, menu.cycleDays])
 
   const handleRemoveCustomFood = useCallback((foodId: string) => {
     setState(prev => removeCustomFood(prev, foodId))
@@ -489,8 +598,8 @@ export default function App() {
 
   /* Добавление из книги своей еды — снапшот полной порции (customExtraFrom)
      плюс запись в дневник, ровно как перенос блюда меню (handleAddFromMenu),
-     только на сегодняшний день и текущий cycleDayNum: книга добавляется «в
-     день», который сейчас открыт на главном экране. */
+     только на сегодняшний день и текущий cycleDayNum (null без цикла): книга
+     добавляется «в день», который сейчас открыт на главном экране. */
   const handleAddCustomFoodFromBook = useCallback((food: CustomFood, slot: Slot, fraction: number) => {
     const now = new Date().toISOString()
     const extra = customExtraFrom(food, slot, fraction, crypto.randomUUID(), now)
@@ -602,12 +711,14 @@ export default function App() {
               переключатель приёмов над содержимым экрана приёма, панель
               вкладок - липкой полосой внизу окна на сводке. */}
           <div className="screen__side">
-            <SlotSwitch
-              view={view}
-              currentSlot={autoSlot}
-              daySlots={daySlots}
-              onSelect={handleSelectView}
-            />
+            {cycleOn && (
+              <SlotSwitch
+                view={view}
+                currentSlot={autoSlot}
+                daySlots={daySlots}
+                onSelect={handleSelectView}
+              />
+            )}
             <TabBar
               view={view}
               onSelectDay={() => handleSelectView('day')}
@@ -645,6 +756,15 @@ export default function App() {
                   dayNutrients={dayNutrients}
                   norms={norms}
                   productsRevision={productsRevision}
+                  menuCycleEnabled={cycleOn}
+                  targetFatG={state.settings.targetFatG}
+                  targetCarbsG={state.settings.targetCarbsG}
+                  customFoods={state.customFoods}
+                  labelRequests={todayLabelRequests}
+                  onOpenLabelCapture={() => setLabelCapture({ date: today, slot: autoSlot, replaceId: null, initial: null })}
+                  onSetExtraFraction={(extraId, fraction) => handleSetExtraFraction(today, extraId, fraction)}
+                  onRetakeLabel={handleRetakeLabel}
+                  onDiscardRequest={handleDiscardFoodRequest}
                 />
               )
               : (
@@ -700,7 +820,10 @@ export default function App() {
           menu={menu}
           products={products}
           cycleDays={menu.cycleDays}
-          currentCycleDay={cycleDayNum}
+          // без цикла сегодняшнего дня цикла нет: шторка начнёт с первого дня
+          // и не отметит «сегодня» ни на одном чипе
+          currentCycleDay={cycleDayNum ?? 1}
+          menuCycleEnabled={cycleOn}
           defaultDate={today}
           defaultSlot={activeSlot}
           onAdd={handleAddFromMenu}
@@ -717,12 +840,25 @@ export default function App() {
           pollError={foodPollError}
           onAskNew={handleAskFood}
           onRetry={handleRetryFoodRequest}
+          onRetake={handleRetakeLabel}
           onDiscard={handleDiscardFoodRequest}
           onSave={handleSaveCustomFood}
           onRemoveCustomFood={handleRemoveCustomFood}
           onAddFromBook={handleAddCustomFoodFromBook}
           onOpenSettings={() => { setCustomFoodOpen(false); setSettingsOpen(true) }}
           onClose={() => setCustomFoodOpen(false)}
+        />
+      )}
+
+      {labelCapture && (
+        <LabelCaptureSheet
+          open
+          date={labelCapture.date}
+          defaultSlot={labelCapture.slot}
+          initial={labelCapture.initial ?? undefined}
+          hasToken={state.settings.shturmanToken !== ''}
+          onClose={() => setLabelCapture(null)}
+          onSubmit={ask => handleAskLabel(ask, labelCapture.replaceId)}
         />
       )}
 
@@ -733,6 +869,7 @@ export default function App() {
           targetKcal={state.settings.targetKcal}
           targetProteinG={state.settings.targetProteinG}
           norms={norms}
+          menuCycleEnabled={cycleOn}
           onClose={() => setWeekOpen(false)}
         />
       )}

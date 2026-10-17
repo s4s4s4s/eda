@@ -67,6 +67,9 @@ async function interpretResponse(res: Response): Promise<FoodClientResult> {
     const serverError = isPlainObject(body) && typeof body.error === 'string' ? body.error : undefined
     return { ok: false, reason: 'bad-request', error: serverError ?? 'Запрос отклонён воркером как некорректный.' }
   }
+  if (res.status === 413) {
+    return { ok: false, reason: 'bad-request', error: 'Снимок слишком большой, попробуй переснять ближе.' }
+  }
   if (!res.ok) {
     return { ok: false, reason: 'bad-response', error: `Воркер ответил кодом ${res.status}.` }
   }
@@ -108,6 +111,29 @@ export async function askFood(
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body)
+  }, fetchFn)
+}
+
+/** Заказывает разбор по снимку наклейки. Поле text в тело НЕ кладётся нарочно:
+    старый воркер без поддержки kind ответит 400 «поле text обязательно», а не
+    создаст текстовый наряд из заметки и не потеряет фото молча. */
+export async function askLabel(
+  base: string,
+  token: string,
+  body: { id: string; mime: string; image: string; note?: string; grams?: number | null },
+  fetchFn: FetchFn = fetch
+): Promise<FoodClientResult> {
+  return callWorker(`${base}/food`, token, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      id: body.id,
+      kind: 'label',
+      mime: body.mime,
+      image: body.image,
+      note: body.note ?? '',
+      grams: body.grams ?? null
+    })
   }, fetchFn)
 }
 
