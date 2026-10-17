@@ -23,7 +23,7 @@ import type { FoodPollResponse } from '../src/core/food'
 import { dayNutrientTotals } from '../src/core/log'
 import { isComplete } from '../src/core/nutrition'
 import { weekCoverage, weekSummary } from '../src/core/week'
-import { askFood, askLabel, pollFood, SHTURMAN_BASE } from '../src/core/foodClient'
+import { askFood, askLabel, askProduct, fetchOffProduct, pollFood, searchOff, SHTURMAN_BASE } from '../src/core/foodClient'
 import { NUTRIENT_KEYS } from '../src/core/types'
 import type { AppState, CustomFood, Meal, OffProduct, Product, ProductIndex } from '../src/core/types'
 
@@ -992,6 +992,102 @@ async function askLabelChecks(): Promise<void> {
   group('askLabel: POST с kind label без text, 413 -> понятный bad-request, 400 старого воркера доходит')
 }
 
+async function askProductChecks(): Promise<void> {
+  const okBody: FoodPollResponse = { ok: true, id: 'food:p-1', state: 'pending', pcAgo: 4, modelOk: true }
+  {
+    const { fetchFn, calls } = fakeFetch(200, okBody)
+    const result = await askProduct(SHTURMAN_BASE, 'tok', { id: 'p-1', code: '5000159461122', grams: 50, note: 'без обёртки' }, fetchFn)
+    assert(result.ok === true, 'успешный ответ обязан давать ok: true')
+    assert(calls.length === 1 && calls[0].url === `${SHTURMAN_BASE}/food` && calls[0].init.method === 'POST', 'ожидался один POST на /food')
+    const sent = JSON.parse(String(calls[0].init.body)) as Record<string, unknown>
+    assert(sent.kind === 'product' && sent.id === 'p-1' && sent.code === '5000159461122' && sent.grams === 50 && sent.note === 'без обёртки',
+      `тело обязано нести kind, id, code, grams, note, получено ${JSON.stringify(sent)}`)
+    assert(!('text' in sent) && !('target' in sent), 'text и цель в теле не посылаются')
+  }
+  {
+    const { fetchFn, calls } = fakeFetch(200, okBody)
+    await askProduct(SHTURMAN_BASE, 'tok', { id: 'p-2', code: '5000159461122', grams: 30 }, fetchFn)
+    const sent = JSON.parse(String(calls[0].init.body)) as Record<string, unknown>
+    assert(sent.note === '', 'note по умолчанию пустая')
+  }
+  group('askProduct шлёт kind product, code, grams, note')
+  {
+    const ask = (status: number, body: unknown) =>
+      askProduct(SHTURMAN_BASE, 't', { id: 'p-3', code: '5000159461122', grams: 50 }, fakeFetch(status, body).fetchFn)
+    const nf = await ask(404, { ok: false, reason: 'no-nutrition', error: 'У товара нет полного КБЖУ' })
+    assert(!nf.ok && nf.reason === 'off' && nf.error === 'У товара нет полного КБЖУ', `404 с reason обязан давать off, получено ${JSON.stringify(nf)}`)
+    const bad = await ask(502, { ok: false, reason: 'off-unavailable', error: 'Open Food Facts не отвечает' })
+    assert(!bad.ok && bad.reason === 'off' && bad.error === 'Open Food Facts не отвечает', `502 с reason обязан давать off, получено ${JSON.stringify(bad)}`)
+    const timeout = await ask(504, { ok: false, reason: 'off-timeout', error: 'таймаут' })
+    assert(!timeout.ok && timeout.reason === 'off', '504 с reason обязан давать off')
+    const old = await ask(404, { ok: false })
+    assert(!old.ok && old.reason === 'not-found', '404 без reason остаётся not-found')
+    const unauth = await ask(401, {})
+    assert(!unauth.ok && unauth.reason === 'unauthorized', '401 остаётся unauthorized')
+  }
+  group('askProduct: 404/502 с reason -> reason off')
+}
+
+async function searchOffChecks(): Promise<void> {
+  const good = snickersOff()
+  const okBody = { ok: true, q: 'snickers', items: [good], skipped: 2, total: 9, cached: false }
+  {
+    const { fetchFn, calls } = fakeFetch(200, okBody)
+    const result = await searchOff(SHTURMAN_BASE, 'tok', 'сникерс бар', 12, fetchFn)
+    assert(result.ok && result.items.length === 1 && result.skipped === 2 && result.total === 9, `200 обязан давать items/skipped/total, получено ${JSON.stringify(result)}`)
+    assert(calls[0].url === `${SHTURMAN_BASE}/off/search?q=${encodeURIComponent('сникерс бар')}&n=12`, `неверный URL поиска: ${calls[0].url}`)
+    const headers = calls[0].init.headers as Record<string, string>
+    assert(calls[0].init.method === 'GET' && headers.authorization === 'Bearer tok', 'GET с Bearer-токеном')
+  }
+  {
+    const broken = { ...okBody, items: [good, { code: '1' }, 5] }
+    const result = await searchOff(SHTURMAN_BASE, 't', 'snickers', 12, fakeFetch(200, broken).fetchFn)
+    assert(result.ok && result.items.length === 1 && result.skipped === 4, `битые items пропускаются и входят в skipped, получено ${JSON.stringify(result)}`)
+  }
+  const reasonOf = async (status: number, body: unknown): Promise<string> => {
+    const r = await searchOff(SHTURMAN_BASE, 't', 'snickers', 12, fakeFetch(status, body).fetchFn)
+    return r.ok ? 'ok' : r.reason
+  }
+  assert(await reasonOf(404, { ok: false }) === 'old-worker', '404 без reason -> old-worker')
+  assert(await reasonOf(502, { ok: false, reason: 'off-unavailable' }) === 'off-unavailable', '502 -> off-unavailable')
+  assert(await reasonOf(504, { ok: false, reason: 'off-timeout' }) === 'off-unavailable', '504 -> off-unavailable')
+  assert(await reasonOf(401, {}) === 'unauthorized', '401 -> unauthorized')
+  assert(await reasonOf(400, { ok: false, error: 'запрос от 2 до 80 символов' }) === 'bad-request', '400 -> bad-request')
+  assert(await reasonOf(200, { ok: true }) === 'bad-response', 'тело без items -> bad-response')
+  assert(await reasonOf(200, 'строка') === 'bad-response', 'тело не объект -> bad-response')
+  const notJson = (async () => ({ ok: true, status: 200, json: async () => { throw new Error('не JSON') } }) as unknown as Response) as typeof fetch
+  const nj = await searchOff(SHTURMAN_BASE, 't', 'snickers', 12, notJson)
+  assert(!nj.ok && nj.reason === 'bad-response', 'не JSON -> bad-response')
+  const netFail = (async () => { throw new Error('offline') }) as typeof fetch
+  const net = await searchOff(SHTURMAN_BASE, 'секретный-токен', 'snickers', 12, netFail)
+  assert(!net.ok && net.reason === 'network' && !net.error.includes('секретный-токен'), 'сбой fetch -> network без токена в тексте')
+  const old = await searchOff(SHTURMAN_BASE, 't', 'snickers', 12, fakeFetch(404, {}).fetchFn)
+  assert(!old.ok && old.error === 'Воркер ещё не обновлён: поиск товаров недоступен.', 'текст old-worker по плану')
+  group('searchOff: 200 -> items/skipped; 404 без reason -> old-worker; 502 -> off-unavailable; 401 -> unauthorized; не JSON -> bad-response; битый item пропускается')
+}
+
+async function fetchOffProductChecks(): Promise<void> {
+  const good = snickersOff()
+  {
+    const { fetchFn, calls } = fakeFetch(200, { ok: true, product: good, cached: true })
+    const result = await fetchOffProduct(SHTURMAN_BASE, 'tok', '5000159461122', fetchFn)
+    assert(result.ok && JSON.stringify(result.product) === JSON.stringify(good), '200 обязан отдать разобранный товар без потерь')
+    assert(calls[0].url === `${SHTURMAN_BASE}/off/product?code=5000159461122`, `неверный URL карточки: ${calls[0].url}`)
+  }
+  const get = (status: number, body: unknown) => fetchOffProduct(SHTURMAN_BASE, 't', '5000159461122', fakeFetch(status, body).fetchFn)
+  const nn = await get(404, { ok: false, reason: 'no-nutrition', error: 'У товара в Open Food Facts нет полного КБЖУ на 100 г' })
+  assert(!nn.ok && nn.reason === 'no-nutrition' && nn.error.includes('КБЖУ'), `404 no-nutrition обязан дойти, получено ${JSON.stringify(nn)}`)
+  const nf = await get(404, { ok: false, reason: 'not-found' })
+  assert(!nf.ok && nf.reason === 'not-found', '404 not-found обязан дойти')
+  const old = await get(404, { ok: false })
+  assert(!old.ok && old.reason === 'old-worker', '404 без reason -> old-worker')
+  const down = await get(502, { ok: false, reason: 'off-bad-json' })
+  assert(!down.ok && down.reason === 'off-unavailable', '502 -> off-unavailable')
+  const bad = await get(200, { ok: true, product: { code: 'x' } })
+  assert(!bad.ok && bad.reason === 'bad-response', 'карточка не по форме -> bad-response')
+  group('fetchOffProduct: 404 с reason no-nutrition -> no-nutrition; 200 -> product')
+}
+
 async function main(): Promise<void> {
   console.log('food — домен «своя еда» и клиент воркера')
   parseFoodResultAcceptsFixtureChecks()
@@ -1035,6 +1131,9 @@ async function main(): Promise<void> {
   offWarningTextChecks()
   await clientStatusChecks()
   await askLabelChecks()
+  await askProductChecks()
+  await searchOffChecks()
+  await fetchOffProductChecks()
   labelEnergyMisreadChecks()
   labelEnergyWarningChecks()
   console.log(`\nВсе проверки food пройдены (${passed} групп).`)
