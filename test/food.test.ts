@@ -630,7 +630,17 @@ async function clientStatusChecks(): Promise<void> {
     const headers = calls[0].init.headers as Record<string, string>
     assert(headers.authorization === 'Bearer my-secret-token', `заголовок authorization ожидался «Bearer my-secret-token», получено «${headers.authorization}»`)
   }
-  group('foodClient: 401 -> unauthorized, 404 -> not-found, 400 -> bad-request, throw -> network, не-JSON -> bad-response, успех -> {ok:true,response}, заголовок и URL верны')
+  {
+    // Воркер отдаёт modelOk: null, пока раннер ни разу не прислал отчёт о модели
+    // (pcState в src/worker.js «Штурмана»). Это нормальный ответ, а не брак формы.
+    const { fetchFn } = fakeFetch(200, { ok: true, id: 'food:n', state: 'pending', pcAgo: 321, modelOk: null })
+    const result = await askFood(SHTURMAN_BASE, 't', { id: 'food:n', text: 'гречка' }, fetchFn)
+    assert(result.ok === true && result.response.modelOk === null, `modelOk: null обязан проходить как есть, получено ${JSON.stringify(result)}`)
+    const bad = fakeFetch(200, { ok: true, id: 'food:n', state: 'pending', pcAgo: 1, modelOk: 'да' })
+    const badResult = await askFood(SHTURMAN_BASE, 't', { id: 'food:n', text: 'гречка' }, bad.fetchFn)
+    assert(!badResult.ok && badResult.reason === 'bad-response', 'modelOk не boolean и не null обязан давать bad-response')
+  }
+  group('foodClient: 401 -> unauthorized, 404 -> not-found, 400 -> bad-request, throw -> network, не-JSON -> bad-response, успех -> {ok:true,response}, modelOk null принят, заголовок и URL верны')
 }
 
 async function askLabelChecks(): Promise<void> {

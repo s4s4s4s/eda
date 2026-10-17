@@ -32,7 +32,7 @@ function parseFoodPollResponse(v: unknown): FoodPollResponse | null {
   const state = v.state
   if (state !== 'pending' && state !== 'taken' && state !== 'done' && state !== 'failed' && state !== 'expired') return null
   if (typeof v.pcAgo !== 'number' && v.pcAgo !== null) return null
-  if (typeof v.modelOk !== 'boolean') return null
+  if (typeof v.modelOk !== 'boolean' && v.modelOk !== null) return null
   if (v.error !== undefined && typeof v.error !== 'string') return null
   return {
     ok: true,

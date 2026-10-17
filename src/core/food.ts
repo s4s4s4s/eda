@@ -436,7 +436,9 @@ export interface FoodPollResponse {
   result?: unknown
   error?: string
   pcAgo: number | null
-  modelOk: boolean
+  /** Здоровье модели на ПК по последнему отчёту раннера; null - ПК ещё не
+      отчитывался (pcState в src/worker.js «Штурмана»), это не «модель сломана». */
+  modelOk: boolean | null
 }
 
 /** Применяет ответ опроса к заказу с этим id. Чистый переход состояния:

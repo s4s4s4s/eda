@@ -17,6 +17,8 @@ import { buildShortcutUrl, healthNutrients, healthShortcutChannel, NO_HEALTHKIT_
 import { buildChannels, sendViaChannel, SKIPPED_MEAL_REASON } from '../src/core/export/index.ts'
 import type { ExtraLogEntry, Kbju, MealLogEntry } from '../src/core/types.ts'
 import { fractionFromPercent, fractionLabel, percentFromFraction, PERCENT_PRESETS } from '../src/ui/fractions.ts'
+import { nutrientsCaption } from '../src/ui/nutrientsCaption.ts'
+import type { DaySlotProgress } from '../src/ui/slots.ts'
 
 let passed = 0
 function assert(cond: boolean, msg: string): void {
@@ -211,6 +213,32 @@ ${text}`)
     assert(percentFromFraction(fractionFromPercent(pct) as number) === pct, `быстрое значение ${pct} обратимо`)
   }
   group('доля в процентах: подписи «33%» / «3/4» / «80%», fractionFromPercent отклоняет 0, 101, нецелые')
+}
+
+// ---- подпись блока нутриентов --------------------------------------------------
+
+/** Записанный слот для подписи: nutrientsCaption читает только slot, status,
+    fraction и productsRevision, остальные поля DaySlotProgress ей не нужны. */
+function loggedSlot(over: Partial<DaySlotProgress>): DaySlotProgress {
+  return { slot: 'lunch', status: 'eaten', productsRevision: 'rev-1', ...over } as DaySlotProgress
+}
+
+/* Цикл меню выключен: журнал из одних наклеек. Подпись не имеет права сказать
+   «ничего не записано» при записанной еде. С циклом добавленное остаётся
+   хвостом «+ добавлено: …» после слотов, как было. */
+function nutrientsCaptionChecks(): void {
+  // подписи важны только title и fraction записи, вид записи на неё не влияет
+  const label = [extraEntry({ id: 'l-1', title: 'Тушёная курица с овощами', fraction: 0.75 })]
+  assert(nutrientsCaption('day', [], 'rev-1', []) === 'за день пока ничего не записано', 'пустой день без записей')
+  const onlyExtras = nutrientsCaption('day', [], 'rev-1', label)
+  assert(onlyExtras === 'записано: Тушёная курица с овощами (3/4)', `только добавленное, получено «${onlyExtras}»`)
+  assert(!onlyExtras.includes('ничего не записано'), 'при записанной еде нет «ничего не записано»')
+  const projected = nutrientsCaption('projected', [], 'rev-1', label)
+  assert(projected === 'записано: Тушёная курица с овощами (3/4) + этот приём (не записан)', `проекция без слотов, получено «${projected}»`)
+  const both = nutrientsCaption('day', [loggedSlot({})], 'rev-1', label)
+  assert(both === 'записано: обед + добавлено: Тушёная курица с овощами (3/4)', `слоты и добавленное, получено «${both}»`)
+  assert(nutrientsCaption('meal', [], 'rev-1', label) === '', 'режим «этот приём» без подписи')
+  group('nutrientsCaption: без слотов добавленное и есть «записано», со слотами хвост «+ добавлено»')
 }
 
 // ---- format.ts: CSV ----------------------------------------------------------
@@ -662,6 +690,7 @@ async function main(): Promise<void> {
   dayClipboardTextChecks()
   dayClipboardExtrasChecks()
   fractionPercentChecks()
+  nutrientsCaptionChecks()
   csvChecks()
   csvExtrasChecks()
   csvNutrientCellsChecks()
