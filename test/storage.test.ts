@@ -593,7 +593,7 @@ function migrationV5ToV6Checks(): void {
   const state = result.state
   assert(result.source === 'stored', `source ожидался 'stored', получено '${result.source}'`)
   assert(result.dropped === 0, `миграция v5 -> v6 не имеет права ничего потерять, dropped = ${result.dropped}`)
-  assert(state.version === 6 && state.version === CURRENT_VERSION, `версия после миграции ожидалась 6, получено ${state.version}`)
+  assert(state.version === CURRENT_VERSION, `версия после миграции ожидалась ${CURRENT_VERSION}, получено ${state.version}`)
 
   assert(deepEqual(state.settings, { ...settings, menuCycleEnabled: false, targetFatG: 0, targetCarbsG: 0 }),
     `настройки: остальные поля нетронуты, новые false/0/0, получено ${JSON.stringify(state.settings)}`)
@@ -605,10 +605,10 @@ function migrationV5ToV6Checks(): void {
   assert(state.customFoods['food-1'].label === undefined && state.customFoods['food-1'].fit === undefined,
     'у еды версии 5 наклейки нет и она не выдумывается')
 
-  // и повторный круг не меняет ничего: версия 6 стабильна
+  // и повторный круг не меняет ничего: мигрированное состояние стабильно
   const again = deserialize(serialize(state))
-  assert(again.dropped === 0 && deepEqual(again.state, state), 'повторный serialize/deserialize состояния 6 даёт то же состояние')
-  group('deserialize: миграция v5 -> v6 достраивает настройки false/0/0 и заказы kind/fraction, ничего не теряя')
+  assert(again.dropped === 0 && deepEqual(again.state, state), 'повторный serialize/deserialize мигрированного состояния даёт то же состояние')
+  group('deserialize: миграция v5 -> текущая достраивает настройки false/0/0 и заказы kind/fraction, ничего не теряя')
 }
 
 // ---- наклейки: запись журнала, еда, заказ переживают round-trip -----------------
@@ -783,6 +783,329 @@ function labelGarbageChecks(): void {
   // записи: без titleHy и без ссылки; еда: basis kg, минус, пустой состав без label; заказы: доля 0, нет доли, пустой text, чужой вид
   assert(result.dropped === 2 + 3 + 4, `отброшенных ожидалось 9 (2 записи + 3 еды + 4 заказа), получено ${result.dropped}`)
   group('labelGarbage: битая запись label, еда с basis kg, заказ label с долей 0 и текстовый с пустым text выпадают и считаются')
+}
+
+// ---- версия 6 -> 7: товары Open Food Facts ----------------------------------
+
+function currentVersionChecks(): void {
+  assert(CURRENT_VERSION === 7, `CURRENT_VERSION ожидалась 7, получено ${CURRENT_VERSION}`)
+  group('CURRENT_VERSION равна 7')
+}
+
+/** Состояние версии 6 в той форме, в какой его пишет сборка с наклейками:
+    приёмы, добавки menu/custom/label, еда текстом и по наклейке, заказы text и label. */
+function storedV6State(): Record<string, unknown> {
+  const full = snapshotOfFirstKeys(NUTRIENT_KEYS.length)
+  return {
+    version: 6,
+    settings: {
+      cycleStartDate: '2026-08-20', cycleShift: 1, targetKcal: 3100, targetProteinG: 130,
+      shortcutName: 'ЗаписатьЕду', cycleStartConfirmed: true, shturmanToken: 'sekret',
+      menuCycleEnabled: true, targetFatG: 90, targetCarbsG: 350
+    },
+    log: {
+      '2026-10-10': {
+        cycleDay: 3,
+        meals: {
+          breakfast: storedEntry('breakfast', { nutrients: full, productsRevision: '2026-08-17' }),
+          lunch: storedEntry('lunch', { status: 'partial', fraction: 0.5, nutrients: full })
+        },
+        extras: [
+          storedExtra('dobavka-menu', { nutrients: full, productsRevision: '2026-08-17' }),
+          storedExtra('dobavka-svoya', {
+            kind: 'custom', customFoodId: 'food-1', source: 'USDA SR Legacy 2018-04', nutrients: full,
+            mealId: undefined, fromCycleDay: undefined, fromSlot: undefined
+          }),
+          storedLabelExtra('dobavka-label', { fraction: 0.75, nutrients: full })
+        ]
+      }
+    },
+    preferences: { ingredients: { losos: 'love' }, dishes: { ovsyanka: { score: 8, comment: 'вкусно', ratedAt: '2026-09-02' } } },
+    customFoods: {
+      'food-1': storedCustomFood('food-1'),
+      'food-label': storedLabelFood('food-label')
+    },
+    foodRequests: [
+      {
+        id: 'req-text', kind: 'text', text: 'сырники', grams: 200, fraction: 1, askedAt: '2026-10-10T21:00:00',
+        target: { date: '2026-10-10', slot: 'snack' }, status: 'pending', pcAgo: 8
+      },
+      {
+        id: 'req-label', kind: 'label', text: '', grams: null, fraction: 0.5, askedAt: '2026-10-10T13:00:00',
+        target: { date: '2026-10-10', slot: 'lunch' }, status: 'failed', error: 'наклейка не читается', pcAgo: null
+      }
+    ]
+  }
+}
+
+function migrationV6ToV7Checks(): void {
+  const v6 = storedV6State()
+  const result = deserialize(JSON.stringify(v6))
+  assert(result.source === 'stored', `source ожидался 'stored', получено '${result.source}'`)
+  assert(result.dropped === 0, `миграция v6 -> v7 не имеет права ничего потерять, dropped = ${result.dropped}`)
+  assert(result.state.version === 7, `версия после миграции ожидалась 7, получено ${result.state.version}`)
+  // всё, кроме версии, обязано совпасть с записанным версией 6 дословно
+  const expected = { ...JSON.parse(JSON.stringify(v6)), version: 7 }
+  assert(deepEqual(result.state, expected), `состояние v6 после миграции обязано равняться исходному, получено ${serialize(result.state)}`)
+  assert(Object.values(result.state.customFoods).every(food => food.product === undefined), 'у еды версии 6 товара нет и он не выдумывается')
+  assert(result.state.foodRequests.every(r => r.product === undefined), 'у заказов версии 6 товара нет и он не выдумывается')
+  group('deserialize: состояние версии 6 читается без потерь и получает версию 7')
+}
+
+/** Валидный товар Open Food Facts (Snickers 50 г, как его нормализует воркер). */
+function storedOffProduct(extra: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    code: '5000159461122',
+    url: 'https://world.openfoodfacts.org/product/5000159461122',
+    name: 'Snickers',
+    brand: 'Mars Wrigley Confectionery UK Limited, Snickers',
+    quantityText: '50 G',
+    per100: { kcal: 481, p: 8.6, f: 22.5, c: 60.5 },
+    printedMicro: { fiber: 4.3, sugar: 51.8, satFat: 7.9, cholesterol: 6.7, sodium: 251.5 },
+    servingG: 50,
+    packageG: 50,
+    ingredientsText: 'Milk Chocolate, peanuts, corn syrup, sugar, palm oil',
+    warnings: [],
+    plausible: true,
+    fetchedAt: '2026-10-17T12:00:00.000Z',
+    ...extra
+  }
+}
+
+function storedProductFacts(extra: Record<string, unknown> = {}): Record<string, unknown> {
+  return storedOffProduct({
+    grams: 50,
+    perPortion: { kcal: 240.5, p: 4.3, f: 11.25, c: 30.25 },
+    remark: 'состав на английском, аналоги условные',
+    ...extra
+  })
+}
+
+/** Еда из Open Food Facts без состава USDA: КБЖУ напечатаны на упаковке. */
+function storedProductFood(id: string, food: Record<string, unknown> = {}): Record<string, unknown> {
+  return storedCustomFood(id, {
+    title: 'Snickers',
+    source: 'Open Food Facts',
+    spec: 3,
+    request: { text: '', grams: 50 },
+    components: [],
+    product: storedProductFacts(),
+    ...food
+  })
+}
+
+function storedProductExtra(id: string, extra: Record<string, unknown> = {}): Record<string, unknown> {
+  return storedExtra(id, {
+    kind: 'product', customFoodId: 'food-product', source: 'Open Food Facts',
+    code: '5000159461122', url: 'https://world.openfoodfacts.org/product/5000159461122',
+    kbju: { kcal: 240.5, p: 4.3, f: 11.25, c: 30.25 },
+    mealId: undefined, fromCycleDay: undefined, fromSlot: undefined,
+    ...extra
+  })
+}
+
+function storedProductRequest(id: string, extra: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id, kind: 'product', text: '', grams: 50, fraction: 1, product: storedOffProduct(),
+    askedAt: '2026-10-17T12:05:00', target: { date: '2026-10-17', slot: 'snack' }, status: 'pending', pcAgo: 5,
+    ...extra
+  }
+}
+
+/** Текущее состояние с одной книгой своей еды и одной очередью: всё прочее пусто. */
+function storedProductState(parts: { customFoods?: Record<string, unknown>; foodRequests?: unknown[]; extras?: unknown[] }): string {
+  return JSON.stringify({
+    version: CURRENT_VERSION,
+    settings: defaultState().settings,
+    log: parts.extras ? { '2026-10-17': { cycleDay: null, meals: {}, extras: parts.extras } } : {},
+    preferences: { ingredients: {}, dishes: {} },
+    customFoods: parts.customFoods ?? {},
+    foodRequests: parts.foodRequests ?? []
+  })
+}
+
+function productRequestWithoutProductChecks(): void {
+  const result = deserialize(storedProductState({
+    foodRequests: [
+      storedProductRequest('req-bez-tovara', { product: undefined }),
+      storedProductRequest('req-sosed')
+    ]
+  }))
+  assert(result.dropped === 1, `заказ product без product обязан выпасть один, dropped = ${result.dropped}`)
+  assert(JSON.stringify(result.state.foodRequests.map(r => r.id)) === JSON.stringify(['req-sosed']),
+    `соседний заказ обязан остаться, получено ${JSON.stringify(result.state.foodRequests.map(r => r.id))}`)
+  group('sanitizeFoodRequest: заказ product без product выпадает (dropped 1), соседний остаётся')
+}
+
+function productRequestValidChecks(): void {
+  const raw = storedProductRequest('req-tovar', { text: 'полбатончика', fraction: 0.5 })
+  const result = deserialize(storedProductState({ foodRequests: [raw] }))
+  assert(result.dropped === 0, `валидный заказ product не теряется, dropped = ${result.dropped}`)
+  const req = result.state.foodRequests[0]
+  assert(deepEqual(req, raw), `заказ product обязан сохраниться дословно, получено ${JSON.stringify(req)}`)
+  assert(req.kind === 'product' && req.grams === 50 && req.fraction === 0.5 && req.product?.code === '5000159461122',
+    'вид, граммы, доля и штрихкод заказа сохранены')
+  group('sanitizeFoodRequest: заказ product с валидными фактами сохраняется')
+
+  const bad: Array<[string, Record<string, unknown>]> = [
+    ['без граммов', { grams: null }],
+    ['граммы 0', { grams: 0 }],
+    ['без доли', { fraction: undefined }],
+    ['доля 0', { fraction: 0 }],
+    ['товар без названия', { product: storedOffProduct({ name: '' }) }],
+    ['товар с битым per100', { product: storedOffProduct({ per100: { kcal: 481, p: 8.6, f: 22.5 } }) }],
+    ['товар с servingG 0', { product: storedOffProduct({ servingG: 0 }) }],
+    ['товар с printedMicro строкой', { product: storedOffProduct({ printedMicro: 'fiber' }) }]
+  ]
+  for (const [what, extra] of bad) {
+    const r = deserialize(storedProductState({ foodRequests: [storedProductRequest('req-bityy', extra), storedProductRequest('req-sosed')] }))
+    assert(r.dropped === 1 && r.state.foodRequests.length === 1 && r.state.foodRequests[0].id === 'req-sosed',
+      `заказ product ${what} обязан выпасть, соседний остаться: dropped ${r.dropped}, ${JSON.stringify(r.state.foodRequests.map(x => x.id))}`)
+  }
+  // у заказа другого вида поле product не принадлежит формату и не переносится
+  const text = deserialize(storedProductState({ foodRequests: [storedProductRequest('req-text', { kind: 'text', text: 'батончик' })] }))
+  assert(text.dropped === 0 && text.state.foodRequests[0].product === undefined, 'у текстового заказа product не переносится')
+  group('sanitizeFoodRequest: заказ product без граммов, без доли или с битым товаром выпадает')
+}
+
+function productFoodEmptyComponentsChecks(): void {
+  const raw = storedProductFood('food-product')
+  const result = deserialize(storedProductState({ customFoods: { 'food-product': raw } }))
+  assert(result.dropped === 0, `еда product с пустым составом не теряется, dropped = ${result.dropped}`)
+  const food = result.state.customFoods['food-product']
+  assert(food !== undefined && deepEqual(food, raw), `еда product обязана сохраниться дословно, получено ${JSON.stringify(food)}`)
+  assert(food.components.length === 0 && food.product?.perPortion.kcal === 240.5 && food.product.remark === 'состав на английском, аналоги условные',
+    'пустой состав допустим: КБЖУ еды напечатаны на упаковке')
+
+  const withUsda = deserialize(storedProductState({ customFoods: { 'food-usda': storedProductFood('food-usda', { components: storedCustomFood('x').components }) } }))
+  assert(withUsda.dropped === 0 && withUsda.state.customFoods['food-usda'].components.length === 1, 'еда product с составом USDA тоже цела')
+  group('sanitizeCustomFood: еда с product и пустым составом сохраняется')
+}
+
+function foodWithoutNumbersChecks(): void {
+  const result = deserialize(storedProductState({
+    customFoods: {
+      'food-pustaya': storedProductFood('food-pustaya', { product: undefined }),
+      'food-bityy-tovar': storedProductFood('food-bityy-tovar', { product: storedProductFacts({ grams: 0 }) }),
+      'food-bez-perPortion': storedProductFood('food-bez-perPortion', { product: storedProductFacts({ perPortion: undefined }) }),
+      'food-remark-chislo': storedProductFood('food-remark-chislo', { product: storedProductFacts({ remark: 5 }) }),
+      'food-celaya': storedProductFood('food-celaya')
+    }
+  }))
+  assert(JSON.stringify(Object.keys(result.state.customFoods)) === JSON.stringify(['food-celaya']),
+    `уцелеть обязана только целая еда, получено ${JSON.stringify(Object.keys(result.state.customFoods))}`)
+  assert(result.dropped === 4, `отброшенных ожидалось 4, получено ${result.dropped}`)
+  group('sanitizeCustomFood: еда без label, без product и с пустым составом выпадает, битый product уносит еду')
+}
+
+function productExtraUrlChecks(): void {
+  const result = deserialize(storedProductState({
+    customFoods: { 'food-product': storedProductFood('food-product') },
+    extras: [
+      storedProductExtra('product-bez-url', { url: undefined }),
+      storedProductExtra('product-bez-koda', { code: undefined }),
+      storedProductExtra('product-bez-ssylki', { customFoodId: '' }),
+      storedProductExtra('product-s-url', { fraction: 0.5 })
+    ]
+  }))
+  const extras = result.state.log['2026-10-17'].extras
+  assert(JSON.stringify(extras.map(e => e.id)) === JSON.stringify(['product-s-url']),
+    `уцелеть обязана только запись с url, получено ${JSON.stringify(extras.map(e => e.id))}`)
+  const kept = extras[0]
+  assert(kept.kind === 'product' && kept.url === 'https://world.openfoodfacts.org/product/5000159461122' && kept.code === '5000159461122'
+    && kept.customFoodId === 'food-product' && kept.source === 'Open Food Facts', 'запись product сохранила ссылку, штрихкод и атрибуцию')
+  assert(result.dropped === 3, `отброшенных ожидалось 3, получено ${result.dropped}`)
+  group('sanitizeExtraEntry: запись extras kind product без url выпадает, с url остаётся')
+}
+
+function printedMicroChecks(): void {
+  const printedMicro = { fiber: 0, sugar: 51.8, satFat: -1, cholesterol: '6.7', sodium: 251.5, vitA: 12 }
+  const result = deserialize(storedProductState({
+    customFoods: { 'food-product': storedProductFood('food-product', { product: storedProductFacts({ printedMicro }) }) },
+    foodRequests: [storedProductRequest('req-tovar', { product: storedOffProduct({ printedMicro }) })]
+  }))
+  assert(result.dropped === 0, `битое значение printedMicro не уносит еду и заказ, dropped = ${result.dropped}`)
+  const expected = { sugar: 51.8, sodium: 251.5 }
+  const food = result.state.customFoods['food-product']
+  assert(food !== undefined && deepEqual(food.product?.printedMicro, expected),
+    `у еды остаются только положительные ключи из пяти, получено ${JSON.stringify(food?.product?.printedMicro)}`)
+  assert(deepEqual(result.state.foodRequests[0].product?.printedMicro, expected),
+    `у заказа то же правило, получено ${JSON.stringify(result.state.foodRequests[0].product?.printedMicro)}`)
+  group('sanitizeOffProduct: printedMicro с нулём теряет ключ, еда остаётся')
+}
+
+function warningsChecks(): void {
+  const plausibleOf = (extra: Record<string, unknown>): { warnings: string[] | undefined; plausible: boolean | undefined; dropped: number } => {
+    const result = deserialize(storedProductState({
+      customFoods: { 'food-product': storedProductFood('food-product', { product: storedProductFacts(extra) }) }
+    }))
+    const product = result.state.customFoods['food-product']?.product
+    return { warnings: product?.warnings, plausible: product?.plausible, dropped: result.dropped }
+  }
+
+  const notArray = plausibleOf({ warnings: 'energy-mismatch', plausible: undefined })
+  assert(notArray.dropped === 0 && deepEqual(notArray.warnings, []) && notArray.plausible === true,
+    `warnings не массив -> [], plausible выводится как true: ${JSON.stringify(notArray)}`)
+  const mixed = plausibleOf({ warnings: ['energy-mismatch', 7], plausible: undefined })
+  assert(mixed.dropped === 0 && deepEqual(mixed.warnings, []) && mixed.plausible === true,
+    `массив не из строк тоже -> []: ${JSON.stringify(mixed)}`)
+  const derivedFalse = plausibleOf({ warnings: ['energy-mismatch'], plausible: 'da' })
+  assert(derivedFalse.dropped === 0 && deepEqual(derivedFalse.warnings, ['energy-mismatch']) && derivedFalse.plausible === false,
+    `plausible не булево при непустых warnings -> false: ${JSON.stringify(derivedFalse)}`)
+  const explicit = plausibleOf({ warnings: ['energy-mismatch'], plausible: true })
+  assert(explicit.plausible === true, 'булево plausible переносится как есть, а не выводится')
+  group('sanitizeOffProduct: warnings не массив -> [], plausible выводится')
+}
+
+function productRoundTripChecks(): void {
+  const state = defaultState()
+  state.customFoods['food-product'] = storedProductFood('food-product') as unknown as AppState['customFoods'][string]
+  state.log['2026-10-17'] = {
+    cycleDay: null,
+    meals: {},
+    extras: [{ ...storedProductExtra('product-1', { fraction: 0.5 }), nutrients: emptyNutrientTotals() }] as unknown as AppState['log'][string]['extras']
+  }
+  const product = storedProductFacts() as unknown as NonNullable<AppState['customFoods'][string]['product']>
+  state.foodRequests.push(
+    storedProductRequest('req-pending') as unknown as AppState['foodRequests'][number],
+    {
+      ...(storedProductRequest('req-done', { status: 'done', pcAgo: 12 }) as unknown as AppState['foodRequests'][number]),
+      result: {
+        ok: true, spec: 3, source: 'Open Food Facts', title: 'Snickers',
+        request: { text: '', grams: 50 }, components: [],
+        kbju: { kcal: 240.5, p: 4.3, f: 11.25, c: 30.25 }, nutrients: emptyNutrientTotals(),
+        product
+      }
+    }
+  )
+
+  const result = deserialize(serialize(state))
+  assert(result.source === 'stored' && result.dropped === 0, `round-trip состояния с товаром: dropped = ${result.dropped}, source = ${result.source}`)
+  assert(deepEqual(result.state, JSON.parse(JSON.stringify(state))), 'состояние с заказом, едой и записью product переживает round-trip без потерь')
+  const done = result.state.foodRequests[1]
+  assert(done.result?.product?.perPortion.kcal === 240.5 && done.result.components.length === 0,
+    'результат заказа product с пустым составом цел')
+  group('serialize/deserialize: состояние с product-заказом, едой и записью возвращает то же самое')
+}
+
+function newerVersionWithProductChecks(): void {
+  const input = storedProductState({
+    customFoods: { 'food-product': storedProductFood('food-product') },
+    foodRequests: [storedProductRequest('req-tovar')],
+    extras: [storedProductExtra('product-1')]
+  }).replace(`"version":${CURRENT_VERSION}`, '"version":8')
+  assert(JSON.parse(input).version === 8, 'фикстура обязана нести версию 8')
+
+  const result = deserialize(input)
+  assert(result.source === 'newer-version' && result.dropped === 0, `версия 8 даёт newer-version, получено ${result.source}`)
+  withFakeStorage(storage => {
+    storage.setItem(STORAGE_KEY, input)
+    const loaded = loadState()
+    assert(loaded.source === 'newer-version', 'loadState отдаёт newer-version для версии 8')
+    assert(storage.getItem(STORAGE_KEY) === input, 'содержимое хранилища версии 8 не перезаписано')
+    assert(storage.getItem(BACKUP_KEY) === null, 'при newer-version копия не откладывается: данные целы')
+  })
+  group('deserialize/loadState: состояние версии 8 (новее) не перезаписывается')
 }
 
 // ---- добавленная еда: битая запись выпадает, соседняя остаётся ---------------
@@ -1318,6 +1641,17 @@ function main(): void {
   labelEntriesRoundTripChecks()
   labelDishNoChecks()
   labelGarbageChecks()
+  currentVersionChecks()
+  migrationV6ToV7Checks()
+  productRequestWithoutProductChecks()
+  productRequestValidChecks()
+  productFoodEmptyComponentsChecks()
+  foodWithoutNumbersChecks()
+  productExtraUrlChecks()
+  printedMicroChecks()
+  warningsChecks()
+  productRoundTripChecks()
+  newerVersionWithProductChecks()
   droppedExtrasChecks()
   extrasOnlyDaySurvivesChecks()
   customFoodsGarbageChecks()

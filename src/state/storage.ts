@@ -8,10 +8,11 @@
    потерять одну запись дневника. Что чинится молча, а что откатывается к
    дефолту — см. комментарии внутри deserialize. */
 
-import { NUTRIENT_KEYS, SLOTS } from '../core/types.ts'
+import { NUTRIENT_KEYS, PRINTED_MICRO_KEYS, SLOTS } from '../core/types.ts'
 import type {
   AppState, CustomFood, DayLog, ExtraLogEntry, FoodComponent, FoodRequest, FoodRequestKind, FoodRequestStatus, FoodResultOk,
-  Kbju, LabelFacts, LabelFit, MealLogEntry, MealStatus, Nutrients, NutrientTotal, NutrientTotals, Preferences, Settings, Slot
+  Kbju, LabelFacts, LabelFit, MealLogEntry, MealStatus, Nutrients, NutrientTotal, NutrientTotals, OffProduct, Preferences,
+  PrintedMicroKey, ProductFacts, Settings, Slot
 } from '../core/types.ts'
 import { todayLocal } from '../core/cycle.ts'
 
@@ -50,9 +51,14 @@ export const BACKUP_KEY = STORAGE_KEY + '.backup'
     своей еды CustomFood и результата FoodResultOk - label и fit, у добавленной
     еды - третий вид 'label'. Отдельного шага миграции нет: всё достраивается
     санитизацией, как при переходе 4 -> 5, а записанное не трогается.
+    v6 -> v7: товары Open Food Facts. У заказа FoodRequest появился kind
+    'product' с фактами товара (product), у своей еды CustomFood и результата
+    FoodResultOk - product, у добавленной еды - четвёртый вид 'product'. У
+    состояний версии 6 ничего из этого нет, и шаг снова выражен санитизацией:
+    поля необязательны, а записанное версией 6 проходит её без изменений.
     Ключ localStorage при этом НЕ меняется: он адресует хранилище, а не формат,
     и его смена означала бы потерю уже записанных дней. */
-export const CURRENT_VERSION = 6
+export const CURRENT_VERSION = 7
 
 /** Дефолтные настройки, пустой дневник и пустая книга предпочтений — то, с чем
     открывается приложение в первый раз или после потери состояния. */
@@ -299,6 +305,16 @@ function sanitizeExtraEntry(v: unknown): ExtraLogEntry | null {
     return { ...base, kind: 'label', customFoodId: v.customFoodId, source: v.source, titleHy: v.titleHy }
   }
 
+  if (v.kind === 'product') {
+    // url обязателен строкой: это атрибуция Open Food Facts (ODbL), и запись
+    // без него писал не этот код - подпись «откуда числа» нечем заполнить.
+    if (!isNonEmptyString(v.customFoodId)) return null
+    if (typeof v.source !== 'string') return null
+    if (typeof v.code !== 'string') return null
+    if (typeof v.url !== 'string') return null
+    return { ...base, kind: 'product', customFoodId: v.customFoodId, source: v.source, code: v.code, url: v.url }
+  }
+
   // вид неизвестен — экран не знает, как такую запись показать, а калории её
   // вошли бы в сумму дня незримо. Невидимое слагаемое хуже потерянной записи.
   return null
@@ -536,6 +552,87 @@ function sanitizeLabelFit(v: unknown): LabelFit | undefined {
   }
 }
 
+function isPositiveOrNull(v: unknown): v is number | null {
+  return v === null || (isFiniteNumber(v) && v > 0)
+}
+
+/** Напечатанные значения сверх КБЖУ. Только пять ключей PRINTED_MICRO_KEYS и
+    только строго положительные числа: ноль в Open Food Facts неотличим от
+    незаполненного поля и означает «неизвестно», как и отсутствие ключа. Битое
+    значение теряет свой ключ, а не уносит товар: КБЖУ от него не зависят, а
+    нутриент без ключа честно уходит в неизвестную позицию. null - вместо
+    объекта пришло что-то другое, и товар собран не воркером. */
+function sanitizePrintedMicro(v: unknown): Partial<Record<PrintedMicroKey, number>> | null {
+  if (!isPlainObject(v)) return null
+  const micro: Partial<Record<PrintedMicroKey, number>> = {}
+  for (const key of PRINTED_MICRO_KEYS) {
+    const value = v[key]
+    if (isFiniteNumber(value) && value > 0) micro[key] = value
+  }
+  return micro
+}
+
+/** Товар Open Food Facts, как его нормализовал воркер. null - недостоверен:
+    КБЖУ на 100 г и есть то, из чего считается порция. warnings чинится до [] -
+    это справка для экрана; plausible без булева значения выводится из неё
+    («предупреждений нет» - значит правдоподобен), а не выдумывается. */
+function sanitizeOffProduct(v: unknown): OffProduct | null {
+  if (!isPlainObject(v)) return null
+  if (typeof v.code !== 'string') return null
+  if (typeof v.url !== 'string') return null
+  if (!isNonEmptyString(v.name)) return null
+  if (typeof v.brand !== 'string') return null
+  if (typeof v.quantityText !== 'string') return null
+  if (!isKbju(v.per100)) return null
+  const printedMicro = sanitizePrintedMicro(v.printedMicro)
+  if (!printedMicro) return null
+  if (!isPositiveOrNull(v.servingG) || !isPositiveOrNull(v.packageG)) return null
+  if (typeof v.ingredientsText !== 'string') return null
+  if (typeof v.fetchedAt !== 'string') return null
+  const warnings = Array.isArray(v.warnings) && v.warnings.every(item => typeof item === 'string') ? [...v.warnings] : []
+  return {
+    code: v.code,
+    url: v.url,
+    name: v.name,
+    brand: v.brand,
+    quantityText: v.quantityText,
+    per100: { kcal: v.per100.kcal, p: v.per100.p, f: v.per100.f, c: v.per100.c },
+    printedMicro,
+    servingG: v.servingG,
+    packageG: v.packageG,
+    ingredientsText: v.ingredientsText,
+    warnings,
+    plausible: typeof v.plausible === 'boolean' ? v.plausible : warnings.length === 0,
+    fetchedAt: v.fetchedAt
+  }
+}
+
+/** Факты товара в еде и в результате: товар плюс выбранные граммы. null -
+    недостоверны, и вместе с ними выпадает вся еда: perPortion - единственные
+    числа, которые идут в дневник. */
+function sanitizeProductFacts(v: unknown): ProductFacts | null {
+  if (!isPlainObject(v)) return null
+  const product = sanitizeOffProduct(v)
+  if (!product) return null
+  if (!isFiniteNumber(v.grams) || v.grams <= 0) return null
+  if (!isKbju(v.perPortion)) return null
+  if (v.remark !== undefined && typeof v.remark !== 'string') return null
+  return {
+    ...product,
+    grams: v.grams,
+    perPortion: { kcal: v.perPortion.kcal, p: v.perPortion.p, f: v.perPortion.f, c: v.perPortion.c },
+    ...(typeof v.remark === 'string' ? { remark: v.remark } : {})
+  }
+}
+
+/** product у еды и у результата: нет - пусто; есть, но битый, - null (вся
+    запись недостоверна, как при битом label). */
+function sanitizeProductField(v: Record<string, unknown>): { product?: ProductFacts } | null {
+  if (v.product === undefined) return {}
+  const product = sanitizeProductFacts(v.product)
+  return product ? { product } : null
+}
+
 /** Состав: массив компонентов; один битый роняет весь состав (null). Пустой
     массив здесь допустим - пустота разрешена не везде, решает вызывающий. */
 function sanitizeFoodComponents(v: unknown): FoodComponent[] | null {
@@ -573,11 +670,14 @@ function sanitizeCustomFood(v: unknown): CustomFood | null {
   if (!components) return null
   const pair = sanitizeLabelPair(v)
   if (!pair) return null
-  // пустой состав - еда без чисел, кроме еды по наклейке: её КБЖУ напечатаны
-  if (components.length === 0 && !pair.label) return null
+  const productField = sanitizeProductField(v)
+  if (!productField) return null
+  // пустой состав - еда без чисел, кроме еды по наклейке или товара: их КБЖУ напечатаны
+  if (components.length === 0 && !pair.label && !productField.product) return null
   return {
     id: v.id, title: v.title, source: v.source, spec: v.spec, jobId: v.jobId, request, components, createdAt: v.createdAt,
-    ...pair
+    ...pair,
+    ...productField
   }
 }
 
@@ -605,7 +705,7 @@ function sanitizeCustomFoods(v: unknown): SanitizedCustomFoods {
 }
 
 function isFoodRequestKind(v: unknown): v is FoodRequestKind {
-  return v === 'text' || v === 'label'
+  return v === 'text' || v === 'label' || v === 'product'
 }
 
 function isFoodRequestStatus(v: unknown): v is FoodRequestStatus {
@@ -629,7 +729,9 @@ function sanitizeFoodResult(v: unknown): FoodResultOk | null {
   if (!components) return null
   const pair = sanitizeLabelPair(v)
   if (!pair) return null
-  if (components.length === 0 && !pair.label) return null
+  const productField = sanitizeProductField(v)
+  if (!productField) return null
+  if (components.length === 0 && !pair.label && !productField.product) return null
   return {
     ok: true,
     spec: v.spec,
@@ -639,7 +741,8 @@ function sanitizeFoodResult(v: unknown): FoodResultOk | null {
     components,
     kbju: v.kbju,
     nutrients: sanitizeNutrients(v.nutrients),
-    ...pair
+    ...pair,
+    ...productField
   }
 }
 
@@ -659,11 +762,14 @@ function sanitizeFoodRequest(v: unknown): FoodRequest | null {
   if (v.kind !== undefined && !isFoodRequestKind(v.kind)) return null
   const kind: FoodRequestKind = v.kind ?? 'text'
   // доля порции: у текстового заказа её не было и она 1; у заказа по наклейке
-  // без достоверной доли записывать нечего, и он выпадает.
-  if (kind === 'label' && !isExtraFraction(v.fraction)) return null
+  // или по товару без достоверной доли записывать нечего, и он выпадает.
+  if (kind !== 'text' && !isExtraFraction(v.fraction)) return null
   const fraction = isExtraFraction(v.fraction) ? v.fraction : 1
-  // пустое описание допустимо только у заказа по наклейке: там text - заметка
+  // пустое описание допустимо только у заказа по наклейке или товару: там text - заметка
   if (kind === 'text' && v.text === '') return null
+  // заказ по товару без фактов или без граммов: порцию считать не из чего
+  const product = kind === 'product' ? sanitizeOffProduct(v.product) : null
+  if (kind === 'product' && (!product || !isFiniteNumber(v.grams) || v.grams <= 0)) return null
   if (!isPlainObject(v.target) || !isNonEmptyString(v.target.date) || !isSlot(v.target.slot)) return null
 
   const result = v.result === undefined ? null : sanitizeFoodResult(v.result)
@@ -675,6 +781,7 @@ function sanitizeFoodRequest(v: unknown): FoodRequest | null {
     kind,
     text: v.text,
     grams: isFiniteNumber(v.grams) && v.grams > 0 ? v.grams : null,
+    ...(product ? { product } : {}),
     fraction,
     askedAt: v.askedAt,
     target: { date: v.target.date, slot: v.target.slot },
