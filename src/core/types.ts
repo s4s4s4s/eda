@@ -388,11 +388,13 @@ interface ExtraLogEntryBase {
   loggedAt: string
 }
 
-/** Добавленная еда. Три вида различает поле kind:
+/** Добавленная еда. Четыре вида различает поле kind:
     - 'menu' — блюдо из меню, перенесённое из другого дня цикла;
     - 'custom' - своя еда из книги customFoods;
     - 'label' - еда по снимку наклейки (контейнер Avocado): числа напечатаны на
-      наклейке, USDA лишь раскладывает состав. */
+      наклейке, USDA лишь раскладывает состав;
+    - 'product' - упакованный товар из Open Food Facts: КБЖУ и пять микро
+      напечатаны на упаковке, состав USDA (если есть) добавляет остальные микро. */
 export type ExtraLogEntry =
   | (ExtraLogEntryBase & {
       kind: 'menu'
@@ -423,6 +425,17 @@ export type ExtraLogEntry =
       /** Название с наклейки по-армянски, дословно. Пустая строка допустима:
           её могло не быть читаемо, а название по-русски лежит в title. */
       titleHy: string
+    })
+  | (ExtraLogEntryBase & {
+      kind: 'product'
+      /** Ключ в AppState.customFoods - как у 'custom'. */
+      customFoodId: string
+      /** «Open Food Facts» либо «Open Food Facts + USDA SR Legacy 2018-04». */
+      source: string
+      /** Штрихкод товара. */
+      code: string
+      /** Адрес карточки товара в Open Food Facts: атрибуция данных (ODbL). */
+      url: string
     })
 
 export interface DayLog {
@@ -500,6 +513,40 @@ export interface LabelFacts {
   dishNo?: number | null
 }
 
+/** Пять нутриентов сверх КБЖУ, которые берутся с упаковки Open Food Facts. */
+export type PrintedMicroKey = 'fiber' | 'sugar' | 'satFat' | 'cholesterol' | 'sodium'
+export const PRINTED_MICRO_KEYS: readonly PrintedMicroKey[] = ['fiber', 'sugar', 'satFat', 'cholesterol', 'sodium']
+
+/** Источник чисел товара без состава USDA. */
+export const OFF_SOURCE = 'Open Food Facts'
+
+/** Товар Open Food Facts, нормализованный воркером. */
+export interface OffProduct {
+  code: string
+  url: string
+  name: string
+  brand: string
+  quantityText: string
+  /** КБЖУ на 100 г. */
+  per100: Kbju
+  /** Напечатанные значения сверх КБЖУ на 100 г; ноль и отсутствие ключа - «неизвестно». */
+  printedMicro: Partial<Record<PrintedMicroKey, number>>
+  servingG: number | null
+  packageG: number | null
+  ingredientsText: string
+  warnings: string[]
+  plausible: boolean
+  fetchedAt: string
+}
+
+/** Факты товара в результате и в книге: товар плюс выбранные граммы. */
+export interface ProductFacts extends OffProduct {
+  grams: number
+  /** КБЖУ на выбранные граммы: единственные числа, которые идут в дневник. */
+  perPortion: Kbju
+  remark?: string
+}
+
 /** Насколько состав из USDA расходится с напечатанным. Это справка для экрана,
     а не источник чисел, поэтому хранилище не дорожит им: битый fit отбрасывается
     и пересчитывается клиентом по текущим компонентам. */
@@ -544,11 +591,13 @@ export interface CustomFood {
   /** О чём человек спрашивал. Хранится дословно: по «тирамису 120 г» видно,
       что именно разбиралось, а по одному названию из ответа — уже нет. */
   request: { text: string; grams: number | null }
-  /** Состав. Пуст только у еды с label: наклейка даёт КБЖУ и без разложения. */
+  /** Состав. Пуст только у еды с label или product: упаковка даёт КБЖУ и без разложения. */
   components: FoodComponent[]
   createdAt: string
   /** Есть у еды по снимку наклейки: тогда КБЖУ еды равно label.perPortion. */
   label?: LabelFacts
+  /** Есть у еды из Open Food Facts: тогда КБЖУ еды равно product.perPortion. */
+  product?: ProductFacts
   fit?: LabelFit
 }
 
@@ -561,18 +610,20 @@ export interface FoodResultOk {
   source: string
   title: string
   request: { text: string; grams: number | null }
-  /** Пуст только при наличии label (см. CustomFood.components). */
+  /** Пуст только при наличии label или product (см. CustomFood.components). */
   components: FoodComponent[]
   kbju: Kbju
   /** Все ключи NUTRIENT_KEYS: полнота выражена через known/total, а не
       отсутствием ключа. */
   nutrients: NutrientTotals
   label?: LabelFacts
+  product?: ProductFacts
   fit?: LabelFit
 }
 
-/** Вид заказа: 'text' - описание словами, 'label' - снимок наклейки. */
-export type FoodRequestKind = 'text' | 'label'
+/** Вид заказа: 'text' - описание словами, 'label' - снимок наклейки,
+    'product' - товар из Open Food Facts (факты лежат в заказе). */
+export type FoodRequestKind = 'text' | 'label' | 'product'
 
 /** Состояние заказа разбора. 'pending' — наряд в очереди (компьютер может быть
     выключен, наряд живёт сутки); 'failed' — разбор не удался и причина известна;
@@ -588,6 +639,9 @@ export interface FoodRequest {
   /** Описание словами; у 'label' необязательная заметка человека, может быть пуста. */
   text: string
   grams: number | null
+  /** Товар Open Food Facts: обязателен при kind === 'product' (тогда grams - число,
+      text - заметка человека, может быть пустой). */
+  product?: OffProduct
   /** Доля порции, которую человек съел, строго в (0, 1]. Выбрана при заказе и
       применяется при автозаписи: ответ приходит через минуты и часы. У 'text' всегда 1. */
   fraction: number

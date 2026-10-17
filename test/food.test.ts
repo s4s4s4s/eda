@@ -14,8 +14,10 @@ import path from 'node:path'
 
 import {
   applyFoodAsk, applyFoodPoll, customExtraFrom, customFoodDeviation, customFoodFromResult, customFoodTotals,
-  discardFoodRequest, labelEnergyCheck, labelEnergyWarning, LABEL_ENERGY_TOLERANCE_KCAL, LABEL_ENERGY_TOLERANCE_PCT, labelExtraFrom, logDoneLabelRequests, menuExtraFrom, newFoodRequest,
-  newLabelRequest, parseFoodResult, pendingLabelRequests, removeCustomFood, retryFoodRequest, saveCustomFood, withComponentGrams
+  discardFoodRequest, extraFromCustomFood, isBarcode, labelEnergyCheck, labelEnergyWarning, LABEL_ENERGY_TOLERANCE_KCAL, LABEL_ENERGY_TOLERANCE_PCT, labelExtraFrom,
+  logDoneAutoRequests, logDoneLabelRequests, logProductNow, menuExtraFrom, newFoodRequest, newLabelRequest, newProductRequest, normalizeBarcode,
+  offWarningText, parseFoodResult, parseOffProduct, pendingAutoRequests, pendingLabelRequests, productExtraFrom, productFactsFrom, productFoodFromFacts,
+  productNutrientsFromPrinted, productSourceText, relogCustomFood, removeCustomFood, retryFoodRequest, saveCustomFood, searchCustomFoods, withComponentGrams
 } from '../src/core/food'
 import type { FoodPollResponse } from '../src/core/food'
 import { dayNutrientTotals } from '../src/core/log'
@@ -23,7 +25,7 @@ import { isComplete } from '../src/core/nutrition'
 import { weekCoverage, weekSummary } from '../src/core/week'
 import { askFood, askLabel, pollFood, SHTURMAN_BASE } from '../src/core/foodClient'
 import { NUTRIENT_KEYS } from '../src/core/types'
-import type { AppState, Meal, Product, ProductIndex } from '../src/core/types'
+import type { AppState, CustomFood, Meal, OffProduct, Product, ProductIndex } from '../src/core/types'
 
 let passed = 0
 function assert(cond: boolean, msg: string): void {
@@ -575,6 +577,318 @@ function logDoneLabelRequestsChecks(): void {
   group('logDoneLabelRequests: пишет extra label с долей заказа, убирает заказ, текстовые done не трогает')
 }
 
+// ---- товар Open Food Facts -------------------------------------------------
+
+const PRODUCT_FIXTURE_PATH = path.join(REPO_ROOT, 'test', 'fixtures', 'product-result.json')
+
+function loadProductFixture(): Record<string, unknown> {
+  return JSON.parse(readFileSync(PRODUCT_FIXTURE_PATH, 'utf8')) as Record<string, unknown>
+}
+
+/** Snickers как его отдаёт воркер: товар без граммов и порции. */
+function snickersOff(): OffProduct {
+  const facts = parseFoodResult(loadProductFixture()).product!
+  const { grams: _grams, perPortion: _perPortion, remark: _remark, ...off } = facts
+  return off
+}
+
+function productFoodFrom(id = 'prod-food-1', createdAt = '2026-10-17T12:00:00'): CustomFood {
+  return customFoodFromResult(parseFoodResult(loadProductFixture()), 'food:prod-job', id, createdAt)
+}
+
+const PRODUCT_TARGET = { date: '2026-10-16', slot: 'dinner' as const }
+
+function parseProductFixtureChecks(): void {
+  const result = parseFoodResult(loadProductFixture())
+  assert(result.spec === 3 && result.product !== undefined, 'spec 3 обязан нести product')
+  assert(result.product!.code === '5000159461122' && result.product!.grams === 50, 'product: код и граммы из фикстуры')
+  assert(result.product!.perPortion.kcal === 240.5, `product.perPortion.kcal ожидалось 240.5, получено ${result.product!.perPortion.kcal}`)
+  assert(result.components.length === 3 && result.fit !== undefined, 'состав и fit фикстуры обязаны разобраться')
+  assert(result.label === undefined, 'у spec 3 label нет')
+  group('parseFoodResult: spec 3 из product-result.json разбирается')
+}
+
+function parseProductMissingChecks(): void {
+  const raw = loadProductFixture()
+  const { product: _product, ...withoutProduct } = raw
+  assert(throws(() => parseFoodResult(withoutProduct)), 'spec 3 без product обязан бросать')
+  assert(throws(() => parseFoodResult({ ...raw, product: { ...(raw.product as object), grams: 0 } })), 'product.grams 0 обязан бросать')
+  group('parseFoodResult: spec 3 без product бросает')
+}
+
+function parseProductEmptyCompositionChecks(): void {
+  const raw = loadProductFixture()
+  const { fit: _fit, ...rest } = raw
+  const empty = parseFoodResult({ ...rest, components: [], source: 'Open Food Facts' })
+  assert(empty.components.length === 0 && empty.product !== undefined && empty.fit === undefined, 'spec 3 с пустым составом обязан приниматься')
+  assert(throws(() => parseFoodResult({ ...rest, spec: 1, components: [] })), 'spec 1 с пустым составом по-прежнему бросает')
+  group('parseFoodResult: spec 3 с пустым составом принимается')
+}
+
+function parseOffProductChecks(): void {
+  const good = snickersOff()
+  const parsed = parseOffProduct(JSON.parse(JSON.stringify(good)))
+  assert(JSON.stringify(parsed) === JSON.stringify(good), 'годный товар обязан разобраться без потерь')
+
+  assert(throws(() => parseOffProduct({ ...good, per100: { ...good.per100, kcal: NaN } })), 'per100 с NaN обязан бросать')
+  assert(throws(() => parseOffProduct({ ...good, per100: { ...good.per100, p: -1 } })), 'отрицательное per100 обязано бросать')
+  assert(throws(() => parseOffProduct({ ...good, printedMicro: { fiber: 0 } })), 'printedMicro = 0 обязан бросать')
+  assert(throws(() => parseOffProduct({ ...good, printedMicro: { sodium: -3 } })), 'printedMicro < 0 обязан бросать')
+  assert(throws(() => parseOffProduct({ ...good, code: '123' })), 'короткий штрихкод обязан бросать')
+  assert(throws(() => parseOffProduct({ ...good, name: '' })), 'пустое название обязано бросать')
+  assert(throws(() => parseOffProduct({ ...good, plausible: 'yes' })), 'plausible не булево обязано бросать')
+
+  const foreign = parseOffProduct({ ...good, printedMicro: { fiber: 4.3, vitC: 80, zinc: 0 } })
+  assert(JSON.stringify(foreign.printedMicro) === '{"fiber":4.3}', `чужие ключи printedMicro обязаны игнорироваться, получено ${JSON.stringify(foreign.printedMicro)}`)
+  group('parseOffProduct: годный принимается, per100 с NaN и printedMicro <= 0 бросают, чужой ключ игнорируется')
+}
+
+function productFactsFromChecks(): void {
+  const facts = productFactsFrom(snickersOff(), 50)
+  assert(facts.grams === 50, 'граммы обязаны сохраниться')
+  assert(facts.perPortion.kcal === 240.5 && facts.perPortion.p === 4.3 && facts.perPortion.f === 11.25 && facts.perPortion.c === 30.25,
+    `perPortion Snickers 50 г ожидалось 240.5/4.3/11.25/30.25, получено ${JSON.stringify(facts.perPortion)}`)
+  const third = productFactsFrom(snickersOff(), 33)
+  assert(third.perPortion.kcal === 158.73, `481 x 33 / 100 с округлением до 2 знаков ожидалось 158.73, получено ${third.perPortion.kcal}`)
+  group('productFactsFrom: Snickers 50 г -> perPortion 240.5 ккал, 33 г округляется до 2 знаков')
+}
+
+function productNutrientsFromPrintedChecks(): void {
+  const nutrients = productNutrientsFromPrinted(productFactsFrom(snickersOff(), 50))
+  assert(NUTRIENT_KEYS.every(k => nutrients[k] !== undefined), 'nutrients обязаны быть по всем ключам')
+  assert(approx(nutrients.fiber.value, 2.15) && nutrients.fiber.known === 1 && nutrients.fiber.total === 1, `fiber ожидалось 2.15 known 1 total 1, получено ${JSON.stringify(nutrients.fiber)}`)
+  assert(approx(nutrients.sodium.value, 125.75) && approx(nutrients.cholesterol.value, 3.35), 'sodium и cholesterol: напечатанное x 0.5')
+  assert(nutrients.vitC.value === 0 && nutrients.vitC.known === 0 && nutrients.vitC.total === 1, `vitC ожидалось known 0 total 1, получено ${JSON.stringify(nutrients.vitC)}`)
+
+  const partial = productNutrientsFromPrinted(productFactsFrom({ ...snickersOff(), printedMicro: {} }, 50))
+  assert(partial.fiber.known === 0 && partial.fiber.total === 1, 'без напечатанного клетчатка честно неизвестна')
+  group('productNutrientsFromPrinted: fiber 2.15 known 1 total 1, vitC known 0 total 1')
+}
+
+function productTotalsWithoutCompositionChecks(): void {
+  const food = productFoodFromFacts(snickersOff(), 50, '', 'food:j', 'pf-1', '2026-10-17T12:00:00')
+  const totals = customFoodTotals(food)
+  assert(totals.kbju === food.product!.perPortion, 'КБЖУ товара обязано быть perPortion')
+  assert(totals.kbju.kcal === 240.5, 'kcal 240.5')
+  assert(approx(totals.nutrients.fiber.value, 2.15) && totals.nutrients.fiber.known === 1, 'напечатанное попадает в нутриенты')
+  assert(totals.nutrients.vitC.known === 0 && totals.nutrients.vitC.total === 1, 'без состава остальное неизвестно, а не ноль позиций')
+  group('customFoodTotals товара без состава = perPortion + напечатанное')
+}
+
+function productTotalsMatchFixtureChecks(): void {
+  const fixture = loadProductFixture()
+  const food = productFoodFrom()
+  const totals = customFoodTotals(food)
+  const expected = (fixture.nutrients as Record<string, { value: number; known: number; total: number }>)
+  for (const key of NUTRIENT_KEYS) {
+    const want = expected[key]
+    const got = totals.nutrients[key]
+    assert(approx(got.value, want.value, 1e-6) && got.known === want.known && got.total === want.total,
+      `nutrients.${key}: резолвер ${JSON.stringify(want)}, приложение ${JSON.stringify(got)}`)
+  }
+  assert(JSON.stringify(totals.kbju) === JSON.stringify(fixture.kbju), 'kbju приложения обязано совпадать с резолвером')
+  assert(approx(totals.nutrients.fiber.value, 2.15) && approx(totals.nutrients.sodium.value, 125.75) && approx(totals.nutrients.cholesterol.value, 3.35)
+    && approx(totals.nutrients.sugar.value, 25.9) && approx(totals.nutrients.satFat.value, 3.95), 'пять напечатанных перекрывают состав')
+  assert(totals.nutrients.vitC.known === 3 && totals.nutrients.vitC.total === 3, 'остальные микро идут из состава')
+  group('customFoodTotals товара с составом совпадает с nutrients из product-result.json')
+}
+
+function productDeviationChecks(): void {
+  const fixture = loadProductFixture()
+  const food = productFoodFrom()
+  const dev = customFoodDeviation(food)
+  assert(dev !== null && JSON.stringify(dev) === JSON.stringify(fixture.fit), `отклонение приложения обязано совпадать с fit резолвера: ${JSON.stringify(dev)}`)
+  assert(dev!.poor === true, 'условный состав фикстуры poor')
+  const bare = productFoodFromFacts(snickersOff(), 50, '', 'food:j', 'pf-2', '2026-10-17T12:00:00')
+  assert(customFoodDeviation(bare) === null, 'у товара без состава отклонения нет')
+  group('customFoodDeviation для товара: цель perPortion, масса grams, совпадает с fit резолвера')
+}
+
+function productExtraChecks(): void {
+  const food = productFoodFrom('prod-food-1')
+  const extra = productExtraFrom(food, 'snack', 0.5, 'x-1', '2026-10-17T15:00:00')
+  assert(extra.kind === 'product' && extra.code === '5000159461122' && extra.url === food.product!.url, 'extra: kind, code, url')
+  assert(extra.kind === 'product' && extra.source === food.source && extra.customFoodId === 'prod-food-1', 'extra: source и ссылка на еду')
+  assert(extra.fraction === 0.5 && extra.slot === 'snack' && extra.kbju.kcal === 240.5, 'extra: полная порция и доля как переданы')
+  assert(extraFromCustomFood(food, 'snack', 1, 'x-2', '2026-10-17T15:00:00').kind === 'product', 'extraFromCustomFood: product')
+  assert(extraFromCustomFood(labelFoodFrom(), 'snack', 1, 'x-3', '2026-10-17T15:00:00').kind === 'label', 'extraFromCustomFood: label')
+  const plain = customFoodFromResult(parseFoodResult(loadFixture()), 'job', 'text-1', '2026-10-17T12:00:00')
+  assert(extraFromCustomFood(plain, 'snack', 1, 'x-4', '2026-10-17T15:00:00').kind === 'custom', 'extraFromCustomFood: custom')
+  const noProduct = customFoodFromResult(parseFoodResult(loadFixture()), 'job', 'text-1', '2026-10-17T12:00:00')
+  assert(throws(() => productExtraFrom(noProduct, 'snack', 1, 'x-5', '2026-10-17T15:00:00')), 'productExtraFrom без product обязан бросать')
+  group('productExtraFrom: kind product, code, url, source; extraFromCustomFood разводит три вида')
+}
+
+function newProductRequestChecks(): void {
+  const req = newProductRequest('p-1', snickersOff(), 50, '', PRODUCT_TARGET, 0.5, '2026-10-16T18:00:00')
+  assert(req.kind === 'product' && req.grams === 50 && req.text === '' && req.fraction === 0.5 && req.status === 'pending' && req.product?.code === '5000159461122',
+    'newProductRequest: kind, граммы, заметка, доля, факты товара')
+  for (const bad of [0, 1.5, -0.1, NaN]) {
+    assert(throws(() => newProductRequest('p-2', snickersOff(), 50, '', PRODUCT_TARGET, bad, '2026-10-16T18:00:00')), `доля ${bad} обязана бросать`)
+  }
+  for (const bad of [0, -5, NaN]) {
+    assert(throws(() => newProductRequest('p-3', snickersOff(), bad, '', PRODUCT_TARGET, 1, '2026-10-16T18:00:00')), `граммы ${bad} обязаны бросать`)
+  }
+  group('newProductRequest: доля вне (0, 1] бросает')
+}
+
+function logDoneAutoRequestsChecks(): void {
+  const done = (id: string, result: unknown): FoodPollResponse => ({ ok: true, id, state: 'done', result, pcAgo: 1, modelOk: true })
+  let state = emptyState()
+  state = applyFoodAsk(state, newProductRequest('prod-done', snickersOff(), 50, '', PRODUCT_TARGET, 0.5, '2026-10-16T18:00:00'))
+  state = applyFoodAsk(state, newProductRequest('prod-wait', snickersOff(), 50, '', PRODUCT_TARGET, 1, '2026-10-16T18:01:00'))
+  state = applyFoodAsk(state, newFoodRequest('txt-done', 'тирамису', 120, PRODUCT_TARGET, '2026-10-16T18:02:00'))
+  state = applyFoodPoll(state, 'prod-done', done('prod-done', loadProductFixture()), '2026-10-16T18:30:00')
+  state = applyFoodPoll(state, 'txt-done', done('txt-done', loadFixture()), '2026-10-16T18:30:00')
+  assert(state.foodRequests.find(r => r.id === 'prod-done')?.status === 'done', 'заказ по товару обязан стать done с разобранным product-result')
+
+  const ids = ['food-A', 'extra-A']
+  let n = 0
+  const next = logDoneAutoRequests(state, '2026-10-17T09:00:00', () => ids[n++], () => null)
+  assert(n === 2, `nextId обязан вызываться дважды на заказ, вызвано ${n}`)
+  assert(next.foodRequests.find(r => r.id === 'prod-done') === undefined, 'записанный заказ уходит из очереди')
+  assert(next.foodRequests.some(r => r.id === 'prod-wait'), 'заказ без результата остаётся')
+  assert(next.foodRequests.some(r => r.id === 'txt-done' && r.status === 'done'), 'текстовый done не трогается')
+  assert(next.customFoods['food-A']?.product?.code === '5000159461122' && next.customFoods['food-A'].jobId === 'food:prod-done', 'еда с product попадает в книгу')
+  const day = next.log['2026-10-16']
+  const extra = day?.extras.find(e => e.id === 'extra-A')
+  assert(extra !== undefined && extra.kind === 'product' && extra.fraction === 0.5 && extra.slot === 'dinner' && extra.kbju.kcal === 240.5,
+    'запись kind product с целью и долей заказа')
+  assert(day.extras.length === 1 && next.log['2026-10-17'] === undefined, 'пишется только заказ по товару и на дату заказа')
+
+  // синоним
+  assert(logDoneLabelRequests === logDoneAutoRequests, 'logDoneLabelRequests - синоним')
+  // наклейка по-прежнему пишется тем же проходом
+  let withLabel = applyFoodAsk(emptyState(), newLabelRequest('lab-done', '', null, PRODUCT_TARGET, 1, '2026-10-16T18:00:00'))
+  withLabel = applyFoodPoll(withLabel, 'lab-done', done('lab-done', loadLabelFixture()), '2026-10-16T18:30:00')
+  const labelIds = ['lf', 'le']
+  let k = 0
+  const labelNext = logDoneAutoRequests(withLabel, '2026-10-17T09:00:00', () => labelIds[k++], () => null)
+  assert(labelNext.log['2026-10-16'].extras[0].kind === 'label', 'наклейка пишется тем же проходом')
+  group('logDoneAutoRequests: готовый product становится едой и записью с целью и долей заказа, заказ снят, текстовый не тронут; logDoneLabelRequests - синоним')
+}
+
+function logProductNowChecks(): void {
+  const request = newProductRequest('now-1', snickersOff(), 50, 'без орехов', PRODUCT_TARGET, 0.5, '2026-10-16T18:00:00')
+  const queued = applyFoodAsk(emptyState(), request)
+  const ids = ['nf', 'ne']
+  let n = 0
+  const next = logProductNow(queued, request, () => ids[n++], '2026-10-17T09:00:00', () => 3)
+  const food = next.customFoods.nf
+  assert(food !== undefined && food.source === 'Open Food Facts' && food.components.length === 0 && food.spec === 3, 'еда: source OFF, состава нет')
+  assert(food.request.text === 'без орехов' && food.request.grams === 50 && food.jobId === 'food:now-1', 'еда несёт заметку, граммы и jobId')
+  const day = next.log['2026-10-16']
+  const extra = day.extras.find(e => e.id === 'ne')
+  assert(day.cycleDay === 3 && extra !== undefined && extra.kind === 'product' && extra.fraction === 0.5, 'запись на дату заказа с долей заказа')
+  assert(extra!.nutrients.fiber.known === 1 && approx(extra!.nutrients.fiber.value, 2.15), 'напечатанное известно')
+  assert(extra!.nutrients.vitC.known === 0 && extra!.nutrients.vitC.total === 1, 'остальное честно неизвестно')
+  assert(next.foodRequests.length === 0, 'заказ снят с очереди')
+  group('logProductNow: pending product -> запись с source "Open Food Facts", состав пуст, нутриенты честно неизвестны кроме напечатанных, заказ снят')
+
+  // заказа нет в очереди (сетевой отказ из карточки)
+  let m = 0
+  const loose = logProductNow(emptyState(), request, () => ids[m++], '2026-10-17T09:00:00', () => null)
+  assert(loose.log['2026-10-16'].extras.length === 1 && loose.customFoods.nf !== undefined, 'заказ не из очереди тоже записывается')
+  group('logProductNow: заказ не из очереди тоже записывается')
+
+  const text = newFoodRequest('t-1', 'тирамису', 120, PRODUCT_TARGET, '2026-10-16T18:00:00')
+  const textState = applyFoodAsk(emptyState(), text)
+  assert(logProductNow(textState, text, () => 'x', '2026-10-17T09:00:00', () => null) === textState, 'текстовый заказ состояние не меняет')
+  group('logProductNow: текстовый заказ ничего не меняет')
+}
+
+function relogCustomFoodChecks(): void {
+  const plain = customFoodFromResult(parseFoodResult(loadFixture()), 'job', 'text-1', '2026-10-17T12:00:00')
+  const kinds: [CustomFood, string][] = [[plain, 'custom'], [labelFoodFrom(), 'label'], [productFoodFrom(), 'product']]
+  for (const [food, kind] of kinds) {
+    const state: AppState = { ...emptyState(), customFoods: { [food.id]: food } }
+    let n = 0
+    const next = relogCustomFood(state, food, '2026-10-18', 'snack', () => `re-${n++}`, '2026-10-18T15:00:00', () => 4)
+    const day = next.log['2026-10-18']
+    assert(day.cycleDay === 4 && day.extras.length === 1, `${kind}: день создаётся с cycleDay и одной записью`)
+    const extra = day.extras[0]
+    assert(extra.kind === kind && extra.fraction === 1 && extra.slot === 'snack' && extra.id === 're-0', `${kind}: запись вида ${kind}, доля 1, нужный приём`)
+    assert(next.customFoods === state.customFoods && next.foodRequests === state.foodRequests, `${kind}: книга и очередь не меняются`)
+    const twice = relogCustomFood(next, food, '2026-10-18', 'dinner', () => `re-${n++}`, '2026-10-18T19:00:00', () => 4)
+    assert(twice.log['2026-10-18'].extras.length === 2, `${kind}: повторная запись добавляется рядом`)
+  }
+  group('relogCustomFood: пишет на дату и приём с долей 1 для custom, label и product')
+}
+
+function retryProductChecks(): void {
+  const request = newProductRequest('rp-1', snickersOff(), 50, 'заметка', PRODUCT_TARGET, 0.5, '2026-10-16T18:00:00')
+  const failed: AppState = { ...emptyState(), foodRequests: [{ ...request, status: 'failed', error: 'сбой' }] }
+  const retried = retryFoodRequest(failed, 'rp-1', 'rp-2', '2026-10-16T19:00:00')
+  assert(retried.foodRequests.length === 1 && retried.foodRequests[0].id === 'rp-2', 'заказ заменяется новым id')
+  const fresh = retried.foodRequests[0]
+  assert(fresh.kind === 'product' && fresh.status === 'pending' && fresh.grams === 50 && fresh.text === 'заметка' && fresh.fraction === 0.5
+    && fresh.product?.code === '5000159461122' && fresh.askedAt === '2026-10-16T19:00:00' && fresh.error === undefined, 'повтор несёт те же факты, граммы, заметку и долю')
+  const broken: AppState = { ...emptyState(), foodRequests: [{ ...request, product: undefined, status: 'failed' }] }
+  assert(retryFoodRequest(broken, 'rp-1', 'rp-3', '2026-10-16T19:00:00') === broken, 'без фактов товара повтор невозможен')
+  group('retryFoodRequest для product')
+}
+
+function pendingAutoRequestsChecks(): void {
+  const prod = newProductRequest('pa-1', snickersOff(), 50, '', PRODUCT_TARGET, 1, '2026-10-16T18:00:00')
+  const lab = newLabelRequest('pa-2', '', null, PRODUCT_TARGET, 1, '2026-10-16T18:00:00')
+  const txt = newFoodRequest('pa-3', 'суп', null, PRODUCT_TARGET, '2026-10-16T18:00:00')
+  const doneProd = { ...newProductRequest('pa-4', snickersOff(), 50, '', PRODUCT_TARGET, 1, '2026-10-16T18:00:00'), status: 'done' as const }
+  const failedProd = { ...newProductRequest('pa-5', snickersOff(), 50, '', PRODUCT_TARGET, 1, '2026-10-16T18:00:00'), status: 'failed' as const }
+  const ids = pendingAutoRequests([prod, lab, txt, doneProd, failedProd]).map(r => r.id)
+  assert(ids.join(',') === 'pa-1,pa-2,pa-5', `ожидались pa-1,pa-2,pa-5, получено ${ids.join(',')}`)
+  assert(pendingLabelRequests === pendingAutoRequests, 'pendingLabelRequests - синоним')
+  group('pendingAutoRequests включает product')
+}
+
+function searchCustomFoodsChecks(): void {
+  const mk = (id: string, title: string, createdAt: string, text = ''): CustomFood => ({
+    ...customFoodFromResult(parseFoodResult(loadFixture()), 'job', id, createdAt), title, request: { text, grams: null }
+  })
+  const snickers = productFoodFrom('snk', '2026-10-10T12:00:00')
+  const borsch = mk('b1', 'Борщ домашний', '2026-10-11T12:00:00')
+  const kasha1 = mk('k1', 'Каша овсяная', '2026-10-01T12:00:00')
+  const kasha2 = mk('k2', 'Каша гречневая', '2026-10-05T12:00:00')
+  const kasha3 = mk('k3', 'Молоко', '2026-10-09T12:00:00', 'овсяная каша на молоке')
+  const label = { ...labelFoodFrom(), createdAt: '2026-10-12T12:00:00' }
+  const foods = [snickers, borsch, kasha1, kasha2, kasha3, label]
+  const ids = (list: CustomFood[]): string => list.map(f => f.id).join(',')
+
+  assert(ids(searchCustomFoods(foods, 'БОРЩ')) === 'b1', 'кириллица без учёта регистра')
+  assert(ids(searchCustomFoods(foods, 'борщ дом')) === 'b1', 'токены - подстроки')
+  assert(searchCustomFoods(foods, 'борщ гречневая').length === 0, 'все токены обязательны')
+  assert(ids(searchCustomFoods(foods, 'овсяная каша')) === 'k3,k1', 'токены ищутся и в исходном тексте, новые сверху')
+  assert(ids(searchCustomFoods(foods, 'каша')) === 'k3,k2,k1', 'порядок по createdAt убыванию')
+  assert(ids(searchCustomFoods(foods, 'каша', 2)) === 'k3,k2', 'лимит обрезает')
+  assert(ids(searchCustomFoods(foods, 'mars')) === 'snk', 'бренд товара участвует в поиске')
+  assert(ids(searchCustomFoods(foods, 'Հավի')) === label.id, 'армянское название с наклейки участвует в поиске')
+  assert(searchCustomFoods(foods, '').length === 0 && searchCustomFoods(foods, '  ,. ').length === 0, 'пустой запрос -> []')
+  assert(ids(searchCustomFoods(foods, '5000159461122')) === 'snk', 'штрихкод находит товар точно')
+  assert(ids(searchCustomFoods(foods, '5000 1594 61122')) === 'snk', 'пробелы в штрихкоде не мешают')
+  assert(searchCustomFoods(foods, '12345678').length === 0, 'чужой штрихкод ничего не находит')
+  group('searchCustomFoods: кириллица, все токены обязательны, порядок по createdAt, штрихкод точно, лимит, пустой запрос -> []')
+}
+
+function isBarcodeChecks(): void {
+  assert(isBarcode('5000159461122') && isBarcode(' 5000 1594 61122 ') && isBarcode('12345678') && isBarcode('12345678901234'), 'цифры 8-14 - штрихкод')
+  assert(!isBarcode('1234567') && !isBarcode('123456789012345') && !isBarcode('50001594611a2') && !isBarcode('') && !isBarcode('snickers'), 'не штрихкод')
+  assert(normalizeBarcode(' 5000 1594\t61122 ') === '5000159461122', 'normalizeBarcode убирает пробелы')
+  group('isBarcode')
+}
+
+function offWarningTextChecks(): void {
+  assert(offWarningText('macros-sum-over-100') === 'белки, жиры и углеводы вместе больше 100 г', 'macros-sum-over-100')
+  assert(offWarningText('energy-over-ceiling') === 'энергия больше 900 ккал на 100 г', 'energy-over-ceiling')
+  assert(offWarningText('energy-mismatch') === 'ккал не сходятся с БЖУ', 'energy-mismatch')
+  assert(offWarningText('что-то новое') === 'числа с упаковки не прошли проверку', 'неизвестный код')
+  const withUsda = productFoodFrom()
+  const bare = productFoodFromFacts(snickersOff(), 50, '', 'food:j', 'pf-3', '2026-10-17T12:00:00')
+  assert(productSourceText(withUsda) === 'С упаковки, Open Food Facts · микро по составу USDA', 'подпись товара с составом')
+  assert(productSourceText(bare) === 'С упаковки, Open Food Facts · без витаминов', 'подпись товара без состава')
+  const entry = productExtraFrom(bare, 'snack', 1, 'x', '2026-10-17T15:00:00')
+  assert(entry.kind === 'product' && productSourceText(entry) === 'С упаковки, Open Food Facts · без витаминов', 'подпись записи по source')
+  group('offWarningText и productSourceText')
+}
+
 // ---- foodClient -------------------------------------------------------------
 
 function fakeFetch(status: number, body: unknown): { calls: { url: string; init: RequestInit }[]; fetchFn: typeof fetch } {
@@ -700,6 +1014,25 @@ async function main(): Promise<void> {
   labelWithoutCompositionChecks()
   pendingLabelRequestsChecks()
   logDoneLabelRequestsChecks()
+  parseProductFixtureChecks()
+  parseProductMissingChecks()
+  parseProductEmptyCompositionChecks()
+  parseOffProductChecks()
+  productFactsFromChecks()
+  productNutrientsFromPrintedChecks()
+  productTotalsWithoutCompositionChecks()
+  productTotalsMatchFixtureChecks()
+  productDeviationChecks()
+  productExtraChecks()
+  newProductRequestChecks()
+  logDoneAutoRequestsChecks()
+  logProductNowChecks()
+  relogCustomFoodChecks()
+  retryProductChecks()
+  pendingAutoRequestsChecks()
+  searchCustomFoodsChecks()
+  isBarcodeChecks()
+  offWarningTextChecks()
   await clientStatusChecks()
   await askLabelChecks()
   labelEnergyMisreadChecks()

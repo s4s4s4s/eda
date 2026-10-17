@@ -12,10 +12,10 @@
 
 import { addPer100ToTotals, emptyNutrientTotals, mealKbju, mealNutrients, unknownNutrientTotals } from './nutrition'
 import type {
-  AppState, CustomFood, ExtraLogEntry, FoodComponent, FoodRequest, FoodResultOk,
-  Kbju, LabelFacts, LabelFit, Meal, NutrientTotals, ProductIndex, Slot
+  AppState, CustomFood, ExtraLogEntry, FoodComponent, FoodRequest, FoodRequestKind, FoodResultOk,
+  Kbju, LabelFacts, LabelFit, Meal, NutrientTotals, OffProduct, ProductFacts, ProductIndex, Slot
 } from './types'
-import { NUTRIENT_KEYS } from './types'
+import { NUTRIENT_KEYS, OFF_SOURCE, PRINTED_MICRO_KEYS } from './types'
 
 /* ---- разбор ответа воркера ---- */
 
@@ -109,6 +109,62 @@ function parseLabelFit(v: unknown): LabelFit {
   return { usdaKbju, deviationPct, massDeviationPct, poor: v.poor }
 }
 
+/** Строгий разбор товара Open Food Facts (то, что нормализует воркер). Значения
+    printedMicro обязаны быть положительными: ноль воркер не пропускает, потому что
+    в OFF он неотличим от незаполненного поля. Чужие ключи printedMicro игнорируются. */
+export function parseOffProduct(v: unknown, what = 'product'): OffProduct {
+  if (!isPlainObject(v)) throw new Error(`${what}: ожидался объект товара, получено ${JSON.stringify(v)}`)
+  const code = requireString(v.code, `${what}.code`)
+  if (!/^\d{8,14}$/.test(code)) throw new Error(`${what}.code: ожидался штрихкод из 8-14 цифр, получено ${JSON.stringify(code)}`)
+  const name = requireString(v.name, `${what}.name`)
+  if (name.length === 0) throw new Error(`${what}.name: пустое название товара`)
+  const per100 = parseNonNegativeKbju(v.per100, `${what}.per100`)
+  if (!isPlainObject(v.printedMicro)) throw new Error(`${what}.printedMicro: ожидался объект, получено ${JSON.stringify(v.printedMicro)}`)
+  const printedMicro: OffProduct['printedMicro'] = {}
+  for (const key of PRINTED_MICRO_KEYS) {
+    const value = v.printedMicro[key]
+    if (value === undefined) continue
+    const printed = requireFiniteNumber(value, `${what}.printedMicro.${key}`)
+    if (printed <= 0) throw new Error(`${what}.printedMicro.${key}: ожидалось положительное число, получено ${printed}`)
+    printedMicro[key] = printed
+  }
+  const optionalGrams = (value: unknown, field: string): number | null => {
+    if (value === null || value === undefined) return null
+    const g = requireFiniteNumber(value, `${what}.${field}`)
+    if (g <= 0) throw new Error(`${what}.${field}: ожидалось положительное число, получено ${g}`)
+    return g
+  }
+  if (!Array.isArray(v.warnings)) throw new Error(`${what}.warnings: ожидался список строк`)
+  const warnings = v.warnings.map((w, i) => requireString(w, `${what}.warnings[${i}]`))
+  if (typeof v.plausible !== 'boolean') throw new Error(`${what}.plausible: ожидалось булево, получено ${JSON.stringify(v.plausible)}`)
+  return {
+    code,
+    url: requireString(v.url, `${what}.url`),
+    name,
+    brand: requireString(v.brand, `${what}.brand`),
+    quantityText: requireString(v.quantityText, `${what}.quantityText`),
+    per100,
+    printedMicro,
+    servingG: optionalGrams(v.servingG, 'servingG'),
+    packageG: optionalGrams(v.packageG, 'packageG'),
+    ingredientsText: requireString(v.ingredientsText, `${what}.ingredientsText`),
+    warnings,
+    plausible: v.plausible,
+    fetchedAt: requireString(v.fetchedAt, `${what}.fetchedAt`)
+  }
+}
+
+/** Товар плюс выбранные граммы и КБЖУ на них: то, что лежит в результате и в книге. */
+export function parseProductFacts(v: unknown, what = 'product'): ProductFacts {
+  const product = parseOffProduct(v, what)
+  const raw = v as Record<string, unknown>
+  const grams = requireFiniteNumber(raw.grams, `${what}.grams`)
+  if (grams <= 0) throw new Error(`${what}.grams: ожидалось положительное число, получено ${grams}`)
+  const perPortion = parseNonNegativeKbju(raw.perPortion, `${what}.perPortion`)
+  const remark = raw.remark === undefined ? undefined : requireString(raw.remark, `${what}.remark`)
+  return { ...product, grams, perPortion, ...(remark !== undefined ? { remark } : {}) }
+}
+
 function parseRequestBody(v: unknown): { text: string; grams: number | null } {
   if (!isPlainObject(v)) throw new Error('request: поле отсутствует или не объект — ответ воркера не несёт исходного запроса')
   const text = requireString(v.text, 'request.text')
@@ -154,7 +210,7 @@ export function parseFoodResult(raw: unknown): FoodResultOk {
   if (raw.ok !== true) throw new Error('Ответ воркера не несёт ok: true — это не успешный результат разбора')
 
   const spec = requireFiniteNumber(raw.spec, 'spec')
-  if (spec !== 1 && spec !== 2) throw new Error(`spec: версия ${spec} приложению неизвестна, поддерживаются 1 и 2`)
+  if (spec !== 1 && spec !== 2 && spec !== 3) throw new Error(`spec: версия ${spec} приложению неизвестна, поддерживаются 1, 2 и 3`)
   const source = requireString(raw.source, 'source')
   if (source.length === 0) throw new Error('source: пустая строка — источник чисел не назван')
   const title = requireString(raw.title, 'title')
@@ -164,7 +220,10 @@ export function parseFoodResult(raw: unknown): FoodResultOk {
   // spec 2 (наклейка): КБЖУ даёт сама наклейка, состав может быть пуст
   if (spec === 2 && raw.label === undefined) throw new Error('label: ответ spec 2 обязан нести факты с наклейки')
   const label = spec === 2 ? parseLabelFacts(raw.label) : undefined
-  const fit = spec === 2 && raw.fit !== undefined ? parseLabelFit(raw.fit) : undefined
+  // spec 3 (товар Open Food Facts): КБЖУ даёт упаковка, состав может быть пуст
+  if (spec === 3 && raw.product === undefined) throw new Error('product: ответ spec 3 обязан нести факты товара')
+  const product = spec === 3 ? parseProductFacts(raw.product) : undefined
+  const fit = spec !== 1 && raw.fit !== undefined ? parseLabelFit(raw.fit) : undefined
 
   if (!Array.isArray(raw.components) || (raw.components.length === 0 && spec === 1)) {
     throw new Error('components: ожидался непустой список компонентов')
@@ -188,6 +247,7 @@ export function parseFoodResult(raw: unknown): FoodResultOk {
   return {
     ok: true, spec, source, title, request, components, kbju, nutrients,
     ...(label ? { label } : {}),
+    ...(product ? { product } : {}),
     ...(fit ? { fit } : {})
   }
 }
@@ -207,6 +267,7 @@ export function customFoodFromResult(result: FoodResultOk, jobId: string, id: st
     components: result.components,
     createdAt,
     ...(result.label ? { label: result.label } : {}),
+    ...(result.product ? { product: result.product } : {}),
     ...(result.fit ? { fit: result.fit } : {})
   }
 }
@@ -245,12 +306,62 @@ export function labelEnergyWarning(printed: Kbju): string | null {
     еду на домашнем компьютере, считают одинаково. */
 export function customFoodTotals(food: CustomFood): { kbju: Kbju; nutrients: NutrientTotals } {
   const totals = componentTotals(food)
+  if (food.product) {
+    // товар Open Food Facts: КБЖУ - с упаковки, пять напечатанных микро перекрывают
+    // состав (как в scripts/resolve-product.mjs), остальные микро - только из состава
+    const nutrients = food.components.length === 0
+      ? productNutrientsFromPrinted(food.product)
+      : applyPrintedMicro(totals.nutrients, food.product)
+    return { kbju: food.product.perPortion, nutrients }
+  }
   if (!food.label) return totals
   // еда по наклейке: КБЖУ - напечатанное на порцию, состав USDA его не двигает.
   // Состава нет: еда съедена, а нутриенты неизвестны - одна неизвестная позиция
   // (total 1), а не ноль позиций, иначе день выглядит полным (см. unknownNutrientTotals)
   const nutrients = food.components.length === 0 ? unknownNutrientTotals() : totals.nutrients
   return { kbju: food.label.perPortion, nutrients }
+}
+
+function round2(x: number): number {
+  return Math.round(x * 100) / 100
+}
+
+function round3(x: number): number {
+  return Math.round(x * 1000) / 1000
+}
+
+/** Факты товара на выбранные граммы: КБЖУ на порцию с округлением до 2 знаков
+    (как roundKbju в scripts/resolve-product.mjs). */
+export function productFactsFrom(product: OffProduct, grams: number): ProductFacts {
+  const factor = grams / 100
+  return {
+    ...product,
+    grams,
+    perPortion: {
+      kcal: round2(product.per100.kcal * factor),
+      p: round2(product.per100.p * factor),
+      f: round2(product.per100.f * factor),
+      c: round2(product.per100.c * factor)
+    }
+  }
+}
+
+/** Напечатанные на упаковке значения перекрывают одноимённые нутриенты состава:
+    {value: напечатанное на 100 г x граммы / 100 (3 знака), known 1, total 1}.
+    Та же арифметика, что в scripts/resolve-product.mjs. */
+export function applyPrintedMicro(nutrients: NutrientTotals, product: ProductFacts): NutrientTotals {
+  const next = { ...nutrients }
+  for (const key of PRINTED_MICRO_KEYS) {
+    const printed = product.printedMicro[key]
+    if (printed === undefined) continue
+    next[key] = { value: round3(printed * product.grams / 100), known: 1, total: 1 }
+  }
+  return next
+}
+
+/** Нутриенты товара без состава: честно неизвестны, кроме напечатанных. */
+export function productNutrientsFromPrinted(product: ProductFacts): NutrientTotals {
+  return applyPrintedMicro(unknownNutrientTotals(), product)
 }
 
 function componentTotals(food: CustomFood): { kbju: Kbju; nutrients: NutrientTotals } {
@@ -285,9 +396,9 @@ function deviationPct(actual: number, wanted: number): number | null {
     состава, сравнивать не с чем. Арифметика и порог те же, что у подгонки в
     scripts/lib/label-fit.mjs, чтобы число на экране не прыгало после правки. */
 export function customFoodDeviation(food: CustomFood): LabelFit | null {
-  if (!food.label || food.components.length === 0) return null
+  if ((!food.label && !food.product) || food.components.length === 0) return null
   const { kbju: usda } = componentTotals(food)
-  const target = food.label.perPortion
+  const target = food.label?.perPortion ?? food.product!.perPortion
   const dev = {
     kcal: deviationPct(usda.kcal, target.kcal),
     p: deviationPct(usda.p, target.p),
@@ -295,7 +406,7 @@ export function customFoodDeviation(food: CustomFood): LabelFit | null {
     c: deviationPct(usda.c, target.c)
   }
   const massSum = food.components.reduce((sum, c) => sum + c.grams, 0)
-  const portionG = food.label.portionG
+  const portionG = food.label ? food.label.portionG : food.product!.grams
   const massDeviationPct = portionG !== null && portionG > 0 ? deviationPct(massSum, portionG) : null
   const poor = [dev.kcal, dev.p, dev.f, dev.c, massDeviationPct]
     .some(d => d !== null && Math.abs(d) > LABEL_POOR_DEVIATION_PCT)
@@ -391,19 +502,53 @@ export function labelExtraFrom(food: CustomFood, slot: Slot, fraction: number, i
   }
 }
 
+/** Снапшот полной порции товара Open Food Facts. КБЖУ - с упаковки, микро - из
+    customFoodTotals (напечатанное поверх состава). */
+export function productExtraFrom(food: CustomFood, slot: Slot, fraction: number, id: string, loggedAt: string): ExtraLogEntry {
+  if (!food.product) throw new Error(`productExtraFrom: у еды «${food.id}» нет фактов товара`)
+  const { kbju, nutrients } = customFoodTotals(food)
+  return {
+    kind: 'product',
+    id,
+    slot,
+    fraction,
+    title: food.title,
+    kbju,
+    nutrients,
+    loggedAt,
+    customFoodId: food.id,
+    source: food.source,
+    code: food.product.code,
+    url: food.product.url
+  }
+}
+
+/** Снапшот полной порции своей еды любого вида: товар, наклейка или обычная. */
+export function extraFromCustomFood(food: CustomFood, slot: Slot, fraction: number, id: string, loggedAt: string): ExtraLogEntry {
+  if (food.product) return productExtraFrom(food, slot, fraction, id, loggedAt)
+  if (food.label) return labelExtraFrom(food, slot, fraction, id, loggedAt)
+  return customExtraFrom(food, slot, fraction, id, loggedAt)
+}
+
 /* ---- очередь заказов на разбор ---- */
 
 export function newFoodRequest(id: string, text: string, grams: number | null, target: { date: string; slot: Slot }, askedAt: string): FoodRequest {
   return { id, kind: 'text', text, grams, fraction: 1, askedAt, target, status: 'pending', pcAgo: null }
 }
 
-/** Заказы по наклейкам, которые сводка обязана показать: все, что ещё не стали
-    записью журнала (pending, failed, expired), БЕЗ фильтра по дате. Заказ перед
-    полуночью и протухший за сутки датированы не сегодняшним днём, а «Переснять»
-    и «Убрать» нужны именно им. */
-export function pendingLabelRequests(requests: FoodRequest[]): FoodRequest[] {
-  return requests.filter(r => r.kind === 'label' && r.status !== 'done')
+/** Виды заказов, которые становятся записью журнала сами, без «Сохранить». */
+export const AUTO_LOG_KINDS: readonly FoodRequestKind[] = ['label', 'product']
+
+/** Заказы по наклейкам и товарам, которые сводка обязана показать: все, что ещё
+    не стали записью журнала (pending, failed, expired), БЕЗ фильтра по дате. Заказ
+    перед полуночью и протухший за сутки датированы не сегодняшним днём, а
+    «Переснять», «Повторить» и «Убрать» нужны именно им. */
+export function pendingAutoRequests(requests: FoodRequest[]): FoodRequest[] {
+  return requests.filter(r => AUTO_LOG_KINDS.includes(r.kind) && r.status !== 'done')
 }
+
+/** Прежнее имя pendingAutoRequests: до товаров автозапись была только у наклеек. */
+export const pendingLabelRequests = pendingAutoRequests
 
 /** Заказ по снимку наклейки. note - необязательная заметка человека (может быть
     пустой), fraction - доля порции, выбранная при съёмке: запись создастся сама,
@@ -420,6 +565,27 @@ export function newLabelRequest(
     throw new Error(`newLabelRequest: доля обязана быть в (0, 1], получено ${fraction}`)
   }
   return { id, kind: 'label', text: note, grams, fraction, askedAt, target, status: 'pending', pcAgo: null }
+}
+
+/** Заказ по товару Open Food Facts. Факты товара живут в заказе: воркер получает
+    только код и граммы, а на «Записать без витаминов» они нужны приложению. note -
+    заметка человека (может быть пустой). */
+export function newProductRequest(
+  id: string,
+  product: OffProduct,
+  grams: number,
+  note: string,
+  target: { date: string; slot: Slot },
+  fraction: number,
+  askedAt: string
+): FoodRequest {
+  if (!Number.isFinite(fraction) || fraction <= 0 || fraction > 1) {
+    throw new Error(`newProductRequest: доля обязана быть в (0, 1], получено ${fraction}`)
+  }
+  if (!Number.isFinite(grams) || grams <= 0) {
+    throw new Error(`newProductRequest: граммы обязаны быть положительным конечным числом, получено ${grams}`)
+  }
+  return { id, kind: 'product', text: note, grams, product, fraction, askedAt, target, status: 'pending', pcAgo: null }
 }
 
 /** Кладёт новый заказ в очередь состояния — вызывается после успешного askFood. */
@@ -494,26 +660,30 @@ export function saveCustomFood(
   cycleDayForDate: number | null
 ): AppState {
   const customFoods = { ...state.customFoods, [editedFood.id]: editedFood }
-  const extra = editedFood.label
-    ? labelExtraFrom(editedFood, target.slot, fraction, extraId, now)
-    : customExtraFrom(editedFood, target.slot, fraction, extraId, now)
-  const existingDay = state.log[target.date] ?? { cycleDay: cycleDayForDate, meals: {}, extras: [] }
-  const known = existingDay.extras.findIndex(e => e.id === extra.id)
-  const extras = known === -1
-    ? [...existingDay.extras, extra]
-    : existingDay.extras.map(e => (e.id === extra.id ? extra : e))
-  const log = { ...state.log, [target.date]: { cycleDay: existingDay.cycleDay, meals: existingDay.meals, extras } }
+  const extra = extraFromCustomFood(editedFood, target.slot, fraction, extraId, now)
+  const log = withExtra(state, target.date, extra, cycleDayForDate)
   const foodRequests = state.foodRequests.filter(r => r.id !== requestId)
   return { ...state, customFoods, log, foodRequests }
 }
 
-/** Автозапись заказов по наклейке: каждый 'label' со статусом 'done' и
+/** Журнал с записью extra в дне date (день создаётся с cycleDay; запись с тем же
+    id заменяется). */
+function withExtra(state: AppState, date: string, extra: ExtraLogEntry, cycleDay: number | null): AppState['log'] {
+  const existingDay = state.log[date] ?? { cycleDay, meals: {}, extras: [] }
+  const known = existingDay.extras.findIndex(e => e.id === extra.id)
+  const extras = known === -1
+    ? [...existingDay.extras, extra]
+    : existingDay.extras.map(e => (e.id === extra.id ? extra : e))
+  return { ...state.log, [date]: { cycleDay: existingDay.cycleDay, meals: existingDay.meals, extras } }
+}
+
+/** Автозапись заказов по наклейке и товару: каждый 'label' и 'product' со статусом 'done' и
     результатом становится едой в книге и записью дня с целью и долей, выбранными
     при съёмке, а заказ уходит из очереди. Правка доли потом - прямо в журнале
     (setExtraFraction). nextId даёт и id еды, и id записи; детерминированность
     обеспечивает вызывающий, подставляя счётчик в тестах. Текстовые заказы не
     трогаются: их человек проверяет и сохраняет сам. */
-export function logDoneLabelRequests(
+export function logDoneAutoRequests(
   state: AppState,
   now: string,
   nextId: () => string,
@@ -521,11 +691,113 @@ export function logDoneLabelRequests(
 ): AppState {
   let next = state
   for (const request of state.foodRequests) {
-    if (request.kind !== 'label' || request.status !== 'done' || !request.result) continue
+    if (!AUTO_LOG_KINDS.includes(request.kind) || request.status !== 'done' || !request.result) continue
     const food = customFoodFromResult(request.result, 'food:' + request.id, nextId(), now)
     next = saveCustomFood(next, request.id, food, request.target, request.fraction, nextId(), now, cycleDayForDate(request.target.date))
   }
   return next
+}
+
+/** Прежнее имя logDoneAutoRequests: до товаров автозапись была только у наклеек. */
+export const logDoneLabelRequests = logDoneAutoRequests
+
+/** Еда из товара без разбора на ПК: состав пуст, нутриенты честно неизвестны,
+    кроме напечатанных на упаковке. jobId - адрес происхождения чисел. */
+export function productFoodFromFacts(
+  product: OffProduct,
+  grams: number,
+  note: string,
+  jobId: string,
+  id: string,
+  createdAt: string
+): CustomFood {
+  return {
+    id,
+    title: product.name,
+    source: OFF_SOURCE,
+    spec: 3,
+    jobId,
+    request: { text: note, grams },
+    components: [],
+    createdAt,
+    product: productFactsFrom(product, grams)
+  }
+}
+
+/** «Записать сейчас без витаминов»: заказ по товару становится едой и записью
+    журнала по одним лишь фактам OFF, без разбора на ПК. Заказа может не быть в
+    очереди (сетевой отказ из карточки): запись всё равно создаётся. Заказ не по
+    товару состояние не меняет. */
+export function logProductNow(
+  state: AppState,
+  request: FoodRequest,
+  nextId: () => string,
+  now: string,
+  cycleDayForDate: (date: string) => number | null
+): AppState {
+  if (request.kind !== 'product' || !request.product || request.grams === null) return state
+  const food = productFoodFromFacts(request.product, request.grams, request.text, 'food:' + request.id, nextId(), now)
+  return saveCustomFood(state, request.id, food, request.target, request.fraction, nextId(), now, cycleDayForDate(request.target.date))
+}
+
+/** «Записать ещё»: та же еда из книги целиком (доля 1) на дату и приём, без
+    заказа и без правки книги. */
+export function relogCustomFood(
+  state: AppState,
+  food: CustomFood,
+  date: string,
+  slot: Slot,
+  nextId: () => string,
+  now: string,
+  cycleDayForDate: (date: string) => number | null
+): AppState {
+  const extra = extraFromCustomFood(food, slot, 1, nextId(), now)
+  return { ...state, log: withExtra(state, date, extra, cycleDayForDate(date)) }
+}
+
+/* ---- поиск по книге ---- */
+
+export function normalizeBarcode(q: string): string {
+  return q.replace(/\s+/g, '')
+}
+
+/** Штрихкод в строке поиска: 8-14 цифр, пробелы не считаются. */
+export function isBarcode(q: string): boolean {
+  return /^\d{8,14}$/.test(normalizeBarcode(q))
+}
+
+/** Поиск по книге своей еды. Штрихкод находит товар точно; иначе каждый токен
+    запроса (буквы и цифры, без регистра) обязан быть подстрокой названия, бренда,
+    армянского названия или исходного текста. Новые сверху, пустой запрос - []. */
+export function searchCustomFoods(foods: CustomFood[], query: string, limit = 8): CustomFood[] {
+  const tokens = query.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []
+  if (tokens.length === 0) return []
+  const barcode = isBarcode(query) ? normalizeBarcode(query) : null
+  const hits = foods.filter(food => {
+    if (barcode !== null) return food.product?.code === barcode
+    const haystack = `${food.title} ${food.product?.brand ?? ''} ${food.label?.titleHy ?? ''} ${food.request.text}`.toLowerCase()
+    return tokens.every(token => haystack.includes(token))
+  })
+  return hits.sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0)).slice(0, limit)
+}
+
+/* ---- тексты про товар ---- */
+
+/** Причина предупреждения воркера о числах OFF - по-русски. */
+export function offWarningText(code: string): string {
+  switch (code) {
+    case 'macros-sum-over-100': return 'белки, жиры и углеводы вместе больше 100 г'
+    case 'energy-over-ceiling': return 'энергия больше 900 ккал на 100 г'
+    case 'energy-mismatch': return 'ккал не сходятся с БЖУ'
+    default: return 'числа с упаковки не прошли проверку'
+  }
+}
+
+/** Подпись источника товара для журнала и книги: с составом USDA микро шире, без -
+    только напечатанное. Запись журнала состава не несёт, о нём говорит source. */
+export function productSourceText(x: CustomFood | Extract<ExtraLogEntry, { kind: 'product' }>): string {
+  const withComposition = 'components' in x ? x.components.length > 0 : x.source !== OFF_SOURCE
+  return 'С упаковки, Open Food Facts' + (withComposition ? ' · микро по составу USDA' : ' · без витаминов')
 }
 
 /** Убирает заказ из очереди, ничего не сохраняя, — кнопка «Убрать» на failed/
@@ -543,6 +815,12 @@ export function retryFoodRequest(state: AppState, id: string, newId: string, now
   if (!existing) return state
   // снимок на воркере после разбора вырезается: повтор наклейки возможен только новой съёмкой
   if (existing.kind === 'label') return state
+  if (existing.kind === 'product') {
+    // факты товара лежат в заказе, поэтому повтор возможен без нового поиска
+    if (!existing.product || existing.grams === null) return state
+    const again = newProductRequest(newId, existing.product, existing.grams, existing.text, existing.target, existing.fraction, now)
+    return { ...state, foodRequests: state.foodRequests.map(r => (r.id === id ? again : r)) }
+  }
   const replacement = newFoodRequest(newId, existing.text, existing.grams, existing.target, now)
   return { ...state, foodRequests: state.foodRequests.map(r => (r.id === id ? replacement : r)) }
 }
