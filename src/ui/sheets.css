@@ -885,6 +885,17 @@
   color: var(--fg-dim);
 }
 
+.custom-food-book-row__brand,
+.custom-food-book-row__source {
+  font-size: var(--text-13);
+  font-weight: 400;
+  color: var(--fg-dim);
+}
+
+.custom-food-book-row__brand {
+  flex-basis: 100%;
+}
+
 .custom-food-book-row__actions {
   display: flex;
   flex-wrap: wrap;
@@ -908,6 +919,24 @@
 
 .custom-food-book-row__confirm {
   width: 100%;
+}
+
+/* Обёртка списков под полем поиска; hidden на время карточки товара. */
+.custom-food__lists {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.custom-food__lists[hidden] {
+  display: none;
+}
+
+.custom-food-book__empty {
+  margin: 0;
+  font-size: var(--text-15);
+  line-height: var(--lh-text);
+  color: var(--fg-dim);
 }
 
 /* -- форма нового заказа -- */

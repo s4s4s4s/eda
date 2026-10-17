@@ -9,21 +9,30 @@
    место, где человек узнаёт, что вообще происходит с его запросом на дальнем
    компьютере.
 
+   Сверху поле поиска (FoodSearch): книга фильтруется на каждую букву, Open
+   Food Facts спрашивается только по «Найти». Карточка товара (ProductCard)
+   пока открыта заменяет списки; FoodSearch при этом не размонтируется, а
+   прячется, чтобы «Назад к поиску» вернул тот же список.
+
    Заказы по наклейке (kind === 'label') обычно до этой шторки в состоянии done
    не доживают: опрос сразу превращает их в запись журнала (afterPoll в
    useFoodPolling.ts). Готовая строка для них здесь остаётся на случай, когда
    автозапись выключена. */
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
-  customFoodFromResult, customFoodTotals, labelEnergyWarning, withComponentGrams
+  customFoodFromResult, customFoodTotals, labelEnergyWarning, searchCustomFoods, withComponentGrams
 } from '../core/food.ts'
+import type { OffProductResult, OffSearchResult } from '../core/foodClient.ts'
 import type {
-  CustomFood, FoodRequest, FoodResultOk, LabelFacts, LabelFit, NutrientTotals
+  CustomFood, FoodRequest, FoodResultOk, LabelFacts, LabelFit, NutrientTotals, OffProduct
 } from '../core/types.ts'
 import { NUTRIENT_KEYS, SLOT_TITLE, SLOTS } from '../core/types.ts'
 import type { Slot } from '../core/types.ts'
+import { FoodSearch } from './FoodSearch.tsx'
 import { FractionPicker } from './FractionPicker.tsx'
+import ProductCard from './ProductCard.tsx'
+import type { ProductAskResult } from './ProductCard.tsx'
 import RequestStatus from './RequestStatus.tsx'
 import type { RequestActionResult } from './RequestStatus.tsx'
 import Sheet from './Sheet.tsx'
@@ -51,11 +60,21 @@ interface CustomFoodSheetProps {
   onSave: (requestId: string, editedFood: CustomFood, target: { date: string; slot: Slot }, fraction: number) => void
   onRemoveCustomFood: (foodId: string) => void
   onAddFromBook: (food: CustomFood, slot: Slot, fraction: number) => void
+  /** «Записать ещё»: одно нажатие, на сегодня и в текущий приём. */
+  onRelog: (food: CustomFood) => void
+  onSearchOff: (q: string, n: number) => Promise<OffSearchResult>
+  onFetchOffProduct: (code: string) => Promise<OffProductResult>
+  onAskProduct: (product: OffProduct, grams: number, slot: Slot, fraction: number) => Promise<ProductAskResult>
+  /** «Записать без витаминов»: из карточки (заказ собран локально) и из очереди. */
+  onLogProductNow: (request: FoodRequest) => void
   onOpenSettings: () => void
   onClose: () => void
 }
 
 const MAX_GRAMS = 5000
+
+/** Сколько подпись «Записано» держится на кнопке «Записать ещё». */
+const RELOGGED_MS = 2000
 
 function round(n: number): number {
   return Math.round(n)
@@ -90,16 +109,35 @@ function poorFitText(fit: LabelFit | undefined): string | null {
 /* ---- книга своей еды ---- */
 
 function BookRow({
-  food, onAdd, onRemove
+  food, onAdd, onRelog, onRemove
 }: {
   food: CustomFood
   onAdd: (food: CustomFood, slot: Slot, fraction: number) => void
+  onRelog: (food: CustomFood) => void
   onRemove: (foodId: string) => void
 }) {
+  const [relogged, setRelogged] = useState(false)
+  const reloggedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [adding, setAdding] = useState(false)
   const [slot, setSlot] = useState<Slot>('breakfast')
   const [fraction, setFraction] = useState(1)
   const [fractionValid, setFractionValid] = useState(true)
+
+  /* Таймер «Записано» не должен пережить строку: книга перефильтровалась или
+     шторка закрылась, а setState прилетел бы в размонтированный компонент. */
+  useEffect(() => () => {
+    if (reloggedTimer.current !== null) clearTimeout(reloggedTimer.current)
+  }, [])
+
+  function handleRelog(): void {
+    if (relogged) return
+    onRelog(food)
+    setRelogged(true)
+    reloggedTimer.current = setTimeout(() => {
+      reloggedTimer.current = null
+      setRelogged(false)
+    }, RELOGGED_MS)
+  }
 
   return (
     <li className="card custom-food-book-row">
@@ -107,11 +145,28 @@ function BookRow({
         <span className="custom-food-book-row__title">
           {food.title}
           {food.label && <span className="chip custom-food-book-row__badge">наклейка</span>}
+          {food.product && <span className="chip custom-food-book-row__badge">упаковка</span>}
+          {food.product && food.product.brand !== '' && (
+            <span className="custom-food-book-row__brand">{food.product.brand}</span>
+          )}
+          {food.product && (
+            <a
+              className="custom-food-book-row__source"
+              href={food.product.url}
+              target="_blank"
+              rel="noopener"
+            >
+              Open Food Facts
+            </a>
+          )}
           {food.label && food.label.titleHy !== '' && (
             <span className="custom-food-book-row__hy" lang="hy">{food.label.titleHy}</span>
           )}
         </span>
         <div className="custom-food-book-row__actions">
+          <button type="button" className="btn btn--primary" disabled={relogged} onClick={handleRelog}>
+            {relogged ? 'Записано' : 'Записать ещё'}
+          </button>
           <button
             type="button"
             className="btn btn--secondary"
@@ -158,12 +213,14 @@ function BookRow({
 /* ---- форма нового заказа ---- */
 
 function NewFoodForm({
-  defaultTarget, onAskNew
+  defaultTarget, initialText, onAskNew
 }: {
   defaultTarget: { date: string; slot: Slot }
+  /** Текст из поля поиска на момент открытия формы. */
+  initialText: string
   onAskNew: CustomFoodSheetProps['onAskNew']
 }) {
-  const [text, setText] = useState('')
+  const [text, setText] = useState(initialText)
   const [gramsStr, setGramsStr] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
@@ -377,9 +434,10 @@ function DoneRequestRow({
 }
 
 function RequestRow({
-  request, onRetry, onRetake, onDiscard, onSave
+  request, onRetry, onRetake, onDiscard, onSave, onLogNow
 }: {
   request: FoodRequest
+  onLogNow: CustomFoodSheetProps['onLogProductNow']
   onRetry: CustomFoodSheetProps['onRetry']
   onRetake: CustomFoodSheetProps['onRetake']
   onDiscard: CustomFoodSheetProps['onDiscard']
@@ -395,7 +453,13 @@ function RequestRow({
   const stuck = request.status === 'failed' || request.status === 'expired'
   return (
     <li className={stuck ? 'card custom-food-request custom-food-request--failed' : 'card custom-food-request'}>
-      <RequestStatus request={request} onRetry={onRetry} onRetake={onRetake} onDiscard={onDiscard} />
+      <RequestStatus
+        request={request}
+        onRetry={onRetry}
+        onRetake={onRetake}
+        onDiscard={onDiscard}
+        onLogNow={() => onLogNow(request)}
+      />
     </li>
   )
 }
@@ -404,58 +468,122 @@ function RequestRow({
 
 export default function CustomFoodSheet({
   token, customFoods, foodRequests, defaultTarget, pollError,
-  onAskNew, onRetry, onRetake, onDiscard, onSave, onRemoveCustomFood, onAddFromBook,
+  onAskNew, onRetry, onRetake, onDiscard, onSave, onRemoveCustomFood, onAddFromBook, onRelog,
+  onSearchOff, onFetchOffProduct, onAskProduct, onLogProductNow,
   onOpenSettings, onClose
 }: CustomFoodSheetProps) {
+  const [query, setQuery] = useState('')
+  const [product, setProduct] = useState<OffProduct | null>(null)
+  /* null - форма «Разобрать как блюдо» закрыта; строка - текст поиска на момент открытия. */
+  const [formSeed, setFormSeed] = useState<string | null>(null)
+
+  const hasToken = token !== ''
   const books = Object.values(customFoods)
+  const queried = hasToken && query.trim() !== ''
+  const shownBooks = queried ? searchCustomFoods(books, query, books.length) : books
+
+  async function handleAskProduct(p: OffProduct, grams: number, slot: Slot, fraction: number): Promise<ProductAskResult> {
+    const result = await onAskProduct(p, grams, slot, fraction)
+    if (result.ok) setProduct(null)
+    return result
+  }
+
+  function handleLogProductNow(request: FoodRequest): void {
+    onLogProductNow(request)
+    setProduct(null)
+  }
 
   return (
     <Sheet title="Своя еда" onClose={onClose}>
       <div className="custom-food">
-        {books.length > 0 && (
-          <section className="custom-food-book" aria-label="Книга своей еды">
-            <h2 className="custom-food__section-title">Книга своей еды</h2>
-            <ul className="custom-food-book__list">
-              {books.map(food => (
-                <BookRow key={food.id} food={food} onAdd={onAddFromBook} onRemove={onRemoveCustomFood} />
-              ))}
-            </ul>
-          </section>
+        {product !== null && (
+          <ProductCard
+            key={product.code}
+            product={product}
+            date={defaultTarget.date}
+            defaultSlot={defaultTarget.slot}
+            onBack={() => setProduct(null)}
+            onAskProduct={handleAskProduct}
+            onLogProductNow={handleLogProductNow}
+            newRequestId={() => crypto.randomUUID()}
+            now={() => new Date().toISOString()}
+          />
         )}
 
-        {token === ''
-          ? (
-            <div className="card custom-food-no-token">
-              <p className="custom-food-no-token__text">
-                Своя еда разбирается на домашнем компьютере через Штурмана. Чтобы заказать разбор,
-                впиши токен приложения в Настройках.
-              </p>
-              <button type="button" className="btn btn--secondary" onClick={onOpenSettings}>
-                Открыть настройки
-              </button>
-            </div>
-          )
-          : <NewFoodForm defaultTarget={defaultTarget} onAskNew={onAskNew} />}
+        <div className="custom-food__lists" hidden={product !== null}>
+          {hasToken && (
+            <FoodSearch
+              query={query}
+              onQueryChange={setQuery}
+              onSearchOff={onSearchOff}
+              onFetchOffProduct={onFetchOffProduct}
+              onOpenProduct={setProduct}
+            />
+          )}
 
-        {foodRequests.length > 0 && (
-          <section className="custom-food-requests" aria-label="Запросы на разбор">
-            <h2 className="custom-food__section-title">Запросы на разбор</h2>
-            <ul className="custom-food-requests__list">
-              {foodRequests.map(request => (
-                <RequestRow
-                  key={request.id}
-                  request={request}
-                  onRetry={onRetry}
-                  onRetake={onRetake}
-                  onDiscard={onDiscard}
-                  onSave={onSave}
-                />
-              ))}
-            </ul>
-          </section>
-        )}
+          {shownBooks.length > 0 && (
+            <section className="custom-food-book" aria-label="Из книги">
+              <h2 className="custom-food__section-title">Из книги</h2>
+              <ul className="custom-food-book__list">
+                {shownBooks.map(food => (
+                  <BookRow
+                    key={food.id}
+                    food={food}
+                    onAdd={onAddFromBook}
+                    onRelog={onRelog}
+                    onRemove={onRemoveCustomFood}
+                  />
+                ))}
+              </ul>
+            </section>
+          )}
+          {queried && shownBooks.length === 0 && (
+            <p className="custom-food-book__empty" role="status">В книге по этому запросу ничего нет.</p>
+          )}
 
-        {pollError && <p className="custom-food__poll-error" role="status">{pollError}</p>}
+          {hasToken
+            ? (
+              formSeed === null
+                ? (
+                  <button type="button" className="btn btn--secondary" onClick={() => setFormSeed(query.trim())}>
+                    Разобрать как блюдо на компьютере
+                  </button>
+                )
+                : <NewFoodForm defaultTarget={defaultTarget} initialText={formSeed} onAskNew={onAskNew} />
+            )
+            : (
+              <div className="card custom-food-no-token">
+                <p className="custom-food-no-token__text">
+                  Своя еда разбирается на домашнем компьютере через Штурмана. Чтобы заказать разбор,
+                  впиши токен приложения в Настройках.
+                </p>
+                <button type="button" className="btn btn--secondary" onClick={onOpenSettings}>
+                  Открыть настройки
+                </button>
+              </div>
+            )}
+
+          {foodRequests.length > 0 && (
+            <section className="custom-food-requests" aria-label="Запросы на разбор">
+              <h2 className="custom-food__section-title">Запросы на разбор</h2>
+              <ul className="custom-food-requests__list">
+                {foodRequests.map(request => (
+                  <RequestRow
+                    key={request.id}
+                    request={request}
+                    onRetry={onRetry}
+                    onRetake={onRetake}
+                    onDiscard={onDiscard}
+                    onSave={onSave}
+                    onLogNow={onLogProductNow}
+                  />
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {pollError && <p className="custom-food__poll-error" role="status">{pollError}</p>}
+        </div>
       </div>
     </Sheet>
   )

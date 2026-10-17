@@ -9,7 +9,10 @@
    показывается как пришла с компьютера. Кнопки зависят от вида заказа:
    текстовый можно «Повторить» с тем же текстом, а снимок наклейки повторять
    нечем (снимок после разбора вырезается из наряда), поэтому у 'label'
-   вместо этого «Переснять». */
+   вместо этого «Переснять». У заказа по товару (kind === 'product') витамины
+   считает компьютер, но запись в журнал от него не зависит: пока заказ ждёт,
+   его можно записать сразу без витаминов (onLogNow), а в failed и expired
+   кнопки «Записать без витаминов», «Повторить» и «Убрать». */
 
 import { useState } from 'react'
 import { formatDateShort } from '../core/export/index.ts'
@@ -24,6 +27,8 @@ export interface RequestStatusProps {
   /** Только для kind === 'label': открыть съёмку заново. */
   onRetake: (id: string) => void
   onDiscard: (id: string) => void
+  /** Только для kind === 'product': записать товар без витаминов, не дожидаясь компьютера. */
+  onLogNow?: (id: string) => void
   /** Дата сводки, на которой стоит строка (YYYY-MM-DD). Дата заказа другая:
       к названию добавляется «за ДД.ММ», чтобы заказ вчерашнего дня не выглядел
       сегодняшним. Не задана: дату не показываем. */
@@ -81,13 +86,14 @@ export function requestStatusText(request: FoodRequest): string | null {
 /** Что заказывали: у текстового это сам текст, у снимка наклейки заметка
     человека, а если её нет, то нейтральная подпись. */
 function requestTitle(request: FoodRequest): string {
+  if (request.kind === 'product' && request.product) return `${request.product.name} · ${request.grams} г`
   const base = request.kind === 'label'
     ? (request.text.trim() !== '' ? request.text : 'Снимок наклейки')
     : request.text
   return request.grams !== null ? `${base} · ${request.grams} г` : base
 }
 
-export default function RequestStatus({ request, onRetry, onRetake, onDiscard, summaryDate }: RequestStatusProps) {
+export default function RequestStatus({ request, onRetry, onRetake, onDiscard, onLogNow, summaryDate }: RequestStatusProps) {
   const [retrying, setRetrying] = useState(false)
   const [retryError, setRetryError] = useState<string | null>(null)
 
@@ -95,6 +101,7 @@ export default function RequestStatus({ request, onRetry, onRetake, onDiscard, s
   if (statusText === null) return null
 
   const stuck = request.status === 'failed' || request.status === 'expired'
+  const canLogNow = request.kind === 'product' && onLogNow !== undefined
 
   async function handleRetry(): Promise<void> {
     setRetrying(true)
@@ -111,8 +118,20 @@ export default function RequestStatus({ request, onRetry, onRetake, onDiscard, s
         {summaryDate !== undefined && request.target.date !== summaryDate && ` · за ${formatDateShort(request.target.date)}`}
       </span>
       <p className="request-status__message">{statusText}</p>
+      {request.status === 'pending' && canLogNow && (
+        <div className="request-status__actions">
+          <button type="button" className="btn btn--secondary" onClick={() => onLogNow(request.id)}>
+            Записать сейчас без витаминов
+          </button>
+        </div>
+      )}
       {stuck && (
         <div className="request-status__actions">
+          {canLogNow && (
+            <button type="button" className="btn btn--secondary" onClick={() => onLogNow(request.id)}>
+              Записать без витаминов
+            </button>
+          )}
           {request.kind === 'label'
             ? (
               <button type="button" className="btn btn--secondary" onClick={() => onRetake(request.id)}>
