@@ -7,12 +7,12 @@ import { batchDay, currentSlot, cycleDay, todayLocal } from '../core/cycle.ts'
 import { buildChannels } from '../core/export/index.ts'
 import type { ExportPayload } from '../core/export/index.ts'
 import {
-  addExtra, clearLog, dayNutrientTotals, dayTotal, logMeal, removeExtra, setExtraFraction, unlogMeal
+  addExtra, clearLog, dayNutrientTotals, dayTotal, journalMealEntries, logMeal, removeExtra, setExtraFraction, unlogMeal
 } from '../core/log.ts'
 import { menuDayFor } from '../core/menu.ts'
 import {
   applyFoodAsk, customExtraFrom, discardFoodRequest, logDoneLabelRequests, menuExtraFrom, newFoodRequest,
-  newLabelRequest, removeCustomFood, retryFoodRequest, saveCustomFood
+  newLabelRequest, pendingLabelRequests, removeCustomFood, retryFoodRequest, saveCustomFood
 } from '../core/food.ts'
 import { askFood, askLabel, SHTURMAN_BASE } from '../core/foodClient.ts'
 import { emptyNutrientTotals, mealKbju, mealNutrients, scaleNutrientTotals } from '../core/nutrition.ts'
@@ -572,12 +572,19 @@ export default function App() {
       initial: { fraction: request.fraction, note: request.text, grams: request.grams } })
   }, [state.foodRequests])
 
-  /* Заказы по наклейкам на сегодняшнюю сводку: ещё не ставшие записью
-     (готовые logDoneLabelRequests уже перенёс в журнал). */
-  const todayLabelRequests = useMemo(
-    () => state.foodRequests.filter(r => r.kind === 'label' && r.status !== 'done' && r.target.date === today),
-    [state.foodRequests, today]
+  /* Заказы по наклейкам на сводку: ещё не ставшие записью (готовые
+     logDoneLabelRequests уже перенёс в журнал). Любой даты: заказ перед
+     полуночью и протухший за сутки датированы не сегодняшним днём, а кнопки
+     «Переснять» и «Убрать» нужны именно им; строку с чужой датой DaySummary
+     подписывает. */
+  const labelRequestsOnSummary = useMemo(
+    () => pendingLabelRequests(state.foodRequests),
+    [state.foodRequests]
   )
+
+  /* Приёмы дня строками журнала, когда цикл выключен: карточек слотов нет, а
+     dayTotal их суммирует. */
+  const journalMeals = useMemo(() => journalMealEntries(dayLog, cycleOn), [dayLog, cycleOn])
 
   /* «Сохранить и записать» на готовом разборе: кладёт еду в книгу, пишет
      extra на целевую дату/приём и убирает выполненный заказ — три перехода
@@ -760,7 +767,10 @@ export default function App() {
                   targetFatG={state.settings.targetFatG}
                   targetCarbsG={state.settings.targetCarbsG}
                   customFoods={state.customFoods}
-                  labelRequests={todayLabelRequests}
+                  labelRequests={labelRequestsOnSummary}
+                  summaryDate={today}
+                  journalMeals={journalMeals}
+                  onUnlogMeal={handleUnlog}
                   onOpenLabelCapture={() => setLabelCapture({ date: today, slot: autoSlot, replaceId: null, initial: null })}
                   onSetExtraFraction={(extraId, fraction) => handleSetExtraFraction(today, extraId, fraction)}
                   onRetakeLabel={handleRetakeLabel}

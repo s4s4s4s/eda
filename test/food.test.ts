@@ -15,9 +15,12 @@ import path from 'node:path'
 import {
   applyFoodAsk, applyFoodPoll, customExtraFrom, customFoodDeviation, customFoodFromResult, customFoodTotals,
   discardFoodRequest, labelEnergyCheck, labelEnergyWarning, LABEL_ENERGY_TOLERANCE_KCAL, LABEL_ENERGY_TOLERANCE_PCT, labelExtraFrom, logDoneLabelRequests, menuExtraFrom, newFoodRequest,
-  newLabelRequest, parseFoodResult, removeCustomFood, retryFoodRequest, saveCustomFood, withComponentGrams
+  newLabelRequest, parseFoodResult, pendingLabelRequests, removeCustomFood, retryFoodRequest, saveCustomFood, withComponentGrams
 } from '../src/core/food'
 import type { FoodPollResponse } from '../src/core/food'
+import { dayNutrientTotals } from '../src/core/log'
+import { isComplete } from '../src/core/nutrition'
+import { weekCoverage, weekSummary } from '../src/core/week'
 import { askFood, askLabel, pollFood, SHTURMAN_BASE } from '../src/core/foodClient'
 import { NUTRIENT_KEYS } from '../src/core/types'
 import type { AppState, Meal, Product, ProductIndex } from '../src/core/types'
@@ -475,6 +478,62 @@ function labelRequestChecks(): void {
   group('newLabelRequest/newFoodRequest: kind и fraction; retryFoodRequest на label ничего не меняет')
 }
 
+function labelWithoutCompositionChecks(): void {
+  const noComposition = { ...labelFoodFrom(), components: [] }
+  const totals = customFoodTotals(noComposition)
+  assert(totals.kbju.kcal === 442.1, 'КБЖУ еды по наклейке без состава - напечатанное')
+  assert(NUTRIENT_KEYS.every(k => totals.nutrients[k].known === 0 && totals.nutrients[k].total === 1),
+    'наклейка без состава обязана отдавать одну неизвестную позицию (known 0, total 1) по каждому нутриенту')
+
+  // день из приёма меню (клетчатка известна) и пустой наклейки: сумма не может быть полной
+  const extra = labelExtraFrom(noComposition, 'dinner', 0.5, 'x-empty', '2026-10-17T19:00:00')
+  const nutrients = customFoodTotals(noComposition).nutrients
+  const menuNutrients = Object.fromEntries(NUTRIENT_KEYS.map(k => [k, { value: 5, known: 1, total: 1 }])) as typeof nutrients
+  const day = {
+    cycleDay: null,
+    meals: {
+      breakfast: {
+        slot: 'breakfast' as const, mealId: 'm-1', status: 'eaten' as const, fraction: 1,
+        kbju: { kcal: 300, p: 20, f: 10, c: 30 }, nutrients: menuNutrients, title: 'Завтрак', loggedAt: '2026-10-17T08:00:00'
+      }
+    },
+    extras: [extra]
+  } as AppState['log'][string]
+  assert(extra.nutrients === nutrients || JSON.stringify(extra.nutrients) === JSON.stringify(nutrients), 'extra несёт нутриенты еды')
+  const sum = dayNutrientTotals(day)
+  for (const k of NUTRIENT_KEYS) {
+    assert(sum[k].known < sum[k].total, `${k}: день с наклейкой без состава обязан быть неполным, получено ${JSON.stringify(sum[k])}`)
+    assert(!isComplete(sum[k]), `${k}: isComplete обязан быть false`)
+  }
+
+  // неделя считает такой день частичным
+  const week = weekSummary({ '2026-10-17': day }, '2026-10-17', 1, { expectMenuSlots: false })
+  assert(week.nutrients.every(n => n.partialDays === 1), 'неделя обязана считать день с пустой наклейкой частичным по каждому нутриенту')
+  const coverage = weekCoverage(week, {})
+  assert(coverage.every(c => c.partialDays === 1), 'weekCoverage: partialDays обязан быть 1 по каждому нутриенту')
+  group('наклейка без состава: одна неизвестная позиция, день неполный, неделя считает его частичным')
+}
+
+function pendingLabelRequestsChecks(): void {
+  const fixture = loadLabelFixture()
+  const yesterday = { date: '2026-10-16', slot: 'dinner' as const }
+  const today = { date: '2026-10-17', slot: 'lunch' as const }
+  let state = emptyState()
+  state = applyFoodAsk(state, newLabelRequest('lab-old-pending', '', null, yesterday, 1, '2026-10-16T23:50:00'))
+  state = applyFoodAsk(state, newLabelRequest('lab-old-expired', '', null, yesterday, 1, '2026-10-15T10:00:00'))
+  state = applyFoodAsk(state, newLabelRequest('lab-today', '', null, today, 1, '2026-10-17T12:00:00'))
+  state = applyFoodAsk(state, newLabelRequest('lab-done', '', null, today, 1, '2026-10-17T12:01:00'))
+  state = applyFoodAsk(state, newFoodRequest('txt-old', 'тирамису', 120, yesterday, '2026-10-16T18:02:00'))
+  state = applyFoodPoll(state, 'lab-old-expired', { ok: true, id: 'lab-old-expired', state: 'expired', pcAgo: null } as unknown as FoodPollResponse, '2026-10-17T10:30:00')
+  state = applyFoodPoll(state, 'lab-done', { ok: true, id: 'lab-done', state: 'done', result: fixture, pcAgo: 1, modelOk: true }, '2026-10-17T12:30:00')
+  assert(state.foodRequests.find(r => r.id === 'lab-old-expired')?.status === 'expired', 'заказ lab-old-expired обязан стать expired')
+  const ids = pendingLabelRequests(state.foodRequests).map(r => r.id)
+  assert(ids.includes('lab-old-pending') && ids.includes('lab-today'), `заказы любой даты обязаны попасть на сводку, получено ${JSON.stringify(ids)}`)
+  assert(ids.includes('lab-old-expired'), 'протухший заказ вчерашнего дня обязан попасть на сводку: к нему нужны «Переснять» и «Убрать»')
+  assert(!ids.includes('lab-done') && !ids.includes('txt-old'), 'готовые и текстовые заказы на сводку не попадают')
+  group('pendingLabelRequests: заказы по наклейкам любой даты, включая expired; без done и текстовых')
+}
+
 function logDoneLabelRequestsChecks(): void {
   const target = { date: '2026-10-16', slot: 'dinner' as const }
   const fixture = loadLabelFixture()
@@ -628,6 +687,8 @@ async function main(): Promise<void> {
   customFoodDeviationChecks()
   labelExtraChecks()
   labelRequestChecks()
+  labelWithoutCompositionChecks()
+  pendingLabelRequestsChecks()
   logDoneLabelRequestsChecks()
   await clientStatusChecks()
   await askLabelChecks()

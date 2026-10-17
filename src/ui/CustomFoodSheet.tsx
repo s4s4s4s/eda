@@ -99,6 +99,7 @@ function BookRow({
   const [adding, setAdding] = useState(false)
   const [slot, setSlot] = useState<Slot>('breakfast')
   const [fraction, setFraction] = useState(1)
+  const [fractionValid, setFractionValid] = useState(true)
 
   return (
     <li className="card custom-food-book-row">
@@ -139,10 +140,11 @@ function BookRow({
               </button>
             ))}
           </div>
-          <FractionPicker value={fraction} onChange={setFraction} idPrefix={`book-${food.id}`} />
+          <FractionPicker value={fraction} onChange={setFraction} onValidityChange={setFractionValid} idPrefix={`book-${food.id}`} />
           <button
             type="button"
             className="btn btn--primary custom-food-book-row__confirm"
+            disabled={!fractionValid}
             onClick={() => { onAdd(food, slot, fraction); setAdding(false) }}
           >
             Добавить
@@ -278,6 +280,7 @@ function DoneRequestRow({
   )
   const [target, setTarget] = useState(request.target)
   const [fraction, setFraction] = useState(request.fraction)
+  const [fractionValid, setFractionValid] = useState(true)
 
   const totals = customFoodTotals(draftFood)
 
@@ -353,13 +356,14 @@ function DoneRequestRow({
 
       <div className="field">
         <span className="field__label">Доля</span>
-        <FractionPicker value={fraction} onChange={setFraction} idPrefix={`request-${request.id}`} />
+        <FractionPicker value={fraction} onChange={setFraction} onValidityChange={setFractionValid} idPrefix={`request-${request.id}`} />
       </div>
 
       <div className="custom-food-request__actions">
         <button
           type="button"
           className="btn btn--primary"
+          disabled={!fractionValid}
           onClick={() => onSave(request.id, draftFood, target, fraction)}
         >
           Сохранить и записать

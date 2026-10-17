@@ -16,7 +16,7 @@ import { useState } from 'react'
 import { labelEnergyWarning } from '../core/food.ts'
 import { SLOT_TITLE, SLOTS } from '../core/types.ts'
 import type {
-  CustomFood, ExtraLogEntry, FoodRequest, MealStatus, NutrientNorms, NutrientTotals, Slot
+  CustomFood, ExtraLogEntry, FoodRequest, MealLogEntry, MealStatus, NutrientNorms, NutrientTotals, Slot
 } from '../core/types.ts'
 import { FractionPicker } from './FractionPicker.tsx'
 import { fractionLabel } from './fractions.ts'
@@ -88,10 +88,21 @@ interface DaySummaryProps {
   /** Книга своей еды (AppState.customFoods): из неё берутся номер блюда и
       сверка 4/9/4 для записей kind === 'label'. Без неё этих строк нет. */
   customFoods?: Record<string, CustomFood>
-  /** Незавершённые заказы по наклейкам на дату сводки (kind === 'label',
-      статусы pending, failed, expired), в порядке показа. Готовые заказы
-      сюда не передаются: они уже стали записями журнала. */
+  /** Незавершённые заказы по наклейкам любой даты (kind === 'label', статусы
+      pending, failed, expired), в порядке показа. Заказ, отправленный перед
+      полуночью, и протухший за сутки (expired) датированы не сегодняшним днём,
+      но кнопки «Переснять» и «Убрать» нужны именно им, поэтому дата заказа
+      сводку не фильтрует. Готовые заказы сюда не передаются: они уже стали
+      записями журнала. */
   labelRequests?: FoodRequest[]
+  /** Дата сводки (YYYY-MM-DD): у заказов другой даты в строке пишется «за ДД.ММ». */
+  summaryDate?: string
+  /** Записанные приёмы дня, которые при выключенном цикле показываются строками
+      журнала (journalMealEntries из core/log.ts): карточек слотов нет, а в сумме
+      дня эти записи есть, и убрать их иначе нельзя. Без пропса строк нет. */
+  journalMeals?: MealLogEntry[]
+  /** «Убрать» у записанного приёма (слот приёма). */
+  onUnlogMeal?: (slot: Slot) => void
   /** Открыть шторку съёмки. Не задан - кнопки «Сфоткать наклейку» нет. */
   onOpenLabelCapture?: () => void
   /** Правка доли записи прямо в журнале, fraction в (0, 1]. Не задан - доля
@@ -414,6 +425,26 @@ function ExtraRow({
   )
 }
 
+/** Строка журнала для записанного приёма меню (цикл выключен). Доли не правит:
+    приём меню переписывается из своего экрана, здесь его можно только убрать. */
+function MealJournalRow({ entry, onRemove }: { entry: MealLogEntry; onRemove: (() => void) | undefined }) {
+  const skipped = entry.status === 'skipped' || entry.fraction === 0
+  return (
+    <li className="day-extras__item list__row">
+      <span className="day-extras__name">{entry.title}</span>
+      <span className="day-extras__meta nums">
+        {skipped ? 'пропущен' : `${Math.round(entry.kbju.kcal * entry.fraction)} ккал`} · {SLOT_TITLE[entry.slot].toLowerCase()}
+      </span>
+      {!skipped && <span className="day-extras__meta nums">{fractionLabel(entry.fraction)}</span>}
+      {onRemove !== undefined && (
+        <button type="button" className="day-extras__remove" onClick={onRemove}>
+          убрать
+        </button>
+      )}
+    </li>
+  )
+}
+
 export default function DaySummary({
   daySlots, currentSlot, onSelectSlot, onLog,
   dayEatenKcal, targetKcal, dayProteinG, targetProteinG,
@@ -421,13 +452,13 @@ export default function DaySummary({
   hasDayLog, onOpenDayExport, extras, onRemoveExtra, onOpenAddFromMenu, onOpenCustomFood,
   dayNutrients, norms, productsRevision,
   menuCycleEnabled = true, targetFatG = 0, targetCarbsG = 0, customFoods,
-  labelRequests = [], onOpenLabelCapture, onSetExtraFraction, onRetakeLabel, onDiscardRequest
+  labelRequests = [], summaryDate, journalMeals = [], onUnlogMeal, onOpenLabelCapture, onSetExtraFraction, onRetakeLabel, onDiscardRequest
 }: DaySummaryProps) {
   /* Одна раскрытая правка доли на экране: две открытые клавиатуры подряд
      никому не нужны. */
   const [editingId, setEditingId] = useState<string | null>(null)
   const queued = labelRequests.filter(r => r.kind === 'label' && r.status !== 'done')
-  const hasJournal = extras.length > 0 || queued.length > 0
+  const hasJournal = journalMeals.length > 0 || extras.length > 0 || queued.length > 0
 
   return (
     <>
@@ -475,6 +506,9 @@ export default function DaySummary({
             <h2 className="day-extras__title">Журнал дня</h2>
             <div className="card">
               <ul className="list">
+                {journalMeals.map(m => (
+                  <MealJournalRow key={m.slot} entry={m} onRemove={onUnlogMeal ? () => onUnlogMeal(m.slot) : undefined} />
+                ))}
                 {extras.map(e => (
                   <ExtraRow
                     key={e.id}
@@ -493,6 +527,7 @@ export default function DaySummary({
                       onRetry={NO_RETRY}
                       onRetake={onRetakeLabel ?? NOOP}
                       onDiscard={onDiscardRequest ?? NOOP}
+                      summaryDate={summaryDate}
                     />
                   </li>
                 ))}

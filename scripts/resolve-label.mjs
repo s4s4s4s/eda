@@ -103,9 +103,13 @@ function readLabel(spec) {
   return { printed, dishNo };
 }
 
+/* Наклейка без состава: еда съедена, а нутриенты неизвестны. Одна неизвестная
+   позиция (total 1), не ноль позиций: сумма дня складывает total, и при нуле день
+   с таким блюдом выглядел бы собранным по всем позициям (как UNKNOWN_POSITION
+   в src/state/storage.ts). */
 function emptyNutrients() {
   const totals = {};
-  for (const key of NUTRIENT_KEY_LIST) totals[key] = { value: 0, known: 0, total: 0 };
+  for (const key of NUTRIENT_KEY_LIST) totals[key] = { value: 0, known: 0, total: 1 };
   return totals;
 }
 

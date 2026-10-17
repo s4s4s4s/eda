@@ -128,6 +128,18 @@ export function addNutrientTotals(a: NutrientTotals, b: NutrientTotals): Nutrien
   return result
 }
 
+/** Одна НЕИЗВЕСТНАЯ позиция на каждый нутриент: known 0 при total 1. Для еды, которая
+    была съедена, но состава у неё нет (наклейка без разбора на ингредиенты). Ноль
+    позиций (emptyNutrientTotals) здесь был бы враньём: addNutrientTotals складывает
+    total, и день с таким слагаемым печатался бы как собранный по всем позициям. */
+export function unknownNutrientTotals(): NutrientTotals {
+  const totals = {} as NutrientTotals
+  for (const key of NUTRIENT_KEYS) {
+    totals[key] = { value: 0, known: 0, total: 1 }
+  }
+  return totals
+}
+
 /** Доля съеденного меняет числа, но НЕ полноту: половина приёма известна ровно
     настолько же, насколько был известен целый.
 

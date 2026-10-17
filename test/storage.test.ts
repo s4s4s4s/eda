@@ -5,7 +5,7 @@
  */
 import { BACKUP_KEY, CURRENT_VERSION, defaultState, deserialize, loadState, saveState, serialize, STORAGE_KEY } from '../src/state/storage'
 import { emptyNutrientTotals, isComplete } from '../src/core/nutrition'
-import { dayNutrientTotals, dayTotal } from '../src/core/log'
+import { dayNutrientTotals, dayTotal, eatenKbju, eatenExtraKbju, journalMealEntries } from '../src/core/log'
 import { NUTRIENT_KEYS } from '../src/core/types'
 import type { AppState, NutrientTotals } from '../src/core/types'
 
@@ -515,6 +515,39 @@ function deepEqual(a: unknown, b: unknown): boolean {
   const kb = Object.keys(b as object).sort()
   if (ka.length !== kb.length || ka.some((key, i) => key !== kb[i])) return false
   return ka.every(key => deepEqual((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]))
+}
+
+function v5MealsVisibleWithoutCycleChecks(): void {
+  // состояние v5 человека, который пользовался циклом: миграция выключает цикл (D4),
+  // а записанные приёмы остаются в сумме дня и обязаны быть видны журналом
+  const settings = {
+    cycleStartDate: '2026-08-20', cycleShift: 0, targetKcal: 3100, targetProteinG: 130,
+    shortcutName: '', cycleStartConfirmed: true
+  }
+  const log = {
+    '2026-10-17': {
+      cycleDay: 3,
+      meals: {
+        breakfast: storedEntry('breakfast', { kbju: { kcal: 500, p: 25, f: 15, c: 50 } }),
+        dinner: storedEntry('dinner', { status: 'partial', fraction: 0.5, kbju: { kcal: 700, p: 40, f: 20, c: 60 } })
+      },
+      extras: [storedExtra('dobavka-menu', {})]
+    }
+  }
+  const { state } = deserialize(JSON.stringify({ version: 5, settings, log }))
+  assert(!state.settings.menuCycleEnabled, 'после миграции v5 цикл выключен (D4)')
+  const day = state.log['2026-10-17']
+  assert(day !== undefined && Object.keys(day.meals).length === 2, 'приёмы v5 пережили миграцию')
+
+  const shown = journalMealEntries(day, state.settings.menuCycleEnabled)
+  const slotsInSum = Object.keys(day.meals).sort()
+  assert(JSON.stringify(shown.map(e => e.slot).sort()) === JSON.stringify(slotsInSum),
+    `каждый приём, вошедший в dayTotal, обязан быть в журнале: в сумме ${slotsInSum}, в журнале ${shown.map(e => e.slot)}`)
+  const shownKcal = shown.reduce((s, e) => s + eatenKbju(e).kcal, 0) + day.extras.reduce((s, e) => s + eatenExtraKbju(e).kcal, 0)
+  assert(Math.abs(shownKcal - dayTotal(day).kcal) < 1e-9, `сумма строк журнала ${shownKcal} обязана равняться dayTotal ${dayTotal(day).kcal}`)
+  assert(journalMealEntries(day, true).length === 0, 'цикл включён: приёмы видны карточками, строк журнала нет')
+  assert(journalMealEntries(undefined, false).length === 0, 'нет записей дня: журнал пуст')
+  group('v5 без цикла: каждый приём, вошедший в dayTotal, выводится строкой журнала (journalMealEntries)')
 }
 
 function migrationV5ToV6Checks(): void {
@@ -1281,6 +1314,7 @@ function main(): void {
   migrationV3ToV4Checks()
   migrationV4ToV5Checks()
   migrationV5ToV6Checks()
+  v5MealsVisibleWithoutCycleChecks()
   labelEntriesRoundTripChecks()
   labelDishNoChecks()
   labelGarbageChecks()

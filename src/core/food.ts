@@ -10,7 +10,7 @@
    (addPer100ToTotals в nutrition.ts). Поэтому «правка компонента» здесь —
    это withComponentGrams, а не новый запрос к воркеру. */
 
-import { addPer100ToTotals, emptyNutrientTotals, mealKbju, mealNutrients } from './nutrition'
+import { addPer100ToTotals, emptyNutrientTotals, mealKbju, mealNutrients, unknownNutrientTotals } from './nutrition'
 import type {
   AppState, CustomFood, ExtraLogEntry, FoodComponent, FoodRequest, FoodResultOk,
   Kbju, LabelFacts, LabelFit, Meal, NutrientTotals, ProductIndex, Slot
@@ -245,8 +245,12 @@ export function labelEnergyWarning(printed: Kbju): string | null {
     еду на домашнем компьютере, считают одинаково. */
 export function customFoodTotals(food: CustomFood): { kbju: Kbju; nutrients: NutrientTotals } {
   const totals = componentTotals(food)
-  // еда по наклейке: КБЖУ - напечатанное на порцию, состав USDA его не двигает
-  return food.label ? { kbju: food.label.perPortion, nutrients: totals.nutrients } : totals
+  if (!food.label) return totals
+  // еда по наклейке: КБЖУ - напечатанное на порцию, состав USDA его не двигает.
+  // Состава нет: еда съедена, а нутриенты неизвестны - одна неизвестная позиция
+  // (total 1), а не ноль позиций, иначе день выглядит полным (см. unknownNutrientTotals)
+  const nutrients = food.components.length === 0 ? unknownNutrientTotals() : totals.nutrients
+  return { kbju: food.label.perPortion, nutrients }
 }
 
 function componentTotals(food: CustomFood): { kbju: Kbju; nutrients: NutrientTotals } {
@@ -391,6 +395,14 @@ export function labelExtraFrom(food: CustomFood, slot: Slot, fraction: number, i
 
 export function newFoodRequest(id: string, text: string, grams: number | null, target: { date: string; slot: Slot }, askedAt: string): FoodRequest {
   return { id, kind: 'text', text, grams, fraction: 1, askedAt, target, status: 'pending', pcAgo: null }
+}
+
+/** Заказы по наклейкам, которые сводка обязана показать: все, что ещё не стали
+    записью журнала (pending, failed, expired), БЕЗ фильтра по дате. Заказ перед
+    полуночью и протухший за сутки датированы не сегодняшним днём, а «Переснять»
+    и «Убрать» нужны именно им. */
+export function pendingLabelRequests(requests: FoodRequest[]): FoodRequest[] {
+  return requests.filter(r => r.kind === 'label' && r.status !== 'done')
 }
 
 /** Заказ по снимку наклейки. note - необязательная заметка человека (может быть

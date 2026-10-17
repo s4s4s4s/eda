@@ -12,6 +12,7 @@
    вместо этого «Переснять». */
 
 import { useState } from 'react'
+import { formatDateShort } from '../core/export/index.ts'
 import type { FoodRequest } from '../core/types.ts'
 
 export type RequestActionResult = { ok: true } | { ok: false; error: string }
@@ -23,6 +24,10 @@ export interface RequestStatusProps {
   /** Только для kind === 'label': открыть съёмку заново. */
   onRetake: (id: string) => void
   onDiscard: (id: string) => void
+  /** Дата сводки, на которой стоит строка (YYYY-MM-DD). Дата заказа другая:
+      к названию добавляется «за ДД.ММ», чтобы заказ вчерашнего дня не выглядел
+      сегодняшним. Не задана: дату не показываем. */
+  summaryDate?: string
 }
 
 /** Русское склонение по числу - та же форма, что entryWord в App.tsx и
@@ -82,7 +87,7 @@ function requestTitle(request: FoodRequest): string {
   return request.grams !== null ? `${base} · ${request.grams} г` : base
 }
 
-export default function RequestStatus({ request, onRetry, onRetake, onDiscard }: RequestStatusProps) {
+export default function RequestStatus({ request, onRetry, onRetake, onDiscard, summaryDate }: RequestStatusProps) {
   const [retrying, setRetrying] = useState(false)
   const [retryError, setRetryError] = useState<string | null>(null)
 
@@ -101,7 +106,10 @@ export default function RequestStatus({ request, onRetry, onRetake, onDiscard }:
 
   return (
     <div className={stuck ? 'request-status request-status--stuck' : 'request-status'}>
-      <span className="request-status__text">{requestTitle(request)}</span>
+      <span className="request-status__text">
+        {requestTitle(request)}
+        {summaryDate !== undefined && request.target.date !== summaryDate && ` · за ${formatDateShort(request.target.date)}`}
+      </span>
       <p className="request-status__message">{statusText}</p>
       {stuck && (
         <div className="request-status__actions">

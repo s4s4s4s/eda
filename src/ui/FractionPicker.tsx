@@ -1,7 +1,9 @@
 /* Выбор доли в процентах: четыре быстрых значения и поле для целого процента.
    Общий для шторки «Сфоткать наклейку» и правки доли в журнале. Недопустимый
    ввод не доходит до родителя: поле помечается aria-invalid, а значение
-   выше по дереву остаётся прежним. */
+   выше по дереву остаётся прежним. Чтобы экран не расходился с тем, что
+   сохранится, родитель узнаёт о недопустимом вводе через onValidityChange и
+   блокирует свою кнопку отправки. */
 
 import React, { useEffect, useState } from 'react'
 import { fractionFromPercent, fractionLabel, PERCENT_PRESETS, percentFromFraction } from './fractions.ts'
@@ -10,6 +12,9 @@ export interface FractionPickerProps {
   /** Доля 0..1, как в ExtraLogEntry.fraction. */
   value: number
   onChange: (fraction: number) => void
+  /** Допустим ли текст в поле сейчас: false при пустом, нулевом, больше 100 или
+      нецелом вводе. Зовётся при монтировании и при каждой смене допустимости. */
+  onValidityChange?: (valid: boolean) => void
   /** Префикс id поля ввода: на экране может быть несколько выборов долей. */
   idPrefix: string
 }
@@ -20,7 +25,7 @@ function parseDraft(draft: string): number | null {
   return fractionFromPercent(Number(draft))
 }
 
-export function FractionPicker({ value, onChange, idPrefix }: FractionPickerProps): React.ReactElement {
+export function FractionPicker({ value, onChange, onValidityChange, idPrefix }: FractionPickerProps): React.ReactElement {
   const percent = percentFromFraction(value)
   const [draft, setDraft] = useState(String(percent))
 
@@ -32,6 +37,10 @@ export function FractionPicker({ value, onChange, idPrefix }: FractionPickerProp
   }, [percent])
 
   const invalid = parseDraft(draft) === null
+
+  useEffect(() => {
+    onValidityChange?.(!invalid)
+  }, [invalid, onValidityChange])
   const inputId = `${idPrefix}-percent`
 
   const onInput = (text: string): void => {
@@ -49,7 +58,12 @@ export function FractionPicker({ value, onChange, idPrefix }: FractionPickerProp
             type="button"
             className={'chip chip--tap fraction-picker__preset' + (!invalid && pct === percent ? ' chip--selected' : '')}
             aria-pressed={!invalid && pct === percent}
-            onClick={() => onChange(pct / 100)}
+            onClick={() => {
+              // пресет равен текущему значению: percent не меняется, эффект выше
+              // не сработает, и недопустимый черновик остался бы в поле
+              setDraft(String(pct))
+              onChange(pct / 100)
+            }}
           >
             {pct}%
           </button>

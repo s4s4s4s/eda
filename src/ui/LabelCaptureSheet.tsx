@@ -66,6 +66,7 @@ function CaptureBody({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [slot, setSlot] = useState<Slot>(defaultSlot)
   const [fraction, setFraction] = useState(initial?.fraction ?? 1)
+  const [fractionValid, setFractionValid] = useState(true)
   const [note, setNote] = useState(initial?.note ?? '')
   const [gramsStr, setGramsStr] = useState(initial?.grams != null ? String(initial.grams) : '')
   const [error, setError] = useState<string | null>(null)
@@ -120,7 +121,7 @@ function CaptureBody({
 
   async function handleSubmit(): Promise<void> {
     const shot = shotRef.current
-    if (!shot || phase !== 'ready' || gramsError !== null) return
+    if (!shot || phase !== 'ready' || gramsError !== null || !fractionValid) return
     setPhase('sending')
     setError(null)
     const result = await onSubmit({
@@ -203,7 +204,7 @@ function CaptureBody({
 
                   <div className="label-capture__fraction">
                     <span className="field__label">Сколько съел</span>
-                    <FractionPicker value={fraction} onChange={setFraction} idPrefix="label-capture" />
+                    <FractionPicker value={fraction} onChange={setFraction} onValidityChange={setFractionValid} idPrefix="label-capture" />
                   </div>
 
                   <label className="field">
@@ -235,7 +236,7 @@ function CaptureBody({
                   <button
                     type="button"
                     className="btn btn--primary"
-                    disabled={busy || gramsError !== null}
+                    disabled={busy || gramsError !== null || !fractionValid}
                     onClick={handleSubmit}
                   >
                     {phase === 'sending' ? 'Отправляю…' : 'Отправить на разбор'}

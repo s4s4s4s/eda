@@ -2,6 +2,7 @@
    каждая функция возвращает новый объект, входной не мутируется. */
 
 import { addNutrientTotals, emptyNutrientTotals, mealKbju, mealNutrients, scaleNutrientTotals } from './nutrition'
+import { SLOTS } from './types'
 import type { AppState, DayLog, ExtraLogEntry, Kbju, Meal, MealLogEntry, MealStatus, NutrientTotals, ProductIndex, Slot } from './types'
 
 const ZERO_KBJU: Kbju = { kcal: 0, p: 0, f: 0, c: 0 }
@@ -174,6 +175,22 @@ export function eatenExtraKbju(extra: ExtraLogEntry): Kbju {
 /** Съеденные нутриенты по одной добавленной записи — см. eatenNutrients. */
 export function eatenExtraNutrients(extra: ExtraLogEntry): NutrientTotals {
   return scaleNutrientTotals(extra.nutrients, extra.fraction)
+}
+
+/** Записанные приёмы дня, которые экран обязан показать строками журнала.
+    Цикл меню включён: приёмы видны карточками слотов, строк не нужно. Выключен:
+    карточек нет, а dayTotal всё равно суммирует dayLog.meals (записи остаются от
+    времён с циклом или от старой версии хранилища), поэтому каждая такая запись
+    выводится в журнал, где её можно убрать. Иначе сумма дня содержала бы
+    слагаемое, которого на экране нет. Порядок - по приёмам дня. */
+export function journalMealEntries(dayLog: DayLog | undefined, menuCycleEnabled: boolean): MealLogEntry[] {
+  if (menuCycleEnabled || !dayLog) return []
+  const entries: MealLogEntry[] = []
+  for (const slot of SLOTS) {
+    const entry = dayLog.meals[slot]
+    if (entry) entries.push(entry)
+  }
+  return entries
 }
 
 /** Сумма съеденного за день: записанные приёмы плюс добавленная еда. Второе

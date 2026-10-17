@@ -133,9 +133,9 @@ function main(): void {
   assert.equal('fit' in empty.out, false)
   assert.deepStrictEqual(empty.out.kbju, empty.out.label.printed)
   for (const k of Object.keys(empty.out.nutrients)) {
-    assert.deepStrictEqual(empty.out.nutrients[k], { value: 0, known: 0, total: 0 }, k)
+    assert.deepStrictEqual(empty.out.nutrients[k], { value: 0, known: 0, total: 1 }, k)
   }
-  group('пустой состав: все known 0 и total 0, fit отсутствует')
+  group('пустой состав: каждый нутриент одна неизвестная позиция (known 0, total 1), fit отсутствует')
 
   // отказы: неизвестный fdcId, плохой basis, отрицательные числа, нет label, битый JSON
   assert.equal(run(withSpec({ components: [{ fdcId: 999999999, grams: 100 }] })).code, 2)
