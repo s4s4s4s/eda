@@ -1098,3 +1098,172 @@
   line-height: var(--lh-text);
   color: var(--fg-faint);
 }
+
+/* -- поиск: поле, «Найти» и раздел Open Food Facts -- */
+
+.custom-food-search {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.custom-food-search__form {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.custom-food-search__input {
+  flex: 1;
+  min-width: 0;
+}
+
+.custom-food-off__status,
+.custom-food-off__skipped {
+  margin: 0;
+  font-size: var(--text-15);
+  line-height: var(--lh-text);
+  color: var(--fg-dim);
+}
+
+.custom-food-off__skipped {
+  margin-top: var(--space-3);
+  font-size: var(--text-13);
+  color: var(--fg-faint);
+}
+
+.custom-food-off__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Строка результата - кнопка-карточка на всю ширину. */
+.off-result {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  width: 100%;
+  min-height: var(--tap-min);
+  color: var(--fg);
+  text-align: left;
+  cursor: pointer;
+}
+
+.off-result:disabled {
+  opacity: .6;
+  cursor: not-allowed;
+}
+
+.off-result__name {
+  font-size: var(--text-17);
+  font-weight: 600;
+}
+
+.off-result__meta {
+  font-size: var(--text-13);
+  color: var(--fg-dim);
+}
+
+.off-result__nums {
+  font-size: var(--text-15);
+  line-height: var(--lh-text);
+}
+
+.off-result__badge {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+/* -- карточка товара -- */
+
+.product-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.product-card__back {
+  align-self: flex-start;
+}
+
+.product-card__head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.product-card__brand,
+.product-card__quantity {
+  margin: 0;
+  font-size: var(--text-13);
+  color: var(--fg-dim);
+}
+
+.product-card__name {
+  margin: 0;
+  font-size: var(--text-20);
+  line-height: var(--lh-tight);
+}
+
+.product-card__facts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.product-card__line {
+  margin: 0;
+  font-size: var(--text-17);
+  font-weight: 600;
+}
+
+.product-card__printed {
+  margin: 0;
+  font-size: var(--text-15);
+  line-height: var(--lh-text);
+  color: var(--fg-dim);
+}
+
+.product-card__warning {
+  padding: var(--space-3);
+  border: 1px solid var(--danger);
+  border-radius: var(--r-8);
+  font-size: var(--text-15);
+  line-height: var(--lh-text);
+  color: var(--danger);
+}
+
+.product-card__grams,
+.product-card__fraction {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.product-card__presets,
+.product-card__slot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.product-card__attribution {
+  margin: 0;
+  font-size: var(--text-13);
+  line-height: var(--lh-text);
+  color: var(--fg-faint);
+}
+
+.product-card__attribution a {
+  color: var(--fg-dim);
+}
+
+.product-card__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
