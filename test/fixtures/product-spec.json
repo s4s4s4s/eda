@@ -1,0 +1,48 @@
+{
+  "title": "Snickers",
+  "grams": 50,
+  "product": {
+    "code": "5000159461122",
+    "url": "https://world.openfoodfacts.org/product/5000159461122",
+    "name": "Snickers",
+    "brand": "Mars Wrigley Confectionery UK Limited, Snickers",
+    "quantityText": "50 G",
+    "per100": {
+      "kcal": 481,
+      "p": 8.6,
+      "f": 22.5,
+      "c": 60.5
+    },
+    "printedMicro": {
+      "fiber": 4.3,
+      "sugar": 51.8,
+      "satFat": 7.9,
+      "cholesterol": 6.7,
+      "sodium": 251.5
+    },
+    "servingG": 50,
+    "packageG": 50,
+    "ingredientsText": "Milk Chocolate (sugar, cocoa butter, chocolate, skim milk, lactose, milkfat, soy lecithin), peanuts, corn syrup, sugar, palm oil, skim milk, lactose, salt, egg whites, artificial flavor.",
+    "warnings": [],
+    "plausible": true,
+    "fetchedAt": "2026-10-17T12:00:00.000Z"
+  },
+  "components": [
+    {
+      "fdcId": 171287,
+      "grams": 15,
+      "note": "яичный белок и молочные компоненты: условная замена"
+    },
+    {
+      "fdcId": 173944,
+      "grams": 20,
+      "note": "сахара и сироп: условная замена"
+    },
+    {
+      "fdcId": 175167,
+      "grams": 15,
+      "note": "арахис: в fdc-mini нет, замена для проверки расчёта"
+    }
+  ],
+  "remark": "состав на английском, аналоги условные"
+}

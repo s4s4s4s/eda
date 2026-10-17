@@ -12,7 +12,7 @@
     "food-search": "node scripts/food-search.mjs",
     "icons": "node scripts/make-icons.mjs",
     "shots": "node scripts/shots.mjs",
-    "test": "npm run test:data && npm run test:menu && npm run test:cycle && npm run test:nutrition && npm run test:rules && npm run test:log && npm run test:storage && npm run test:export && npm run test:norms && npm run test:week && npm run test:preferences && npm run test:verdict && npm run test:food-resolve && npm run test:label-fit && npm run test:label-resolve && npm run test:food",
+    "test": "npm run test:data && npm run test:menu && npm run test:cycle && npm run test:nutrition && npm run test:rules && npm run test:log && npm run test:storage && npm run test:export && npm run test:norms && npm run test:week && npm run test:preferences && npm run test:verdict && npm run test:food-resolve && npm run test:label-fit && npm run test:label-resolve && npm run test:product-resolve && npm run test:food",
     "test:menu": "esbuild test/menu.test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/eda/menu.mjs && node node_modules/.cache/eda/menu.mjs",
     "test:cycle": "esbuild test/cycle.test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/eda/cycle.mjs && node node_modules/.cache/eda/cycle.mjs",
     "test:nutrition": "esbuild test/nutrition.test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/eda/nutrition.mjs && node node_modules/.cache/eda/nutrition.mjs",
@@ -28,6 +28,7 @@
     "test:food-resolve": "esbuild test/food-resolve.test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/eda/food-resolve.mjs && node node_modules/.cache/eda/food-resolve.mjs",
     "test:label-fit": "esbuild test/label-fit.test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/eda/label-fit.mjs && node node_modules/.cache/eda/label-fit.mjs",
     "test:label-resolve": "esbuild test/label-resolve.test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/eda/label-resolve.mjs && node node_modules/.cache/eda/label-resolve.mjs",
+    "test:product-resolve": "esbuild test/product-resolve.test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/eda/product-resolve.mjs && node node_modules/.cache/eda/product-resolve.mjs",
     "test:food": "esbuild test/food.test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/eda/food.mjs && node node_modules/.cache/eda/food.mjs"
   },
   "dependencies": {

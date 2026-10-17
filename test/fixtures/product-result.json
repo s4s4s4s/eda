@@ -1,0 +1,441 @@
+{
+  "ok": true,
+  "spec": 3,
+  "source": "Open Food Facts + USDA SR Legacy 2018-04",
+  "title": "Snickers",
+  "product": {
+    "code": "5000159461122",
+    "url": "https://world.openfoodfacts.org/product/5000159461122",
+    "name": "Snickers",
+    "brand": "Mars Wrigley Confectionery UK Limited, Snickers",
+    "quantityText": "50 G",
+    "per100": {
+      "kcal": 481,
+      "p": 8.6,
+      "f": 22.5,
+      "c": 60.5
+    },
+    "printedMicro": {
+      "fiber": 4.3,
+      "sugar": 51.8,
+      "satFat": 7.9,
+      "cholesterol": 6.7,
+      "sodium": 251.5
+    },
+    "servingG": 50,
+    "packageG": 50,
+    "ingredientsText": "Milk Chocolate (sugar, cocoa butter, chocolate, skim milk, lactose, milkfat, soy lecithin), peanuts, corn syrup, sugar, palm oil, skim milk, lactose, salt, egg whites, artificial flavor.",
+    "warnings": [],
+    "plausible": true,
+    "fetchedAt": "2026-10-17T12:00:00.000Z",
+    "grams": 50,
+    "perPortion": {
+      "kcal": 240.5,
+      "p": 4.3,
+      "f": 11.25,
+      "c": 30.25
+    },
+    "remark": "состав на английском, аналоги условные"
+  },
+  "components": [
+    {
+      "fdcId": 171287,
+      "description": "Egg, whole, raw, fresh",
+      "category": "Dairy and Egg Products",
+      "grams": 10.6,
+      "per100": {
+        "kbju": {
+          "kcal": 143,
+          "p": 12.56,
+          "f": 9.51,
+          "c": 0.72
+        },
+        "micro": {
+          "fiber": 0,
+          "sugar": 0.37,
+          "satFat": 3.126,
+          "monoFat": 3.658,
+          "polyFat": 1.911,
+          "cholesterol": 372,
+          "linoleic": 1.555,
+          "ala": 0.048,
+          "epa": 0,
+          "dha": 0.058,
+          "calcium": 56,
+          "iron": 1.75,
+          "magnesium": 12,
+          "phosphorus": 198,
+          "potassium": 138,
+          "sodium": 142,
+          "zinc": 1.29,
+          "copper": 0.072,
+          "manganese": 0.028,
+          "selenium": 30.7,
+          "vitA": 160,
+          "retinol": 160,
+          "vitC": 0,
+          "vitD": 2,
+          "vitE": 1.05,
+          "vitK": 0.3,
+          "thiamin": 0.04,
+          "riboflavin": 0.457,
+          "niacin": 0.075,
+          "vitB6": 0.17,
+          "folate": 47,
+          "vitB12": 0.89,
+          "pantothenic": 1.533,
+          "choline": 293.8,
+          "betaCarotene": 0,
+          "alphaCarotene": 0,
+          "betaCryptoxanthin": 9,
+          "lycopene": 0,
+          "luteinZeaxanthin": 503,
+          "water": 76.15
+        }
+      },
+      "note": "яичный белок и молочные компоненты: условная замена"
+    },
+    {
+      "fdcId": 173944,
+      "description": "Bananas, raw",
+      "category": "Fruits and Fruit Juices",
+      "grams": 31.5,
+      "per100": {
+        "kbju": {
+          "kcal": 89,
+          "p": 1.09,
+          "f": 0.33,
+          "c": 22.84
+        },
+        "micro": {
+          "fiber": 2.6,
+          "sugar": 12.23,
+          "satFat": 0.112,
+          "monoFat": 0.032,
+          "polyFat": 0.073,
+          "cholesterol": 0,
+          "linoleic": 0.046,
+          "ala": 0.027,
+          "epa": 0,
+          "dha": 0,
+          "calcium": 5,
+          "iron": 0.26,
+          "magnesium": 27,
+          "phosphorus": 22,
+          "potassium": 358,
+          "sodium": 1,
+          "zinc": 0.15,
+          "copper": 0.078,
+          "manganese": 0.27,
+          "selenium": 1,
+          "vitA": 3,
+          "retinol": 0,
+          "vitC": 8.7,
+          "vitD": 0,
+          "vitE": 0.1,
+          "vitK": 0.5,
+          "thiamin": 0.031,
+          "riboflavin": 0.073,
+          "niacin": 0.665,
+          "vitB6": 0.367,
+          "folate": 20,
+          "vitB12": 0,
+          "pantothenic": 0.334,
+          "choline": 9.8,
+          "betaCarotene": 26,
+          "alphaCarotene": 25,
+          "betaCryptoxanthin": 0,
+          "lycopene": 0,
+          "luteinZeaxanthin": 22,
+          "water": 74.91
+        }
+      },
+      "note": "сахара и сироп: условная замена"
+    },
+    {
+      "fdcId": 175167,
+      "description": "Fish, salmon, Atlantic, farmed, raw",
+      "category": "Finfish and Shellfish Products",
+      "grams": 16.2,
+      "per100": {
+        "kbju": {
+          "kcal": 208,
+          "p": 20.42,
+          "f": 13.42,
+          "c": 0
+        },
+        "micro": {
+          "fiber": 0,
+          "sugar": 0,
+          "satFat": 3.05,
+          "monoFat": 3.77,
+          "polyFat": 3.886,
+          "cholesterol": 55,
+          "linoleic": 0.9,
+          "ala": 0.167,
+          "epa": 0.862,
+          "dha": 1.104,
+          "calcium": 9,
+          "iron": 0.34,
+          "magnesium": 27,
+          "phosphorus": 240,
+          "potassium": 363,
+          "sodium": 59,
+          "zinc": 0.36,
+          "copper": 0.045,
+          "manganese": 0.011,
+          "selenium": 24,
+          "vitA": 58,
+          "retinol": 58,
+          "vitC": 3.9,
+          "vitD": 11,
+          "vitE": 3.55,
+          "vitK": 0.5,
+          "thiamin": 0.207,
+          "riboflavin": 0.155,
+          "niacin": 8.672,
+          "vitB6": 0.636,
+          "folate": 26,
+          "vitB12": 3.23,
+          "pantothenic": 1.547,
+          "choline": 78.5,
+          "betaCarotene": 0,
+          "alphaCarotene": 0,
+          "betaCryptoxanthin": 0,
+          "lycopene": 0,
+          "luteinZeaxanthin": 0,
+          "water": 64.89
+        }
+      },
+      "note": "арахис: в fdc-mini нет, замена для проверки расчёта"
+    }
+  ],
+  "kbju": {
+    "kcal": 240.5,
+    "p": 4.3,
+    "f": 11.25,
+    "c": 30.25
+  },
+  "fit": {
+    "usdaKbju": {
+      "kcal": 76.9,
+      "p": 5,
+      "f": 3.3,
+      "c": 7.3
+    },
+    "deviationPct": {
+      "kcal": -68,
+      "p": 15.9,
+      "f": -70.8,
+      "c": -76
+    },
+    "massDeviationPct": 16.6,
+    "poor": true
+  },
+  "nutrients": {
+    "fiber": {
+      "value": 2.15,
+      "known": 1,
+      "total": 1
+    },
+    "sugar": {
+      "value": 25.9,
+      "known": 1,
+      "total": 1
+    },
+    "satFat": {
+      "value": 3.95,
+      "known": 1,
+      "total": 1
+    },
+    "monoFat": {
+      "value": 1.008568,
+      "known": 3,
+      "total": 3
+    },
+    "polyFat": {
+      "value": 0.8550930000000001,
+      "known": 3,
+      "total": 3
+    },
+    "cholesterol": {
+      "value": 3.35,
+      "known": 1,
+      "total": 1
+    },
+    "linoleic": {
+      "value": 0.32511999999999996,
+      "known": 3,
+      "total": 3
+    },
+    "ala": {
+      "value": 0.040647,
+      "known": 3,
+      "total": 3
+    },
+    "epa": {
+      "value": 0.139644,
+      "known": 3,
+      "total": 3
+    },
+    "dha": {
+      "value": 0.184996,
+      "known": 3,
+      "total": 3
+    },
+    "calcium": {
+      "value": 8.969,
+      "known": 3,
+      "total": 3
+    },
+    "iron": {
+      "value": 0.32248,
+      "known": 3,
+      "total": 3
+    },
+    "magnesium": {
+      "value": 14.151000000000002,
+      "known": 3,
+      "total": 3
+    },
+    "phosphorus": {
+      "value": 66.798,
+      "known": 3,
+      "total": 3
+    },
+    "potassium": {
+      "value": 186.204,
+      "known": 3,
+      "total": 3
+    },
+    "sodium": {
+      "value": 125.75,
+      "known": 1,
+      "total": 1
+    },
+    "zinc": {
+      "value": 0.24230999999999997,
+      "known": 3,
+      "total": 3
+    },
+    "copper": {
+      "value": 0.039492,
+      "known": 3,
+      "total": 3
+    },
+    "manganese": {
+      "value": 0.0898,
+      "known": 3,
+      "total": 3
+    },
+    "selenium": {
+      "value": 7.4572,
+      "known": 3,
+      "total": 3
+    },
+    "vitA": {
+      "value": 27.301000000000002,
+      "known": 3,
+      "total": 3
+    },
+    "retinol": {
+      "value": 26.356,
+      "known": 3,
+      "total": 3
+    },
+    "vitC": {
+      "value": 3.3723,
+      "known": 3,
+      "total": 3
+    },
+    "vitD": {
+      "value": 1.994,
+      "known": 3,
+      "total": 3
+    },
+    "vitE": {
+      "value": 0.7179,
+      "known": 3,
+      "total": 3
+    },
+    "vitK": {
+      "value": 0.2703,
+      "known": 3,
+      "total": 3
+    },
+    "thiamin": {
+      "value": 0.047539,
+      "known": 3,
+      "total": 3
+    },
+    "riboflavin": {
+      "value": 0.096547,
+      "known": 3,
+      "total": 3
+    },
+    "niacin": {
+      "value": 1.622289,
+      "known": 3,
+      "total": 3
+    },
+    "vitB6": {
+      "value": 0.236657,
+      "known": 3,
+      "total": 3
+    },
+    "folate": {
+      "value": 15.494,
+      "known": 3,
+      "total": 3
+    },
+    "vitB12": {
+      "value": 0.6176,
+      "known": 3,
+      "total": 3
+    },
+    "pantothenic": {
+      "value": 0.518322,
+      "known": 3,
+      "total": 3
+    },
+    "choline": {
+      "value": 46.9468,
+      "known": 3,
+      "total": 3
+    },
+    "betaCarotene": {
+      "value": 8.19,
+      "known": 3,
+      "total": 3
+    },
+    "alphaCarotene": {
+      "value": 7.875,
+      "known": 3,
+      "total": 3
+    },
+    "betaCryptoxanthin": {
+      "value": 0.954,
+      "known": 3,
+      "total": 3
+    },
+    "lycopene": {
+      "value": 0,
+      "known": 3,
+      "total": 3
+    },
+    "luteinZeaxanthin": {
+      "value": 60.248,
+      "known": 3,
+      "total": 3
+    },
+    "water": {
+      "value": 42.180730000000004,
+      "known": 3,
+      "total": 3
+    }
+  },
+  "request": {
+    "text": "",
+    "grams": 50
+  }
+}
