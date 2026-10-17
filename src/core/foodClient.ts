@@ -174,10 +174,15 @@ export async function pollFood(base: string, token: string, id: string, fetchFn:
 export type OffClientFailureReason =
   | 'unauthorized' | 'bad-request' | 'not-found' | 'no-nutrition' | 'off-unavailable' | 'old-worker' | 'network' | 'bad-response'
 
-type OffFailure = { ok: false; reason: OffClientFailureReason; error: string }
+/** detail - техническая причина (сообщение разбора), не для показа человеку:
+    error остаётся фиксированной русской строкой. */
+type OffFailure = { ok: false; reason: OffClientFailureReason; error: string; detail?: string }
 
+/** skipped - сколько товаров отбросил воркер (нет полного КБЖУ); invalid - сколько
+    items клиент не смог разобрать (воркер прислал не ту форму), invalidReason -
+    сообщение первой ошибки разбора. */
 export type OffSearchResult =
-  | { ok: true; items: OffProduct[]; skipped: number; total: number }
+  | { ok: true; items: OffProduct[]; skipped: number; invalid: number; invalidReason?: string; total: number }
   | OffFailure
 
 export type OffProductResult =
@@ -232,24 +237,28 @@ async function callOff(url: string, token: string, fetchFn: FetchFn): Promise<{ 
 }
 
 /** Поиск товаров в Open Food Facts через воркер. Битый item пропускается и
-    считается в skipped; bad-response - только когда тело негодно целиком. */
+    считается в invalid (skipped - только отсев воркера); о нём пишется один
+    console.warn на ответ. bad-response - только когда тело негодно целиком. */
 export async function searchOff(base: string, token: string, q: string, n: number, fetchFn: FetchFn = fetch): Promise<OffSearchResult> {
   const got = await callOff(`${base}/off/search?q=${encodeURIComponent(q)}&n=${n}`, token, fetchFn)
   if ('failure' in got) return got.failure
   const body = got.body
   if (!isPlainObject(body) || body.ok !== true || !Array.isArray(body.items)) return OFF_BAD_BODY
   const items: OffProduct[] = []
-  let broken = 0
+  let invalid = 0
+  let invalidReason: string | undefined
   for (const raw of body.items) {
     try {
       items.push(parseOffProduct(raw))
-    } catch {
-      broken += 1
+    } catch (e) {
+      invalid += 1
+      invalidReason ??= e instanceof Error ? e.message : String(e)
     }
   }
+  if (invalidReason !== undefined) console.warn(`searchOff: не разобрано товаров: ${invalid}, первая причина: ${invalidReason}`)
   const serverSkipped = typeof body.skipped === 'number' && Number.isFinite(body.skipped) ? body.skipped : 0
   const total = typeof body.total === 'number' && Number.isFinite(body.total) ? body.total : items.length
-  return { ok: true, items, skipped: serverSkipped + broken, total }
+  return { ok: true, items, skipped: serverSkipped, invalid, ...(invalidReason !== undefined ? { invalidReason } : {}), total }
 }
 
 /** Карточка товара Open Food Facts по штрихкоду (8-14 цифр). */
@@ -260,7 +269,9 @@ export async function fetchOffProduct(base: string, token: string, code: string,
   if (!isPlainObject(body) || body.ok !== true) return OFF_BAD_BODY
   try {
     return { ok: true, product: parseOffProduct(body.product) }
-  } catch {
-    return OFF_BAD_BODY
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e)
+    console.warn(`fetchOffProduct: карточка не разобрана: ${detail}`)
+    return { ...OFF_BAD_BODY, detail }
   }
 }

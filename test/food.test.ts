@@ -608,6 +608,28 @@ function parseProductFixtureChecks(): void {
   group('parseFoodResult: spec 3 из product-result.json разбирается')
 }
 
+function parseProductInconsistentChecks(): void {
+  const raw = loadProductFixture()
+  const product = raw.product as Record<string, unknown>
+  const kbju = raw.kbju as Record<string, number>
+  const message = (value: unknown): string => {
+    try {
+      parseFoodResult(value)
+    } catch (e) {
+      return e instanceof Error ? e.message : String(e)
+    }
+    return ''
+  }
+  assert(approx(kbju.kcal, 240.5), 'фикстура: kbju.kcal совпадает с product.perPortion.kcal')
+  assert(message({ ...raw, kbju: { ...kbju, kcal: kbju.kcal + 5 } }).includes('kbju.kcal'), 'kbju.kcal + 5 обязан бросать с именем поля')
+  assert(message({ ...raw, product: { ...product, grams: 80 } }).includes('product.perPortion.'), 'граммы товара при прежнем perPortion обязаны бросать')
+  assert(message({ ...raw, request: { text: '', grams: 80 } }).includes('request.grams'), 'request.grams не равный product.grams обязан бросать')
+  const perPortion = product.perPortion as Record<string, number>
+  assert(message({ ...raw, product: { ...product, perPortion: { ...perPortion, p: perPortion.p + 1 } } }).includes('product.perPortion.p'), 'perPortion.p вне допуска обязан бросать')
+  assert(message({ ...raw, request: { text: '', grams: null } }) === '', 'request без граммов принимается')
+  group('parseFoodResult: spec 3 с противоречивыми числами или граммами бросает')
+}
+
 function parseProductMissingChecks(): void {
   const raw = loadProductFixture()
   const { product: _product, ...withoutProduct } = raw
@@ -1034,15 +1056,26 @@ async function searchOffChecks(): Promise<void> {
   {
     const { fetchFn, calls } = fakeFetch(200, okBody)
     const result = await searchOff(SHTURMAN_BASE, 'tok', 'сникерс бар', 12, fetchFn)
-    assert(result.ok && result.items.length === 1 && result.skipped === 2 && result.total === 9, `200 обязан давать items/skipped/total, получено ${JSON.stringify(result)}`)
+    assert(result.ok && result.items.length === 1 && result.skipped === 2 && result.invalid === 0 && result.invalidReason === undefined && result.total === 9, `200 обязан давать items/skipped/invalid/total, получено ${JSON.stringify(result)}`)
     assert(calls[0].url === `${SHTURMAN_BASE}/off/search?q=${encodeURIComponent('сникерс бар')}&n=12`, `неверный URL поиска: ${calls[0].url}`)
     const headers = calls[0].init.headers as Record<string, string>
     assert(calls[0].init.method === 'GET' && headers.authorization === 'Bearer tok', 'GET с Bearer-токеном')
   }
   {
     const broken = { ...okBody, items: [good, { code: '1' }, 5] }
-    const result = await searchOff(SHTURMAN_BASE, 't', 'snickers', 12, fakeFetch(200, broken).fetchFn)
-    assert(result.ok && result.items.length === 1 && result.skipped === 4, `битые items пропускаются и входят в skipped, получено ${JSON.stringify(result)}`)
+    const warns: string[] = []
+    const realWarn = console.warn
+    console.warn = (...args: unknown[]) => { warns.push(args.join(' ')) }
+    let result: Awaited<ReturnType<typeof searchOff>>
+    try {
+      result = await searchOff(SHTURMAN_BASE, 't', 'snickers', 12, fakeFetch(200, broken).fetchFn)
+    } finally {
+      console.warn = realWarn
+    }
+    assert(result.ok && result.items.length === 1 && result.skipped === 2 && result.invalid === 2, `битые items считаются в invalid, skipped воркера не меняется, получено ${JSON.stringify(result)}`)
+    assert(result.ok && typeof result.invalidReason === 'string' && result.invalidReason.includes('product'), `invalidReason обязан хранить первую ошибку разбора, получено ${JSON.stringify(result)}`)
+    assert(warns.length === 1 && warns[0].includes('2') && result.ok && warns[0].includes(result.invalidReason ?? '?'), `ожидался один console.warn с числом и причиной, получено ${JSON.stringify(warns)}`)
+    group('searchOff: битый item считается в invalid с причиной, skipped воркера не меняется')
   }
   const reasonOf = async (status: number, body: unknown): Promise<string> => {
     const r = await searchOff(SHTURMAN_BASE, 't', 'snickers', 12, fakeFetch(status, body).fetchFn)
@@ -1083,8 +1116,18 @@ async function fetchOffProductChecks(): Promise<void> {
   assert(!old.ok && old.reason === 'old-worker', '404 без reason -> old-worker')
   const down = await get(502, { ok: false, reason: 'off-bad-json' })
   assert(!down.ok && down.reason === 'off-unavailable', '502 -> off-unavailable')
-  const bad = await get(200, { ok: true, product: { code: 'x' } })
+  const realWarn = console.warn
+  const warns: string[] = []
+  console.warn = (...args: unknown[]) => { warns.push(args.join(' ')) }
+  let bad: Awaited<ReturnType<typeof get>>
+  try {
+    bad = await get(200, { ok: true, product: { code: 'x' } })
+  } finally {
+    console.warn = realWarn
+  }
   assert(!bad.ok && bad.reason === 'bad-response', 'карточка не по форме -> bad-response')
+  assert(!bad.ok && typeof bad.detail === 'string' && bad.detail.includes('product'), `bad-response обязан нести сообщение разбора в detail, получено ${JSON.stringify(bad)}`)
+  assert(warns.length === 1 && !bad.ok && warns[0].includes(bad.detail ?? '?'), `ожидался один console.warn с причиной, получено ${JSON.stringify(warns)}`)
   group('fetchOffProduct: 404 с reason no-nutrition -> no-nutrition; 200 -> product')
 }
 
@@ -1112,6 +1155,7 @@ async function main(): Promise<void> {
   logDoneLabelRequestsChecks()
   parseProductFixtureChecks()
   parseProductMissingChecks()
+  parseProductInconsistentChecks()
   parseProductEmptyCompositionChecks()
   parseOffProductChecks()
   productFactsFromChecks()

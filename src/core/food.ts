@@ -165,6 +165,27 @@ export function parseProductFacts(v: unknown, what = 'product'): ProductFacts {
   return { ...product, grams, perPortion, ...(remark !== undefined ? { remark } : {}) }
 }
 
+/** Допуск сверки согласованности чисел товара: воркер округляет до сотых. */
+const PRODUCT_CONSISTENCY_TOLERANCE = 0.011
+
+/** КБЖУ на порцию обязано быть per100 x граммы / 100, итоговое kbju - равно
+    порционному, а граммы запроса (если есть) - граммам товара. Иначе ответ
+    противоречит сам себе и показывать его как «готово» нельзя. */
+function checkProductConsistency(product: ProductFacts, kbju: Kbju, requestGrams: number | null): void {
+  for (const key of ['kcal', 'p', 'f', 'c'] as const) {
+    const expected = product.per100[key] * product.grams / 100
+    if (Math.abs(product.perPortion[key] - expected) > PRODUCT_CONSISTENCY_TOLERANCE) {
+      throw new Error(`product.perPortion.${key}: ${product.perPortion[key]} не сходится с per100 x граммы / 100 = ${round2(expected)}`)
+    }
+    if (Math.abs(kbju[key] - product.perPortion[key]) > PRODUCT_CONSISTENCY_TOLERANCE) {
+      throw new Error(`kbju.${key}: ${kbju[key]} не равно product.perPortion.${key} = ${product.perPortion[key]}`)
+    }
+  }
+  if (requestGrams !== null && requestGrams !== product.grams) {
+    throw new Error(`request.grams: ${requestGrams} не равно product.grams = ${product.grams}`)
+  }
+}
+
 function parseRequestBody(v: unknown): { text: string; grams: number | null } {
   if (!isPlainObject(v)) throw new Error('request: поле отсутствует или не объект — ответ воркера не несёт исходного запроса')
   const text = requireString(v.text, 'request.text')
@@ -223,6 +244,7 @@ export function parseFoodResult(raw: unknown): FoodResultOk {
   // spec 3 (товар Open Food Facts): КБЖУ даёт упаковка, состав может быть пуст
   if (spec === 3 && raw.product === undefined) throw new Error('product: ответ spec 3 обязан нести факты товара')
   const product = spec === 3 ? parseProductFacts(raw.product) : undefined
+  if (product) checkProductConsistency(product, kbju, request.grams)
   const fit = spec !== 1 && raw.fit !== undefined ? parseLabelFit(raw.fit) : undefined
 
   if (!Array.isArray(raw.components) || (raw.components.length === 0 && spec === 1)) {
