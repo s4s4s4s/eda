@@ -15,6 +15,7 @@ import type {
   PrintedMicroKey, ProductFacts, Settings, Slot
 } from '../core/types.ts'
 import { todayLocal } from '../core/cycle.ts'
+import { isOffUrl, offProductUrl } from '../core/food.ts'
 
 /** Ключ localStorage — единственное место, где он назван. */
 export const STORAGE_KEY = 'eda.state.v1'
@@ -312,7 +313,7 @@ function sanitizeExtraEntry(v: unknown): ExtraLogEntry | null {
     if (typeof v.source !== 'string') return null
     if (typeof v.code !== 'string') return null
     if (typeof v.url !== 'string') return null
-    return { ...base, kind: 'product', customFoodId: v.customFoodId, source: v.source, code: v.code, url: v.url }
+    return { ...base, kind: 'product', customFoodId: v.customFoodId, source: v.source, code: v.code, url: isOffUrl(v.url) ? v.url : offProductUrl(v.code) }
   }
 
   // вид неизвестен — экран не знает, как такую запись показать, а калории её
@@ -592,7 +593,7 @@ function sanitizeOffProduct(v: unknown): OffProduct | null {
   const warnings = Array.isArray(v.warnings) && v.warnings.every(item => typeof item === 'string') ? [...v.warnings] : []
   return {
     code: v.code,
-    url: v.url,
+    url: isOffUrl(v.url) ? v.url : offProductUrl(v.code),
     name: v.name,
     brand: v.brand,
     quantityText: v.quantityText,

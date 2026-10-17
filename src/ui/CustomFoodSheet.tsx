@@ -30,6 +30,8 @@ import type {
 import { NUTRIENT_KEYS, SLOT_TITLE, SLOTS } from '../core/types.ts'
 import type { Slot } from '../core/types.ts'
 import { FoodSearch } from './FoodSearch.tsx'
+import { createFlash } from './foodLogic.ts'
+import type { Flash } from './foodLogic.ts'
 import { FractionPicker } from './FractionPicker.tsx'
 import ProductCard from './ProductCard.tsx'
 import type { ProductAskResult } from './ProductCard.tsx'
@@ -117,7 +119,8 @@ function BookRow({
   onRemove: (foodId: string) => void
 }) {
   const [relogged, setRelogged] = useState(false)
-  const reloggedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const flashRef = useRef<Flash | null>(null)
+  flashRef.current ??= createFlash(RELOGGED_MS, setRelogged)
   const [adding, setAdding] = useState(false)
   const [slot, setSlot] = useState<Slot>('breakfast')
   const [fraction, setFraction] = useState(1)
@@ -125,18 +128,10 @@ function BookRow({
 
   /* Таймер «Записано» не должен пережить строку: книга перефильтровалась или
      шторка закрылась, а setState прилетел бы в размонтированный компонент. */
-  useEffect(() => () => {
-    if (reloggedTimer.current !== null) clearTimeout(reloggedTimer.current)
-  }, [])
+  useEffect(() => () => flashRef.current?.dispose(), [])
 
   function handleRelog(): void {
-    if (relogged) return
-    onRelog(food)
-    setRelogged(true)
-    reloggedTimer.current = setTimeout(() => {
-      reloggedTimer.current = null
-      setRelogged(false)
-    }, RELOGGED_MS)
+    if (flashRef.current?.trigger()) onRelog(food)
   }
 
   return (
@@ -493,6 +488,25 @@ export default function CustomFoodSheet({
     setProduct(null)
   }
 
+  const bookSection = shownBooks.length > 0
+    ? (
+      <section className="custom-food-book" aria-label="Из книги">
+        <h2 className="custom-food__section-title">Из книги</h2>
+        <ul className="custom-food-book__list">
+          {shownBooks.map(food => (
+            <BookRow
+              key={food.id}
+              food={food}
+              onAdd={onAddFromBook}
+              onRelog={onRelog}
+              onRemove={onRemoveCustomFood}
+            />
+          ))}
+        </ul>
+      </section>
+    )
+    : null
+
   return (
     <Sheet title="Своя еда" onClose={onClose}>
       <div className="custom-food">
@@ -518,28 +532,14 @@ export default function CustomFoodSheet({
               onSearchOff={onSearchOff}
               onFetchOffProduct={onFetchOffProduct}
               onOpenProduct={setProduct}
-            />
+            >
+              {bookSection}
+              {queried && shownBooks.length === 0 && (
+                <p className="custom-food-book__empty" role="status">В книге по этому запросу ничего нет.</p>
+              )}
+            </FoodSearch>
           )}
-
-          {shownBooks.length > 0 && (
-            <section className="custom-food-book" aria-label="Из книги">
-              <h2 className="custom-food__section-title">Из книги</h2>
-              <ul className="custom-food-book__list">
-                {shownBooks.map(food => (
-                  <BookRow
-                    key={food.id}
-                    food={food}
-                    onAdd={onAddFromBook}
-                    onRelog={onRelog}
-                    onRemove={onRemoveCustomFood}
-                  />
-                ))}
-              </ul>
-            </section>
-          )}
-          {queried && shownBooks.length === 0 && (
-            <p className="custom-food-book__empty" role="status">В книге по этому запросу ничего нет.</p>
-          )}
+          {!hasToken && bookSection}
 
           {hasToken
             ? (

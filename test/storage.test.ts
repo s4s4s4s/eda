@@ -998,6 +998,26 @@ function foodWithoutNumbersChecks(): void {
   group('sanitizeCustomFood: еда без label, без product и с пустым составом выпадает, битый product уносит еду')
 }
 
+/** Недоверенный url (бэкап, localStorage) уходит в href: не https или чужой хост заменяется канонической ссылкой, запись остаётся. */
+function productUrlTrustChecks(): void {
+  const canonical = 'https://world.openfoodfacts.org/product/5000159461122'
+  const bad = ['javascript:alert(1)', 'http://world.openfoodfacts.org/product/5000159461122', 'https://openfoodfacts.org.evil.example/x', '', 'не ссылка']
+  const result = deserialize(storedProductState({
+    customFoods: { 'food-product': storedProductFood('food-product', { product: storedProductFacts({ url: bad[0] }) }) },
+    extras: bad.map((url, i) => storedProductExtra(`product-${i}`, { url }))
+  }))
+  const extras = result.state.log['2026-10-17'].extras
+  assert(extras.length === bad.length && result.dropped === 0, `записи с плохим url обязаны остаться, получено ${extras.length}, dropped ${result.dropped}`)
+  assert(extras.every(e => e.kind === 'product' && e.url === canonical), `url обязан стать канонической ссылкой, получено ${JSON.stringify(extras.map(e => e.kind === 'product' ? e.url : null))}`)
+  assert(result.state.customFoods['food-product'].product?.url === canonical, 'url товара в книге обязан быть исправлен')
+  const kept = deserialize(storedProductState({
+    customFoods: { 'food-product': storedProductFood('food-product', { product: storedProductFacts({ url: 'https://ru.openfoodfacts.org/product/5000159461122' }) }) },
+    extras: []
+  }))
+  assert(kept.state.customFoods['food-product'].product?.url === 'https://ru.openfoodfacts.org/product/5000159461122', 'поддомен openfoodfacts.org обязан сохраняться')
+  group('sanitize: недоверенный url товара заменяется канонической ссылкой, запись остаётся')
+}
+
 function productExtraUrlChecks(): void {
   const result = deserialize(storedProductState({
     customFoods: { 'food-product': storedProductFood('food-product') },
@@ -1648,6 +1668,7 @@ function main(): void {
   productFoodEmptyComponentsChecks()
   foodWithoutNumbersChecks()
   productExtraUrlChecks()
+  productUrlTrustChecks()
   printedMicroChecks()
   warningsChecks()
   productRoundTripChecks()

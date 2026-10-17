@@ -11,40 +11,13 @@
    отбрасывается: показывается всегда последний. */
 
 import { useRef, useState } from 'react'
-import { isBarcode, normalizeBarcode } from '../core/food.ts'
-import type { FoodClientFailureReason, OffClientFailureReason, OffProductResult, OffSearchResult } from '../core/foodClient.ts'
+import type { ReactNode } from 'react'
+import type { OffProductResult, OffSearchResult } from '../core/foodClient.ts'
 import type { OffProduct } from '../core/types.ts'
-
-/** Сколько товаров просит поиск у воркера. */
-export const OFF_SEARCH_LIMIT = 10
-
-export const OFF_EMPTY_TEXT = 'В Open Food Facts ничего не нашлось. Попробуй по-английски или по штрихкоду.'
-export const OFF_LOADING_TEXT = 'Ищу в Open Food Facts…'
-export const OFF_INVALID_TEXT = 'Ответ воркера не разобран: обнови приложение.'
-const OFF_NOT_FOUND_TEXT = 'Товар с таким штрихкодом в Open Food Facts не найден'
-const OFF_NO_NUTRITION_TEXT = 'У товара в Open Food Facts нет полного КБЖУ на 100 г'
-
-/** Текст отказа по причине. Для остальных причин текст уже русский: его дал клиент
-    или воркер (reason 'off' у заказа приходит с текстом воркера). */
-export function offFailureText(reason: OffClientFailureReason | FoodClientFailureReason, error: string): string {
-  if (reason === 'not-found') return OFF_NOT_FOUND_TEXT
-  if (reason === 'no-nutrition') return OFF_NO_NUTRITION_TEXT
-  return error
-}
-
-/** Число на экран: до десятых, без хвоста нулей. */
-export function formatPer100(value: number): string {
-  return String(Number(value.toFixed(1)))
-}
-
-type CardView = { phase: 'idle' } | { phase: 'loading' } | { phase: 'error'; text: string }
-
-type OffView =
-  | { phase: 'idle' }
-  | { phase: 'loading' }
-  | { phase: 'empty'; invalid: number }
-  | { phase: 'error'; text: string }
-  | { phase: 'list'; items: OffProduct[]; skipped: number }
+import {
+  createOffSearch, formatPer100, OFF_EMPTY_TEXT, OFF_IDLE_STATE, OFF_INVALID_TEXT, OFF_LOADING_TEXT, offInvalidText, offSkippedText
+} from './foodLogic.ts'
+import type { OffSearchController, OffSearchDeps } from './foodLogic.ts'
 
 export interface FoodSearchProps {
   /** Текст поля. Управляется родителем: книга фильтруется на каждую букву. */
@@ -56,6 +29,8 @@ export interface FoodSearchProps {
   onFetchOffProduct: (code: string) => Promise<OffProductResult>
   /** Карточка получена: родитель показывает ProductCard. */
   onOpenProduct: (product: OffProduct) => void
+  /** Раздел «Из книги»: стоит между полем и разделом Open Food Facts (порядок плана). */
+  children?: ReactNode
 }
 
 function OffResultRow({ product, onPick }: { product: OffProduct; onPick: (code: string) => void }) {
@@ -78,48 +53,16 @@ function OffResultRow({ product, onPick }: { product: OffProduct; onPick: (code:
   )
 }
 
-export function FoodSearch({ query, onQueryChange, onSearchOff, onFetchOffProduct, onOpenProduct }: FoodSearchProps) {
-  const [view, setView] = useState<OffView>({ phase: 'idle' })
-  /* Загрузка карточки по строке списка или штрихкоду. Отдельно от списка: отказ
-     карточки не стирает найденное. */
-  const [card, setCard] = useState<CardView>({ phase: 'idle' })
-  const seqRef = useRef(0)
+export function FoodSearch({ query, onQueryChange, onSearchOff, onFetchOffProduct, onOpenProduct, children }: FoodSearchProps) {
+  const [{ view, card }, setState] = useState(OFF_IDLE_STATE)
+  const depsRef = useRef<OffSearchDeps>({ searchOff: onSearchOff, fetchProduct: onFetchOffProduct, openProduct: onOpenProduct })
+  depsRef.current = { searchOff: onSearchOff, fetchProduct: onFetchOffProduct, openProduct: onOpenProduct }
+  const controllerRef = useRef<OffSearchController | null>(null)
+  controllerRef.current ??= createOffSearch(() => depsRef.current, setState)
+  const controller = controllerRef.current
 
   const trimmed = query.trim()
   const busy = view.phase === 'loading' || card.phase === 'loading'
-
-  async function fetchCard(code: string): Promise<void> {
-    const seq = ++seqRef.current
-    setCard({ phase: 'loading' })
-    const result = await onFetchOffProduct(code)
-    if (seq !== seqRef.current) return
-    if (result.ok) {
-      setCard({ phase: 'idle' })
-      onOpenProduct(result.product)
-    } else {
-      setCard({ phase: 'error', text: offFailureText(result.reason, result.error) })
-    }
-  }
-
-  async function search(): Promise<void> {
-    if (trimmed === '' || busy) return
-    if (isBarcode(trimmed)) {
-      await fetchCard(normalizeBarcode(trimmed))
-      return
-    }
-    const seq = ++seqRef.current
-    setCard({ phase: 'idle' })
-    setView({ phase: 'loading' })
-    const result = await onSearchOff(trimmed, OFF_SEARCH_LIMIT)
-    if (seq !== seqRef.current) return
-    if (!result.ok) {
-      setView({ phase: 'error', text: offFailureText(result.reason, result.error) })
-    } else if (result.items.length === 0) {
-      setView({ phase: 'empty', invalid: result.invalid })
-    } else {
-      setView({ phase: 'list', items: result.items, skipped: result.skipped })
-    }
-  }
 
   return (
     <div className="custom-food-search">
@@ -128,7 +71,7 @@ export function FoodSearch({ query, onQueryChange, onSearchOff, onFetchOffProduc
         role="search"
         onSubmit={e => {
           e.preventDefault()
-          void search()
+          void controller.search(query)
         }}
       >
         <input
@@ -144,6 +87,8 @@ export function FoodSearch({ query, onQueryChange, onSearchOff, onFetchOffProduc
           Найти
         </button>
       </form>
+
+      {children}
 
       {(view.phase !== 'idle' || card.phase !== 'idle') && (
         <section className="custom-food-off" aria-label="Open Food Facts">
@@ -161,10 +106,11 @@ export function FoodSearch({ query, onQueryChange, onSearchOff, onFetchOffProduc
             <>
               <ul className="custom-food-off__list">
                 {view.items.map(item => (
-                  <OffResultRow key={item.code} product={item} onPick={code => void fetchCard(code)} />
+                  <OffResultRow key={item.code} product={item} onPick={code => void controller.fetchCard(code)} />
                 ))}
               </ul>
-              {view.skipped > 0 && <p className="custom-food-off__skipped">Ещё {view.skipped} без КБЖУ не показаны.</p>}
+              {offSkippedText(view.skipped) !== null && <p className="custom-food-off__skipped">{offSkippedText(view.skipped)}</p>}
+              {offInvalidText(view.invalid) !== null && <p className="custom-food-off__skipped" role="status">{offInvalidText(view.invalid)}</p>}
             </>
           )}
         </section>

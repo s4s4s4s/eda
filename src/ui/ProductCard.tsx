@@ -15,10 +15,7 @@ import type { FoodClientFailureReason, OffClientFailureReason } from '../core/fo
 import type { FoodRequest, OffProduct, PrintedMicroKey, Slot } from '../core/types.ts'
 import { NUTRIENT_TITLE, NUTRIENT_UNIT, OFF_SOURCE, PRINTED_MICRO_KEYS, SLOT_TITLE, SLOTS } from '../core/types.ts'
 import { FractionPicker } from './FractionPicker.tsx'
-import { formatPer100, offFailureText } from './FoodSearch.tsx'
-
-/** Верхняя граница граммов: как у воркера и у шторки съёмки. */
-export const PRODUCT_MAX_GRAMS = 5000
+import { formatPer100, gramsPresetsFor, offFailureText, parseProductGrams, PRODUCT_MAX_GRAMS } from './foodLogic.ts'
 
 export type ProductAskResult =
   | { ok: true }
@@ -41,22 +38,6 @@ export interface ProductCardProps {
   now: () => string
 }
 
-interface Preset {
-  key: string
-  label: string
-  grams: number
-}
-
-function presetsFor(product: OffProduct): Preset[] {
-  const presets: Preset[] = []
-  if (product.servingG !== null) presets.push({ key: 'serving', label: `Порция ${product.servingG} г`, grams: product.servingG })
-  if (product.packageG !== null && product.packageG !== product.servingG) {
-    presets.push({ key: 'package', label: `Упаковка ${product.packageG} г`, grams: product.packageG })
-  }
-  presets.push({ key: 'hundred', label: '100 г', grams: 100 })
-  return presets
-}
-
 function printedText(product: OffProduct): string {
   const parts: string[] = []
   for (const key of PRINTED_MICRO_KEYS) {
@@ -77,8 +58,9 @@ export function ProductCard({
   const [asking, setAsking] = useState(false)
   const [failure, setFailure] = useState<string | null>(null)
 
-  const grams = Number(gramsStr.trim() === '' ? NaN : gramsStr)
-  const gramsValid = Number.isFinite(grams) && grams > 0 && grams <= PRODUCT_MAX_GRAMS
+  const parsedGrams = parseProductGrams(gramsStr)
+  const gramsValid = parsedGrams !== null
+  const grams = parsedGrams ?? NaN
   const canSubmit = gramsValid && fractionValid && !asking
   const printed = printedText(product)
   const { per100 } = product
@@ -127,7 +109,7 @@ export function ProductCard({
 
       <div className="product-card__grams">
         <div className="product-card__presets" role="group" aria-label="Готовые граммы">
-          {presetsFor(product).map(preset => (
+          {gramsPresetsFor(product).map(preset => (
             <button
               key={preset.key}
               type="button"

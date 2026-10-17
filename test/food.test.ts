@@ -660,6 +660,11 @@ function parseOffProductChecks(): void {
   assert(throws(() => parseOffProduct({ ...good, name: '' })), 'пустое название обязано бросать')
   assert(throws(() => parseOffProduct({ ...good, plausible: 'yes' })), 'plausible не булево обязано бросать')
 
+  for (const url of ['javascript:alert(1)', 'http://world.openfoodfacts.org/product/5000159461122', 'https://openfoodfacts.org.evil.example/p', 'https://evil.example/openfoodfacts.org', '']) {
+    assert(throws(() => parseOffProduct({ ...good, url })), `url ${JSON.stringify(url)} не от Open Food Facts обязан бросать`)
+  }
+  assert(parseOffProduct({ ...good, url: 'https://ru.openfoodfacts.org/product/5000159461122' }).url === 'https://ru.openfoodfacts.org/product/5000159461122', 'поддомен openfoodfacts.org обязан приниматься')
+
   const foreign = parseOffProduct({ ...good, printedMicro: { fiber: 4.3, vitC: 80, zinc: 0 } })
   assert(JSON.stringify(foreign.printedMicro) === '{"fiber":4.3}', `чужие ключи printedMicro обязаны игнорироваться, получено ${JSON.stringify(foreign.printedMicro)}`)
   group('parseOffProduct: годный принимается, per100 с NaN и printedMicro <= 0 бросают, чужой ключ игнорируется')

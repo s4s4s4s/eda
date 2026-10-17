@@ -109,6 +109,25 @@ function parseLabelFit(v: unknown): LabelFit {
   return { usdaKbju, deviationPct, massDeviationPct, poor: v.poor }
 }
 
+/** Ссылка на карточку товара, которой можно доверить href: только https и
+    хост Open Food Facts (корень или поддомен вроде world/ru). Всё остальное -
+    чужая или фишинговая ссылка в слоте атрибуции. */
+export function isOffUrl(url: string): boolean {
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    return false
+  }
+  return parsed.protocol === 'https:' && (parsed.hostname === 'openfoodfacts.org' || parsed.hostname.endsWith('.openfoodfacts.org'))
+}
+
+/** Каноническая ссылка на карточку товара: чем заменяется недоверенный url
+    в сохранённых данных (калории записи важнее ссылки, запись не выбрасывается). */
+export function offProductUrl(code: string): string {
+  return `https://world.openfoodfacts.org/product/${encodeURIComponent(code)}`
+}
+
 /** Строгий разбор товара Open Food Facts (то, что нормализует воркер). Значения
     printedMicro обязаны быть положительными: ноль воркер не пропускает, потому что
     в OFF он неотличим от незаполненного поля. Чужие ключи printedMicro игнорируются. */
@@ -116,6 +135,8 @@ export function parseOffProduct(v: unknown, what = 'product'): OffProduct {
   if (!isPlainObject(v)) throw new Error(`${what}: ожидался объект товара, получено ${JSON.stringify(v)}`)
   const code = requireString(v.code, `${what}.code`)
   if (!/^\d{8,14}$/.test(code)) throw new Error(`${what}.code: ожидался штрихкод из 8-14 цифр, получено ${JSON.stringify(code)}`)
+  const url = requireString(v.url, `${what}.url`)
+  if (!isOffUrl(url)) throw new Error(`${what}.url: ожидалась https-ссылка на openfoodfacts.org, получено ${JSON.stringify(url)}`)
   const name = requireString(v.name, `${what}.name`)
   if (name.length === 0) throw new Error(`${what}.name: пустое название товара`)
   const per100 = parseNonNegativeKbju(v.per100, `${what}.per100`)
@@ -139,7 +160,7 @@ export function parseOffProduct(v: unknown, what = 'product'): OffProduct {
   if (typeof v.plausible !== 'boolean') throw new Error(`${what}.plausible: ожидалось булево, получено ${JSON.stringify(v.plausible)}`)
   return {
     code,
-    url: requireString(v.url, `${what}.url`),
+    url,
     name,
     brand: requireString(v.brand, `${what}.brand`),
     quantityText: requireString(v.quantityText, `${what}.quantityText`),

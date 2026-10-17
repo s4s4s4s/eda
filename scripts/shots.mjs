@@ -882,7 +882,10 @@ try {
   if (productSearch.bookRows !== 1 || productSearch.bookRelog !== 1) failed = true;
   if (productSearch.offRows !== offFixture.items.length) failed = true;
   if (productSearch.skippedText !== `Ещё ${offFixture.skipped} без КБЖУ не показаны.`) failed = true;
-  if (!productSearch.sections.includes('Из книги') || !productSearch.sections.includes('Open Food Facts')) failed = true;
+  // Порядок плана: «Из книги» выше «Open Food Facts» (главный сценарий - «Записать ещё»).
+  const bookAt = productSearch.sections.indexOf('Из книги');
+  const offAt = productSearch.sections.indexOf('Open Food Facts');
+  if (bookAt < 0 || offAt < 0 || bookAt > offAt) failed = true;
   await shot(`${String(n++).padStart(2, '0')}-sheet-product-search`);
 
   // 13. Сцена `product-card`: строка Snickers открывает карточку. У Snickers порция
@@ -911,8 +914,25 @@ try {
   if (!productCard.attribution || !productCard.attribution.includes('Данные: Open Food Facts (ODbL)')) failed = true;
   if (productCard.attributionLink !== 'https://world.openfoodfacts.org/product/5000159461122') failed = true;
   await shot(`${String(n++).padStart(2, '0')}-sheet-product-card`);
-  await evaluate(`document.querySelector('.product-card__attribution')?.scrollIntoView({ block: 'end' })`);
+  // Низ карточки: шторка прокручена до упора (с её нижним отступом). Обе главные кнопки обязаны быть
+  // целиком в окне и не перекрыты (elementFromPoint в их центре даёт их самих).
+  await evaluate(`{ const panel = document.querySelector('.sheet__panel'); if (panel) panel.scrollTop = panel.scrollHeight; }`);
   await sleep(300);
+  report.productActions = await evaluate(`(() => {
+    const buttons = [...document.querySelectorAll('.product-card__actions .btn')];
+    return buttons.map(b => {
+      const r = b.getBoundingClientRect();
+      const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return {
+        text: b.textContent.trim(),
+        inViewport: r.top >= 0 && r.bottom <= window.innerHeight && r.left >= 0 && r.right <= window.innerWidth,
+        uncovered: top === b || b.contains(top)
+      };
+    });
+  })()`);
+  const expectedActions = ['Записать и запросить витамины', 'Записать без витаминов'];
+  if (report.productActions.map(a => a.text).join('|') !== expectedActions.join('|')) failed = true;
+  if (!report.productActions.every(a => a.inViewport && a.uncovered)) failed = true;
   await shot(`${String(n++).padStart(2, '0')}-sheet-product-card-bottom`);
 
   // «Записать и запросить витамины»: заглушка отвечает pending, в очереди
