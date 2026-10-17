@@ -2,7 +2,7 @@
    «Иерархия сводки дня»). Сверху вниз: герой-карточка (кольцо калорий и три
    полосы макросов), четыре карточки приёмов со статусом и кнопкой «Съел» у
    незаписанных (только при включённом цикле меню), «Журнал дня» с долей у
-   каждой записи и очередью заказов по наклейкам, липкая панель действий
+   каждой записи и очередью заказов по наклейкам и товарам, липкая панель действий
    («Сфоткать наклейку», «Своя еда»), микронутриенты за день.
 
    Зрительный центр ровно один - кольцо: «сколько осталось» читается с одного
@@ -13,7 +13,7 @@
    поздравляет: набранная цель - это заливка кольца, а не фраза. */
 
 import { useState } from 'react'
-import { labelEnergyWarning } from '../core/food.ts'
+import { AUTO_LOG_KINDS, labelEnergyWarning, productSourceText } from '../core/food.ts'
 import { SLOT_TITLE, SLOTS } from '../core/types.ts'
 import type {
   CustomFood, ExtraLogEntry, FoodRequest, MealLogEntry, MealStatus, NutrientNorms, NutrientTotals, Slot
@@ -88,13 +88,13 @@ interface DaySummaryProps {
   /** Книга своей еды (AppState.customFoods): из неё берутся номер блюда и
       сверка 4/9/4 для записей kind === 'label'. Без неё этих строк нет. */
   customFoods?: Record<string, CustomFood>
-  /** Незавершённые заказы по наклейкам любой даты (kind === 'label', статусы
-      pending, failed, expired), в порядке показа. Заказ, отправленный перед
-      полуночью, и протухший за сутки (expired) датированы не сегодняшним днём,
-      но кнопки «Переснять» и «Убрать» нужны именно им, поэтому дата заказа
-      сводку не фильтрует. Готовые заказы сюда не передаются: они уже стали
-      записями журнала. */
-  labelRequests?: FoodRequest[]
+  /** Незавершённые заказы с автозаписью любой даты (pendingAutoRequests: наклейки
+      и товары, статусы pending, failed, expired), в порядке показа. Заказ,
+      отправленный перед полуночью, и протухший за сутки (expired) датированы не
+      сегодняшним днём, но кнопки «Переснять», «Повторить» и «Убрать» нужны
+      именно им, поэтому дата заказа сводку не фильтрует. Готовые заказы сюда
+      не передаются: они уже стали записями журнала. */
+  queuedRequests?: FoodRequest[]
   /** Дата сводки (YYYY-MM-DD): у заказов другой даты в строке пишется «за ДД.ММ». */
   summaryDate?: string
   /** Записанные приёмы дня, которые при выключенном цикле показываются строками
@@ -112,11 +112,19 @@ interface DaySummaryProps {
   onRetakeLabel?: (requestId: string) => void
   /** «Убрать» у такого заказа (id заказа). */
   onDiscardRequest?: (requestId: string) => void
+  /** «Повторить» у заказа по товару, который не удался или протух (id заказа).
+      У наклейки вместо него «Переснять». */
+  onRetryRequest?: (requestId: string) => Promise<RequestActionResult>
+  /** «Записать сейчас без витаминов» у заказа по товару: заказ целиком, как он
+      лежит в очереди. Не задан - этих кнопок нет. */
+  onLogProductNow?: (request: FoodRequest) => void
 }
 
-/** У заказов по наклейке «Повторить» не бывает (RequestStatus показывает
-    «Переснять»), так что этот обработчик не вызывается. */
-const NO_RETRY = async (): Promise<RequestActionResult> => ({ ok: true })
+/** Без onRetryRequest сводке повторять заказ нечем: честный отказ, а не
+    молчаливый успех. App.tsx обработчик передаёт. */
+const NO_RETRY = async (): Promise<RequestActionResult> => ({
+  ok: false, error: 'Повторить заказ можно в шторке «Своя еда».'
+})
 const NOOP = (): void => {}
 
 /* Иконки - inline SVG в currentColor и размером в em (класс .icon), как в
@@ -362,7 +370,8 @@ function CameraIcon() {
 
 /** Подпись источника записи в журнале. У 'label': «наклейка · {titleHy}» (без
     названия просто «наклейка»), номер блюда рациона, если он распознан, и
-    пометка, что микронутриенты оценены по составу, а не измерены. */
+    пометка, что микронутриенты оценены по составу, а не измерены. У 'product':
+    productSourceText (с упаковки, Open Food Facts, и откуда микро). */
 function extraSourceText(e: ExtraLogEntry, food: CustomFood | undefined): string {
   switch (e.kind) {
     case 'menu':
@@ -376,6 +385,8 @@ function extraSourceText(e: ExtraLogEntry, food: CustomFood | undefined): string
       parts.push('микро по составу')
       return parts.join(' · ')
     }
+    case 'product':
+      return productSourceText(e)
   }
 }
 
@@ -399,6 +410,12 @@ function ExtraRow({
       <span className="day-extras__meta nums">
         {Math.round(entry.kbju.kcal * entry.fraction)} ккал · {extraSourceText(entry, food)}
       </span>
+      {/* ODbL требует атрибуции: у каждой записи товара ссылка на его карточку. */}
+      {entry.kind === 'product' && (
+        <a className="day-extras__attribution" href={entry.url} target="_blank" rel="noopener">
+          Open Food Facts
+        </a>
+      )}
       {onSetFraction !== undefined
         ? (
           <button
@@ -452,12 +469,13 @@ export default function DaySummary({
   hasDayLog, onOpenDayExport, extras, onRemoveExtra, onOpenAddFromMenu, onOpenCustomFood,
   dayNutrients, norms, productsRevision,
   menuCycleEnabled = true, targetFatG = 0, targetCarbsG = 0, customFoods,
-  labelRequests = [], summaryDate, journalMeals = [], onUnlogMeal, onOpenLabelCapture, onSetExtraFraction, onRetakeLabel, onDiscardRequest
+  queuedRequests = [], summaryDate, journalMeals = [], onUnlogMeal, onOpenLabelCapture, onSetExtraFraction, onRetakeLabel,
+  onDiscardRequest, onRetryRequest, onLogProductNow
 }: DaySummaryProps) {
   /* Одна раскрытая правка доли на экране: две открытые клавиатуры подряд
      никому не нужны. */
   const [editingId, setEditingId] = useState<string | null>(null)
-  const queued = labelRequests.filter(r => r.kind === 'label' && r.status !== 'done')
+  const queued = queuedRequests.filter(r => AUTO_LOG_KINDS.includes(r.kind) && r.status !== 'done')
   const hasJournal = journalMeals.length > 0 || extras.length > 0 || queued.length > 0
 
   return (
@@ -499,7 +517,7 @@ export default function DaySummary({
 
       {/* Журнал дня: съеденное сверх меню и, без цикла, вообще вся еда дня.
           Статус приёмов не трогает. Под записями «призрачные» строки заказов
-          по наклейкам, которые ещё не стали записями. */}
+          по наклейкам и товарам, которые ещё не стали записями. */}
       <section className="day-extras">
         {hasJournal && (
           <>
@@ -524,9 +542,10 @@ export default function DaySummary({
                   <li key={r.id} className="day-extras__pending list__row">
                     <RequestStatus
                       request={r}
-                      onRetry={NO_RETRY}
+                      onRetry={onRetryRequest ?? NO_RETRY}
                       onRetake={onRetakeLabel ?? NOOP}
                       onDiscard={onDiscardRequest ?? NOOP}
+                      onLogNow={onLogProductNow ? () => onLogProductNow(r) : undefined}
                       summaryDate={summaryDate}
                     />
                   </li>

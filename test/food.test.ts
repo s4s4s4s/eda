@@ -15,7 +15,7 @@ import path from 'node:path'
 import {
   applyFoodAsk, applyFoodPoll, customExtraFrom, customFoodDeviation, customFoodFromResult, customFoodTotals,
   discardFoodRequest, extraFromCustomFood, isBarcode, labelEnergyCheck, labelEnergyWarning, LABEL_ENERGY_TOLERANCE_KCAL, LABEL_ENERGY_TOLERANCE_PCT, labelExtraFrom,
-  logDoneAutoRequests, logDoneLabelRequests, logProductNow, menuExtraFrom, newFoodRequest, newLabelRequest, newProductRequest, normalizeBarcode,
+  isRequestLogged, logDoneAutoRequests, logDoneLabelRequests, logProductNow, menuExtraFrom, newFoodRequest, newLabelRequest, newProductRequest, normalizeBarcode,
   offWarningText, parseFoodResult, parseOffProduct, pendingAutoRequests, pendingLabelRequests, productExtraFrom, productFactsFrom, productFoodFromFacts,
   productNutrientsFromPrinted, productSourceText, relogCustomFood, removeCustomFood, retryFoodRequest, saveCustomFood, searchCustomFoods, withComponentGrams
 } from '../src/core/food'
@@ -819,6 +819,45 @@ function logProductNowChecks(): void {
   group('logProductNow: текстовый заказ ничего не меняет')
 }
 
+/** Готовый заказ по товару пишется в журнал ровно один раз: повторные опросы,
+    перезагрузка с тем же состоянием и «Записать сейчас без витаминов» в гонке с
+    опросом (в любом порядке) не дают второй записи. */
+function productLoggedOnceChecks(): void {
+  const done = (id: string): FoodPollResponse => ({ ok: true, id, state: 'done', result: loadProductFixture(), pcAgo: 1, modelOk: true })
+  const pendingPoll = (id: string): FoodPollResponse => ({ ok: true, id, state: 'pending', pcAgo: 1, modelOk: true })
+  let n = 0
+  const nextId = (): string => `id-${n++}`
+  const auto = (s: AppState): AppState => logDoneAutoRequests(s, '2026-10-17T09:00:00', nextId, () => null)
+  const extrasOf = (s: AppState): number => Object.values(s.log).reduce((sum, day) => sum + day.extras.length, 0)
+  const request = newProductRequest('once-1', snickersOff(), 50, '', PRODUCT_TARGET, 1, '2026-10-16T18:00:00')
+  const queued = applyFoodAsk(emptyState(), request)
+
+  // опрос приносит done дважды подряд, затем «перезагрузка»: тот же объект состояния через автозапись ещё раз
+  let polled = auto(applyFoodPoll(queued, 'once-1', done('once-1'), '2026-10-16T18:30:00'))
+  assert(extrasOf(polled) === 1 && isRequestLogged(polled, 'once-1'), 'первый done пишет одну запись')
+  polled = auto(applyFoodPoll(polled, 'once-1', done('once-1'), '2026-10-16T18:31:00'))
+  polled = auto(polled)
+  assert(extrasOf(polled) === 1 && Object.keys(polled.customFoods).length === 1, 'повторный опрос и перезагрузка второй записи не дают')
+  group('товар: повторный опрос done и перезагрузка не пишут вторую запись')
+
+  // кнопка нажата на устаревшем экране уже после того, как опрос записал заказ
+  const late = logProductNow(polled, request, nextId, '2026-10-17T09:01:00', () => null)
+  assert(late === polled, 'кнопка после автозаписи ничего не меняет')
+  // кнопка раньше опроса: опрос по снятому заказу ничего не меняет, автозапись тоже
+  const now = logProductNow(queued, request, nextId, '2026-10-16T18:20:00', () => null)
+  assert(extrasOf(now) === 1 && now.foodRequests.length === 0, 'кнопка пишет одну запись и снимает заказ')
+  const after = auto(applyFoodPoll(now, 'once-1', done('once-1'), '2026-10-16T18:30:00'))
+  assert(extrasOf(after) === 1, 'опрос после кнопки второй записи не даёт')
+  assert(extrasOf(logProductNow(after, request, nextId, '2026-10-16T18:40:00', () => null)) === 1, 'двойное нажатие пишет один раз')
+  // done остался в очереди рядом с уже записанной едой (состояние, сохранённое посреди гонки)
+  const stale: AppState = { ...now, foodRequests: applyFoodPoll(queued, 'once-1', done('once-1'), '2026-10-16T18:30:00').foodRequests }
+  const healed = auto(stale)
+  assert(extrasOf(healed) === 1 && healed.foodRequests.length === 0, 'done при уже записанной еде снимается без второй записи')
+  // pending-опрос в полёте после кнопки тоже ничего не меняет
+  assert(applyFoodPoll(now, 'once-1', pendingPoll('once-1'), '2026-10-16T18:21:00') === now, 'опрос снятого заказа не возвращает его')
+  group('товар: «Записать сейчас без витаминов» в гонке с опросом пишет ровно одну запись в любом порядке')
+}
+
 function relogCustomFoodChecks(): void {
   const plain = customFoodFromResult(parseFoodResult(loadFixture()), 'job', 'text-1', '2026-10-17T12:00:00')
   const kinds: [CustomFood, string][] = [[plain, 'custom'], [labelFoodFrom(), 'label'], [productFoodFrom(), 'product']]
@@ -1167,6 +1206,7 @@ async function main(): Promise<void> {
   newProductRequestChecks()
   logDoneAutoRequestsChecks()
   logProductNowChecks()
+  productLoggedOnceChecks()
   relogCustomFoodChecks()
   retryProductChecks()
   pendingAutoRequestsChecks()

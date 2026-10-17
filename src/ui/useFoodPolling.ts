@@ -44,7 +44,7 @@ function isRecentlyOnline(pcAgo: number | null): boolean {
     опроса (сеть, неверный токен) или null, если последний круг опроса прошёл
     без сетевых неполадок. afterPoll (необязательный) применяется к состоянию
     сразу после applyFoodPoll каждого ответа: App передаёт сюда
-    logDoneLabelRequests. Статус заказов при такой ошибке не меняется -
+    logDoneAutoRequests (автозапись наклеек и товаров). Статус заказов при такой ошибке не меняется -
     applyFoodPoll вызывается только для успешных ответов воркера. */
 export function useFoodPolling(
   state: AppState,
@@ -95,7 +95,7 @@ export function useFoodPolling(
         const result = await pollFood(baseRef.current, tokenRef.current, wireId(request.id))
         if (cancelled) return
         if (result.ok) {
-          /* Заказ по наклейке, пришедший как done, тут же превращается в запись
+          /* Заказ по наклейке или товару, пришедший как done, тут же превращается в запись
              журнала (afterPoll), в том же обновлении состояния: между ответом
              воркера и записью нет кадра, где заказ готов, а записи ещё нет. */
           setState(prev => {

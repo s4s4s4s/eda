@@ -11,17 +11,19 @@ import {
 } from '../core/log.ts'
 import { menuDayFor } from '../core/menu.ts'
 import {
-  applyFoodAsk, customExtraFrom, discardFoodRequest, logDoneLabelRequests, menuExtraFrom, newFoodRequest,
-  newLabelRequest, pendingLabelRequests, removeCustomFood, retryFoodRequest, saveCustomFood
+  applyFoodAsk, discardFoodRequest, extraFromCustomFood, logDoneAutoRequests, logProductNow, menuExtraFrom,
+  newFoodRequest, newLabelRequest, newProductRequest, pendingAutoRequests, relogCustomFood, removeCustomFood,
+  retryFoodRequest, saveCustomFood
 } from '../core/food.ts'
-import { askFood, askLabel, SHTURMAN_BASE } from '../core/foodClient.ts'
+import { askFood, askLabel, askProduct, fetchOffProduct, searchOff, SHTURMAN_BASE } from '../core/foodClient.ts'
+import type { FoodClientFailureReason, OffProductResult, OffSearchResult } from '../core/foodClient.ts'
 import { emptyNutrientTotals, mealKbju, mealNutrients, scaleNutrientTotals } from '../core/nutrition.ts'
 import { clearRating, rateDish, ratingOf, setStance } from '../core/preferences.ts'
 import { mealVerdict } from '../core/verdict.ts'
 import type { MealVerdict } from '../core/verdict.ts'
 import { SLOTS } from '../core/types.ts'
 import type {
-  AppState, CustomFood, IngredientStance, Kbju, Meal, MealStatus, NutrientTotals, Settings, Slot
+  AppState, CustomFood, FoodRequest, IngredientStance, Kbju, Meal, MealStatus, NutrientTotals, OffProduct, Settings, Slot
 } from '../core/types.ts'
 import { loadData } from '../data/load.ts'
 import { BACKUP_KEY, defaultState, loadState, saveState } from '../state/storage.ts'
@@ -36,6 +38,8 @@ import AddFromMenuSheet from './AddFromMenuSheet.tsx'
 import CustomFoodSheet from './CustomFoodSheet.tsx'
 import LabelCaptureSheet from './LabelCaptureSheet.tsx'
 import type { LabelAsk, LabelInitial } from './LabelCaptureSheet.tsx'
+import type { ProductAskResult } from './ProductCard.tsx'
+import type { RequestActionResult } from './RequestStatus.tsx'
 import { useFoodPolling } from './useFoodPolling.ts'
 import Sheet from './Sheet.tsx'
 import SettingsSheet from './SettingsSheet.tsx'
@@ -99,6 +103,26 @@ function cycleDayForDate(settings: Settings, date: string, cycleDays: number): n
     бы неправдой. */
 const OLD_WORKER_LABEL_REJECT = 'поле «text» обязательно'
 const OLD_WORKER_LABEL_ERROR = 'Воркер ещё не принимает наклейки: нужно обновить Штурмана.'
+/** Тот же прежний разбор отвечает тем же текстом и на заказ по товару: askProduct
+    тоже не шлёт text. */
+const OLD_WORKER_PRODUCT_ERROR = 'Воркер ещё не принимает товары: нужно обновить Штурмана.'
+
+/** Текст отказа заказа по товару (askProduct). 'off' - Open Food Facts не дал
+    карточку при заказе: воркер присылает русскую причину, она показывается как
+    есть. Старый воркер узнаётся по точному тексту отказа, как у наклейки. */
+function productAskErrorText(reason: FoodClientFailureReason, error: string): string {
+  switch (reason) {
+    case 'off':
+      return error
+    case 'bad-request':
+      return error === OLD_WORKER_LABEL_REJECT ? OLD_WORKER_PRODUCT_ERROR : error
+    case 'unauthorized':
+    case 'not-found':
+    case 'network':
+    case 'bad-response':
+      return error
+  }
+}
 
 /** Куда снимается наклейка: дата и приём по умолчанию для шторки съёмки.
     replaceId - заказ, который «Переснять» заменяет: он убирается из очереди
@@ -487,11 +511,12 @@ export default function App() {
      шторки (см. useFoodPolling.ts, раздел 1.7 плана «своя еда»). */
   const foodPollError = useFoodPolling(
     state, setState, SHTURMAN_BASE, state.settings.shturmanToken,
-    /* Готовый разбор наклейки сразу становится записью журнала с долей,
-       выбранной при съёмке: подтверждать его отдельно человеку не нужно.
-       День цикла считается по настройкам того же состояния, что пришло из
-       опроса, а не по замыканию этого рендера. */
-    polled => logDoneLabelRequests(
+    /* Готовый разбор наклейки или товара сразу становится записью журнала с
+       долей, выбранной при заказе: подтверждать его отдельно человеку не нужно.
+       Уже записанный «сейчас без витаминов» заказ второй записи не даёт
+       (isRequestLogged в core/food.ts). День цикла считается по настройкам
+       того же состояния, что пришло из опроса, а не по замыканию этого рендера. */
+    polled => logDoneAutoRequests(
       polled, new Date().toISOString(), () => crypto.randomUUID(),
       date => cycleDayForDate(polled.settings, date, menu.cycleDays)
     )
@@ -512,24 +537,89 @@ export default function App() {
     return { ok: true }
   }, [state.settings.shturmanToken])
 
-  /* «Повторить» на failed/expired — новый askFood с тем же текстом под новым
-     uuid; заказ в очереди заменяется (retryFoodRequest), а не дублируется,
-     и только при успешном ответе воркера — неудачная попытка не должна
-     стирать прежний заказ, за которым, может, ещё стоит следить. */
-  const handleRetryFoodRequest = useCallback(async (
-    id: string
-  ): Promise<{ ok: true } | { ok: false; error: string }> => {
+  /* «Повторить» на failed/expired - новый заказ воркеру под новым uuid: у
+     текстового тот же текст (askFood), у товара тот же код, граммы и заметка
+     (askProduct). Заказ в очереди заменяется (retryFoodRequest), а не
+     дублируется, и только при успешном ответе воркера - неудачная попытка не
+     должна стирать прежний заказ, за которым, может, ещё стоит следить. */
+  const handleRetryFoodRequest = useCallback(async (id: string): Promise<RequestActionResult> => {
     const existing = state.foodRequests.find(r => r.id === id)
     if (!existing) return { ok: false, error: 'Этот заказ уже убран из очереди.' }
     const newId = crypto.randomUUID()
-    const result = await askFood(
-      SHTURMAN_BASE, state.settings.shturmanToken, { id: newId, text: existing.text, grams: existing.grams }
-    )
-    if (!result.ok) return { ok: false, error: result.error }
+    const token = state.settings.shturmanToken
+    switch (existing.kind) {
+      case 'text': {
+        const result = await askFood(SHTURMAN_BASE, token, { id: newId, text: existing.text, grams: existing.grams })
+        if (!result.ok) return { ok: false, error: result.error }
+        break
+      }
+      case 'product': {
+        if (!existing.product || existing.grams === null) {
+          return { ok: false, error: 'В заказе нет данных товара: найди товар заново.' }
+        }
+        const result = await askProduct(SHTURMAN_BASE, token, {
+          id: newId, code: existing.product.code, grams: existing.grams, note: existing.text
+        })
+        if (!result.ok) return { ok: false, error: productAskErrorText(result.reason, result.error) }
+        break
+      }
+      case 'label':
+        // снимок на воркере после разбора вырезан: у наклейки вместо повтора «Переснять»
+        return { ok: false, error: 'Снимок наклейки повторить нельзя: сними её заново.' }
+    }
     const now = new Date().toISOString()
     setState(prev => retryFoodRequest(prev, id, newId, now))
     return { ok: true }
   }, [state.foodRequests, state.settings.shturmanToken])
+
+  /* Поиск и карточка Open Food Facts идут через воркер: ответ отдаётся шторке
+     как есть, разводку причин и invalid (битые товары в ответе) показывает
+     FoodSearch (offFailureText). */
+  const handleSearchOff = useCallback((q: string, n: number): Promise<OffSearchResult> => (
+    searchOff(SHTURMAN_BASE, state.settings.shturmanToken, q, n)
+  ), [state.settings.shturmanToken])
+
+  const handleFetchOffProduct = useCallback((code: string): Promise<OffProductResult> => (
+    fetchOffProduct(SHTURMAN_BASE, state.settings.shturmanToken, code)
+  ), [state.settings.shturmanToken])
+
+  /* «Записать и запросить витамины» в карточке товара: заказ собирается ДО
+     сети (newProductRequest проверяет граммы и долю и бросает раньше, чем
+     воркер получил наряд), askProduct зовёт воркер, и только при успехе заказ
+     встаёт в очередь. Цель - сегодня и выбранный в карточке приём; запись в
+     журнал появится сама, когда опрос принесёт разбор (logDoneAutoRequests). */
+  const handleAskProduct = useCallback(async (
+    product: OffProduct, grams: number, slot: Slot, fraction: number
+  ): Promise<ProductAskResult> => {
+    const id = crypto.randomUUID()
+    const request = newProductRequest(id, product, grams, '', { date: today, slot }, fraction, new Date().toISOString())
+    const result = await askProduct(SHTURMAN_BASE, state.settings.shturmanToken, { id, code: product.code, grams, note: '' })
+    if (!result.ok) return { ok: false, reason: result.reason, error: productAskErrorText(result.reason, result.error) }
+    setState(prev => applyFoodAsk(prev, request))
+    return { ok: true }
+  }, [state.settings.shturmanToken, today])
+
+  /* «Записать без витаминов»: из карточки (заказ собран локально, в очереди
+     его нет) и из очереди (шторка и сводка). Запись ровно одна при любой
+     гонке с опросом: logProductNow и logDoneAutoRequests оба смотрят на
+     isRequestLogged того состояния, к которому применяются. */
+  const handleLogProductNow = useCallback((request: FoodRequest) => {
+    const now = new Date().toISOString()
+    setState(prev => logProductNow(
+      prev, request, () => crypto.randomUUID(), now,
+      date => cycleDayForDate(prev.settings, date, menu.cycleDays)
+    ))
+  }, [menu.cycleDays])
+
+  /* «Записать ещё» из книги: та же еда целиком на сегодня и приём, который
+     шторка берёт по умолчанию (activeSlot, как defaultTarget). */
+  const handleRelogFromBook = useCallback((food: CustomFood) => {
+    const now = new Date().toISOString()
+    setState(prev => relogCustomFood(
+      prev, food, today, activeSlot, () => crypto.randomUUID(), now,
+      date => cycleDayForDate(prev.settings, date, menu.cycleDays)
+    ))
+  }, [today, activeSlot, menu.cycleDays])
 
   const handleDiscardFoodRequest = useCallback((id: string) => {
     setState(prev => discardFoodRequest(prev, id))
@@ -572,13 +662,13 @@ export default function App() {
       initial: { fraction: request.fraction, note: request.text, grams: request.grams } })
   }, [state.foodRequests])
 
-  /* Заказы по наклейкам на сводку: ещё не ставшие записью (готовые
-     logDoneLabelRequests уже перенёс в журнал). Любой даты: заказ перед
+  /* Заказы по наклейкам и товарам на сводку: ещё не ставшие записью (готовые
+     logDoneAutoRequests уже перенёс в журнал). Любой даты: заказ перед
      полуночью и протухший за сутки датированы не сегодняшним днём, а кнопки
      «Переснять» и «Убрать» нужны именно им; строку с чужой датой DaySummary
      подписывает. */
-  const labelRequestsOnSummary = useMemo(
-    () => pendingLabelRequests(state.foodRequests),
+  const queuedRequestsOnSummary = useMemo(
+    () => pendingAutoRequests(state.foodRequests),
     [state.foodRequests]
   )
 
@@ -603,13 +693,14 @@ export default function App() {
     setState(prev => removeCustomFood(prev, foodId))
   }, [])
 
-  /* Добавление из книги своей еды — снапшот полной порции (customExtraFrom)
-     плюс запись в дневник, ровно как перенос блюда меню (handleAddFromMenu),
+  /* Добавление из книги своей еды - снапшот полной порции (extraFromCustomFood:
+     товар остаётся записью kind 'product' с кодом и ссылкой для атрибуции ODbL,
+     наклейка - 'label') плюс запись в дневник, ровно как перенос блюда меню (handleAddFromMenu),
      только на сегодняшний день и текущий cycleDayNum (null без цикла): книга
      добавляется «в день», который сейчас открыт на главном экране. */
   const handleAddCustomFoodFromBook = useCallback((food: CustomFood, slot: Slot, fraction: number) => {
     const now = new Date().toISOString()
-    const extra = customExtraFrom(food, slot, fraction, crypto.randomUUID(), now)
+    const extra = extraFromCustomFood(food, slot, fraction, crypto.randomUUID(), now)
     setState(prev => addExtra(prev, today, extra, cycleDayNum))
   }, [today, cycleDayNum])
 
@@ -767,7 +858,7 @@ export default function App() {
                   targetFatG={state.settings.targetFatG}
                   targetCarbsG={state.settings.targetCarbsG}
                   customFoods={state.customFoods}
-                  labelRequests={labelRequestsOnSummary}
+                  queuedRequests={queuedRequestsOnSummary}
                   summaryDate={today}
                   journalMeals={journalMeals}
                   onUnlogMeal={handleUnlog}
@@ -775,6 +866,8 @@ export default function App() {
                   onSetExtraFraction={(extraId, fraction) => handleSetExtraFraction(today, extraId, fraction)}
                   onRetakeLabel={handleRetakeLabel}
                   onDiscardRequest={handleDiscardFoodRequest}
+                  onRetryRequest={handleRetryFoodRequest}
+                  onLogProductNow={handleLogProductNow}
                 />
               )
               : (
@@ -855,6 +948,11 @@ export default function App() {
           onSave={handleSaveCustomFood}
           onRemoveCustomFood={handleRemoveCustomFood}
           onAddFromBook={handleAddCustomFoodFromBook}
+          onRelog={handleRelogFromBook}
+          onSearchOff={handleSearchOff}
+          onFetchOffProduct={handleFetchOffProduct}
+          onAskProduct={handleAskProduct}
+          onLogProductNow={handleLogProductNow}
           onOpenSettings={() => { setCustomFoodOpen(false); setSettingsOpen(true) }}
           onClose={() => setCustomFoodOpen(false)}
         />

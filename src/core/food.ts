@@ -714,10 +714,24 @@ export function logDoneAutoRequests(
   let next = state
   for (const request of state.foodRequests) {
     if (!AUTO_LOG_KINDS.includes(request.kind) || request.status !== 'done' || !request.result) continue
+    // уже записан (например, «Записать сейчас без витаминов» успел раньше опроса): снять заказ, второй записи нет
+    if (isRequestLogged(next, request.id)) {
+      next = discardFoodRequest(next, request.id)
+      continue
+    }
     const food = customFoodFromResult(request.result, 'food:' + request.id, nextId(), now)
     next = saveCustomFood(next, request.id, food, request.target, request.fraction, nextId(), now, cycleDayForDate(request.target.date))
   }
   return next
+}
+
+/** Записан ли уже заказ: еда из него лежит в книге с jobId «food:{id}». Это
+    общий признак для автозаписи по опросу и для «Записать сейчас без
+    витаминов»: какой из путей ни придёт вторым, второй записи в журнал не
+    будет. Еду, которую человек уже убрал из книги, признак не видит. */
+export function isRequestLogged(state: AppState, requestId: string): boolean {
+  const jobId = 'food:' + requestId
+  return Object.values(state.customFoods).some(food => food.jobId === jobId)
 }
 
 /** Прежнее имя logDoneAutoRequests: до товаров автозапись была только у наклеек. */
@@ -749,7 +763,8 @@ export function productFoodFromFacts(
 /** «Записать сейчас без витаминов»: заказ по товару становится едой и записью
     журнала по одним лишь фактам OFF, без разбора на ПК. Заказа может не быть в
     очереди (сетевой отказ из карточки): запись всё равно создаётся. Заказ не по
-    товару состояние не меняет. */
+    товару состояние не меняет. Уже записанный заказ (опрос успел принести разбор,
+    или кнопку нажали дважды) только снимается с очереди: запись одна. */
 export function logProductNow(
   state: AppState,
   request: FoodRequest,
@@ -758,6 +773,9 @@ export function logProductNow(
   cycleDayForDate: (date: string) => number | null
 ): AppState {
   if (request.kind !== 'product' || !request.product || request.grams === null) return state
+  if (isRequestLogged(state, request.id)) {
+    return state.foodRequests.some(r => r.id === request.id) ? discardFoodRequest(state, request.id) : state
+  }
   const food = productFoodFromFacts(request.product, request.grams, request.text, 'food:' + request.id, nextId(), now)
   return saveCustomFood(state, request.id, food, request.target, request.fraction, nextId(), now, cycleDayForDate(request.target.date))
 }
