@@ -45,6 +45,13 @@ function rejectKey(e: SyncEntry): string {
   return `${e.deleted ? 'd' : 'u'}:${entrySig(e)}`
 }
 
+/** Предел прохода при делении пакета по 400: больше запросов или подряд идущих
+    одиночных отказов - значит отказ общий (сервер отвергает всё), проход
+    прекращается и начинается обычная пауза повтора. */
+export const SPLIT_MAX_REQUESTS = 20
+export const SPLIT_MAX_SINGLE_REJECTS = 3
+export const SERVER_REJECTS_ALL = 'Сервер отвергает отправку.'
+
 type OutboxStorage = Pick<Storage, 'getItem' | 'setItem'>
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
@@ -251,6 +258,17 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
     persist()
   }
 
+  /** Отказ признан общим: отметки «отвергнута» этого прохода снимаются (они
+      могли быть следствием общего отказа), дальше обычная пауза с удвоением. */
+  function abortAsGeneral(marked: readonly string[]): 'failed' {
+    const rejected = { ...outbox.rejected }
+    for (const id of marked) delete rejected[id]
+    outbox = { ...outbox, rejected }
+    fail(SERVER_REJECTS_ALL)
+    notify()
+    return 'failed'
+  }
+
   /** Отправка пакета с делением при 400. Результат: 'done' - обработан весь
       пакет (принято и/или отвергнуто); 'failed' - ошибка с паузой или остановка
       по 401; 'stale' - во время полёта вызван forget(), ответ отброшен. */
@@ -258,8 +276,13 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
     const startEpoch = epoch
     const parts: SyncEntry[][] = [batch]
     let acceptedAny = false
+    let requests = 0
+    let singleRejects = 0
+    const marked: string[] = []
     while (parts.length > 0) {
+      if (requests >= SPLIT_MAX_REQUESTS) return abortAsGeneral(marked)
       const part = parts.shift()!
+      requests++
       sending = true
       notify()
       let result: Awaited<ReturnType<typeof postMeals>>
@@ -277,8 +300,10 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
             parts.unshift(part.slice(0, mid), part.slice(mid))
           } else {
             outbox = { ...outbox, rejected: { ...outbox.rejected, [part[0].id]: rejectKey(part[0]) } }
+            marked.push(part[0].id)
             persist()
             notify()
+            if (++singleRejects > SPLIT_MAX_SINGLE_REJECTS) return abortAsGeneral(marked)
           }
           continue
         }
@@ -303,6 +328,7 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
         return 'failed'
       }
       acceptedAny = true
+      singleRejects = 0
       const book = applyAccepted(outbox, part, accepted)
       outbox = { ...outbox, synced: book.synced, tombstones: book.tombstones }
       persist()

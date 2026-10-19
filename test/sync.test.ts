@@ -10,7 +10,7 @@ import { emptyNutrientTotals } from '../src/core/nutrition'
 import { MEALS_BATCH_MAX, postMeals } from '../src/core/healthClient'
 import { applyAccepted, diffForSync, entrySig, formatSyncTime, mealEntriesOf, retryDelayMs, RETRY_MAX_MS, RETRY_MIN_MS, syncStatusText } from '../src/core/sync'
 import type { SyncBook, SyncEntry } from '../src/core/sync'
-import { createSyncController, createSyncEngine, emptyOutbox, loadOutbox, OUTBOX_KEY, saveOutbox } from '../src/state/outbox'
+import { SPLIT_MAX_REQUESTS, createSyncController, createSyncEngine, emptyOutbox, loadOutbox, OUTBOX_KEY, saveOutbox } from '../src/state/outbox'
 import type { TimerApi } from '../src/state/outbox'
 import { defaultState } from '../src/state/storage'
 import type { AppState, ExtraLogEntry, MealLogEntry } from '../src/core/types'
@@ -654,11 +654,34 @@ async function rejectedEntryChecks(): Promise<void> {
   group('400: пакет делится до одной записи, отвергнутая не блокирует остальные и не повторяется')
 }
 
+async function rejectAllChecks(): Promise<void> {
+  const base = defaultState()
+  const days: AppState['log'] = {}
+  for (let i = 0; i < 200; i++) {
+    const day = `2026-${String(1 + Math.floor(i / 28)).padStart(2, '0')}-${String(1 + (i % 28)).padStart(2, '0')}`
+    days[day] = { cycleDay: null, meals: { lunch: mealEntry() }, extras: [] }
+  }
+  const state: AppState = { ...base, settings: { ...base.settings, shturmanToken: 't' }, log: days }
+  const h = makeEngine({ state: () => state, token: () => 't', handler: () => ({ status: 400, body: { ok: false, error: 'нет' } }) })
+  await h.engine.trigger('manual')
+  const n = h.server.calls.length
+  assert(n <= 25 && n <= SPLIT_MAX_REQUESTS, `сплошные 400: за проход ${n} запросов`)
+  const s = h.engine.status()
+  assert(s.attempts === 1 && s.lastError === 'Сервер отвергает отправку.' && s.rejected === 0 && s.queued === 200, 'общий отказ: ошибка, отметок нет, очередь цела')
+  assert(h.clock.pending().length === 1 && h.clock.pending()[0].ms === 60_000, 'обычная пауза повтора')
+  await h.engine.trigger('save')
+  await h.engine.trigger('online')
+  assert(h.server.calls.length === n, 'в паузе запросов нет')
+  console.log(`  запросов за проход при сплошных 400: ${n}`)
+  group('сплошные 400: проход прекращается, дальше пауза с удвоением')
+}
+
 async function reviewFixChecks(): Promise<void> {
   await tokenTypingChecks()
   await emptyDiaryGuardChecks()
   await forgetInFlightChecks()
   await rejectedEntryChecks()
+  await rejectAllChecks()
 }
 
 async function main(): Promise<void> {
