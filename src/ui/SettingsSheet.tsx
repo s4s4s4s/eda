@@ -6,6 +6,8 @@
 import { useState } from 'react'
 import { cycleDay, todayLocal } from '../core/cycle.ts'
 import { logFootprint } from '../core/log.ts'
+import { syncStatusText } from '../core/sync.ts'
+import type { SyncStatus } from '../core/sync.ts'
 import Sheet from './Sheet.tsx'
 import type { AppState, Settings } from '../core/types.ts'
 
@@ -20,6 +22,10 @@ interface SettingsSheetProps {
   customFoods: AppState['customFoods']
   onChange: (settings: Settings) => void
   onClearLog: () => void
+  /** Состояние отправки дневника в Штурман (очередь src/state/outbox.ts). */
+  sync: SyncStatus
+  /** «Отправить весь дневник»: очередь забывает подтверждённое и шлёт заново. */
+  onSyncAll: () => void
   onClose: () => void
 }
 
@@ -56,7 +62,7 @@ function dishesWord(n: number): string {
   }
 }
 
-export default function SettingsSheet({ settings, cycleDays, log, customFoods, onChange, onClearLog, onClose }: SettingsSheetProps) {
+export default function SettingsSheet({ settings, cycleDays, log, customFoods, onChange, onClearLog, sync, onSyncAll, onClose }: SettingsSheetProps) {
   const today = todayLocal(new Date())
   const cycleOn = settings.menuCycleEnabled
   const todayCycleDay = cycleDay(settings.cycleStartDate, today, settings.cycleShift, cycleDays)
@@ -226,9 +232,27 @@ export default function SettingsSheet({ settings, cycleDays, log, customFoods, o
             onChange={e => patch({ shturmanToken: e.target.value })}
           />
           <span className="field__hint">
-            Хранится только в этом браузере, нужен для разбора своей еды на домашнем компьютере.
+            Хранится только в этом браузере, нужен для разбора своей еды на домашнем компьютере
+            и для отправки дневника в Штурман.
           </span>
         </label>
+
+        <div className="field">
+          <span className="field__label">Отправка дневника в Штурман</span>
+          <span className="field__hint sync-status" role="status">{syncStatusText(sync)}</span>
+          <button
+            type="button"
+            className="btn btn--secondary"
+            disabled={sync.blocked === 'no-token' || sync.sending}
+            onClick={onSyncAll}
+          >
+            Отправить весь дневник
+          </button>
+          <span className="field__hint">
+            Приёмы и добавленная еда уходят сами после каждой записи; кнопка нужна, чтобы
+            залить дневник заново, например за прошлые дни.
+          </span>
+        </div>
       </div>
 
       <div className="card settings-group">
@@ -251,8 +275,9 @@ export default function SettingsSheet({ settings, cycleDays, log, customFoods, o
           {confirmingClear && (
             <div className="clear-log">
               <span className="clear-log__warning">
-                Записи стираются безвозвратно и никуда не выгружены. Выгрузите нужные дни
-                до очистки: кнопка «выгрузить день» на главном экране.
+                Записи стираются из этого браузера безвозвратно. Копия, уже отправленная
+                в Штурман, там остаётся; удаление записей на сервер не уходит. Выгрузите
+                нужные дни до очистки: кнопка «выгрузить день» на главном экране.
               </span>
               <div className="clear-log__actions">
                 <button
@@ -271,9 +296,10 @@ export default function SettingsSheet({ settings, cycleDays, log, customFoods, o
         </div>
 
         <p className="storage-note">
-          Всё состояние (дневник и настройки) хранится только в localStorage этого
-          браузера на этом устройстве. Никуда не отправляется, аккаунтов и сервера нет.
-          Очистка данных сайта в браузере стирает дневник безвозвратно.
+          Всё состояние (дневник и настройки) хранится в localStorage этого браузера на
+          этом устройстве. Если введён токен Штурмана, приёмы и добавленная еда
+          дополнительно отправляются на его сервер; аккаунтов нет. Очистка данных сайта
+          в браузере стирает локальный дневник безвозвратно.
         </p>
       </div>
     </Sheet>

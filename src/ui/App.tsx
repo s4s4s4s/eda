@@ -2,7 +2,7 @@
    текущий приём, раздаёт пропсы главному экрану и шторкам, сохраняет
    состояние при каждом изменении. */
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { batchDay, currentSlot, cycleDay, todayLocal } from '../core/cycle.ts'
 import { buildChannels } from '../core/export/index.ts'
 import type { ExportPayload } from '../core/export/index.ts'
@@ -27,6 +27,7 @@ import type {
 } from '../core/types.ts'
 import { loadData } from '../data/load.ts'
 import { BACKUP_KEY, defaultState, loadState, saveState } from '../state/storage.ts'
+import { createSyncEngine } from '../state/outbox.ts'
 import type { StateSource } from '../state/storage.ts'
 import MealScreen from './MealScreen.tsx'
 import DaySummary from './DaySummary.tsx'
@@ -209,6 +210,49 @@ export default function App() {
      не спрятать находку от следующего визита, если человек её не прочитал. */
   const [loadNoticeDismissed, setLoadNoticeDismissed] = useState(false)
 
+  /* Синхронизация дневника со Штурманом (src/state/outbox.ts). Движок читает
+     свежее состояние и токен через ref, а не через замыкание: пуск приходит и
+     от таймера повтора, и от событий окна, где замыкание давно устарело. */
+  const stateRef = useRef(state)
+  stateRef.current = state
+  const [syncEngine] = useState(() => createSyncEngine({
+    getState: () => stateRef.current,
+    getToken: () => stateRef.current.settings.shturmanToken,
+    storage: (() => { try { return globalThis.localStorage ?? null } catch { return null } })()
+  }))
+  const [syncStatus, setSyncStatus] = useState(() => syncEngine.status())
+  useEffect(() => {
+    const refresh = () => setSyncStatus(syncEngine.status())
+    const unsubscribe = syncEngine.subscribe(refresh)
+    refresh()
+    return unsubscribe
+  }, [syncEngine])
+
+  /* Старт. Этот эффект стоит ПЕРЕД эффектом автосохранения намеренно: при
+     потерянном или частично битом дневнике в памяти пусто, и сверка с
+     подтверждённым породила бы надгробия на всё, что потеряно. Поэтому очередь
+     забывает подтверждённое (потерянное остаётся на сервере), а уже потом
+     идёт первая отправка. */
+  useEffect(() => {
+    if (stateSource === 'newer-version') return
+    if (stateSource === 'corrupt' || initialDropped > 0) syncEngine.forget()
+    void syncEngine.trigger('start')
+  }, [stateSource, initialDropped, syncEngine])
+
+  useEffect(() => {
+    if (stateSource === 'newer-version') return
+    const onOnline = () => { void syncEngine.trigger('online') }
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') void syncEngine.trigger('visible')
+    }
+    window.addEventListener('online', onOnline)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.removeEventListener('online', onOnline)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [stateSource, syncEngine])
+
   /* Пока source === 'newer-version', хранилище держит состояние сборки НОВЕЕ
      этой — а state в памяти при этом дефолтный (см. deserialize). Сохранить
      его значило бы затереть данные, которых эта сборка просто не умеет
@@ -218,7 +262,9 @@ export default function App() {
     if (stateSource === 'newer-version') return
     const result = saveState(state)
     setSaveError(result.ok ? null : result.error)
-  }, [state, stateSource])
+    // отправка дневника в Штурман - только после УДАЧНОЙ записи на диск
+    if (result.ok) void syncEngine.trigger('save')
+  }, [state, stateSource, syncEngine])
 
   // возврат из Команд может принести ?exported=... на уже перезагруженную
   // страницу (ExportSheet больше не смонтирован) — подчищаем адресную строку,
@@ -433,9 +479,15 @@ export default function App() {
     setState(prev => ({ ...prev, settings: { ...prev.settings, cycleStartConfirmed: true } }))
   }, [])
 
+  /* Очистка дневника на сервер НЕ уходит: история здоровья там остаётся. Очередь
+     забывает подтверждённое ДО смены состояния, а ref обновляется сразу, чтобы
+     пуск, пришедший до перерисовки, не увидел старый дневник как «новый». */
   const handleClearLog = useCallback(() => {
-    setState(prev => clearLog(prev))
-  }, [])
+    const cleared = clearLog(stateRef.current)
+    stateRef.current = cleared
+    syncEngine.forget()
+    setState(cleared)
+  }, [syncEngine])
 
   /* Книга предпочтений. Отметка «всё равно» приходит как null и СНИМАЕТ запись:
      нейтральное отношение — это отсутствие мнения, а не третье мнение. */
@@ -915,6 +967,8 @@ export default function App() {
           customFoods={state.customFoods}
           onChange={updateSettings}
           onClearLog={handleClearLog}
+          sync={syncStatus}
+          onSyncAll={() => { void syncEngine.resendAll() }}
           onClose={() => setSettingsOpen(false)}
         />
       )}
