@@ -27,7 +27,7 @@ import type {
 } from '../core/types.ts'
 import { loadData } from '../data/load.ts'
 import { BACKUP_KEY, defaultState, loadState, saveState } from '../state/storage.ts'
-import { createSyncEngine } from '../state/outbox.ts'
+import { createSyncController } from '../state/outbox.ts'
 import type { StateSource } from '../state/storage.ts'
 import MealScreen from './MealScreen.tsx'
 import DaySummary from './DaySummary.tsx'
@@ -215,11 +215,12 @@ export default function App() {
      от таймера повтора, и от событий окна, где замыкание давно устарело. */
   const stateRef = useRef(state)
   stateRef.current = state
-  const [syncEngine] = useState(() => createSyncEngine({
+  const [syncController] = useState(() => createSyncController({
     getState: () => stateRef.current,
-    getToken: () => stateRef.current.settings.shturmanToken,
+    readToken: () => stateRef.current.settings.shturmanToken,
     storage: (() => { try { return globalThis.localStorage ?? null } catch { return null } })()
   }))
+  const syncEngine = syncController.engine
   const [syncStatus, setSyncStatus] = useState(() => syncEngine.status())
   useEffect(() => {
     const refresh = () => setSyncStatus(syncEngine.status())
@@ -232,10 +233,11 @@ export default function App() {
      потерянном или частично битом дневнике в памяти пусто, и сверка с
      подтверждённым породила бы надгробия на всё, что потеряно. Поэтому очередь
      забывает подтверждённое (потерянное остаётся на сервере), а уже потом
-     идёт первая отправка. */
+     идёт первая отправка. Источник 'default' - тот же случай: ключ дневника
+     пропал, а очередь eda.sync.v1 осталась. */
   useEffect(() => {
     if (stateSource === 'newer-version') return
-    if (stateSource === 'corrupt' || initialDropped > 0) syncEngine.forget()
+    if (stateSource === 'corrupt' || stateSource === 'default' || initialDropped > 0) syncEngine.forget()
     void syncEngine.trigger('start')
   }, [stateSource, initialDropped, syncEngine])
 
@@ -263,8 +265,16 @@ export default function App() {
     const result = saveState(state)
     setSaveError(result.ok ? null : result.error)
     // отправка дневника в Штурман - только после УДАЧНОЙ записи на диск
-    if (result.ok) void syncEngine.trigger('save')
-  }, [state, stateSource, syncEngine])
+    // сохранение из-за настроек (в том числе набор токена) отправку не будит
+    if (result.ok) syncController.noteSaved()
+  }, [state, stateSource, syncController])
+
+  /* Токен: отправка стартует, когда он перестал меняться (TOKEN_SETTLE_MS) или
+     поле потеряло фокус (commitToken), а не на каждый набранный символ. */
+  const shturmanToken = state.settings.shturmanToken
+  useEffect(() => {
+    syncController.noteTokenInput()
+  }, [shturmanToken, syncController])
 
   // возврат из Команд может принести ?exported=... на уже перезагруженную
   // страницу (ExportSheet больше не смонтирован) — подчищаем адресную строку,
@@ -968,7 +978,8 @@ export default function App() {
           onChange={updateSettings}
           onClearLog={handleClearLog}
           sync={syncStatus}
-          onSyncAll={() => { void syncEngine.resendAll() }}
+          onSyncAll={() => { syncController.commitToken(); void syncEngine.resendAll() }}
+          onTokenCommit={syncController.commitToken}
           onClose={() => setSettingsOpen(false)}
         />
       )}

@@ -10,7 +10,7 @@ import { emptyNutrientTotals } from '../src/core/nutrition'
 import { MEALS_BATCH_MAX, postMeals } from '../src/core/healthClient'
 import { applyAccepted, diffForSync, entrySig, formatSyncTime, mealEntriesOf, retryDelayMs, RETRY_MAX_MS, RETRY_MIN_MS, syncStatusText } from '../src/core/sync'
 import type { SyncBook, SyncEntry } from '../src/core/sync'
-import { createSyncEngine, emptyOutbox, loadOutbox, OUTBOX_KEY, saveOutbox } from '../src/state/outbox'
+import { createSyncController, createSyncEngine, emptyOutbox, loadOutbox, OUTBOX_KEY, saveOutbox } from '../src/state/outbox'
 import type { TimerApi } from '../src/state/outbox'
 import { defaultState } from '../src/state/storage'
 import type { AppState, ExtraLogEntry, MealLogEntry } from '../src/core/types'
@@ -359,9 +359,16 @@ async function engineNetworkChecks(): Promise<void> {
 
   await h.engine.trigger('save')
   assert(h.server.calls.length === 1, 'пуск после сохранения не обходит паузу')
+  // online, visible и timer тоже уважают паузу
   await h.engine.trigger('online')
+  await h.engine.trigger('visible')
+  await h.engine.trigger('timer')
+  assert(h.server.calls.length === 1, 'online, visible и timer до конца паузы запросов не шлют')
+  h.clock.advance(60_000)
+  h.clock.fireNext()
+  await h.engine.trigger('save')
   s = h.engine.status()
-  assert(h.server.calls.length === 2 && s.attempts === 2, 'online обходит паузу, attempts = 2')
+  assert(h.server.calls.length === 2 && s.attempts === 2, 'после паузы таймер шлёт, attempts = 2')
   assert(h.clock.pending().length === 1 && h.clock.pending()[0].ms === 120_000, 'пауза удвоилась до двух минут')
 
   failing = false
@@ -476,13 +483,14 @@ async function engineResendAndForgetChecks(): Promise<void> {
   assert(g.server.calls.length === 1, 'после forget надгробия не отправляются')
   assert(Object.keys(loadOutbox(g.storage).synced).length === 0, 'forget очищает подтверждённое')
 
-  // без forget то же самое состояние даёт надгробия
+  // без forget исчезнувшая запись даёт надгробие (в дневнике остаётся приём:
+  // полностью пустой дневник - случай предохранителя, см. emptyDiaryGuardChecks)
   const t = makeEngine()
   await t.engine.trigger('start')
-  t.setState({ ...t.getState(), log: {} })
+  t.setState(removeExtra(t.getState(), '2026-10-19', 'x-1'))
   await t.engine.trigger('save')
   const del = t.server.calls[1].entries
-  assert(del.length === 2 && del.every(e => e.deleted === true), 'исчезнувшие записи уходят надгробиями')
+  assert(del.length === 1 && del[0].id === 'x-1' && del[0].deleted === true, 'исчезнувшая запись уходит надгробием')
   assert(t.engine.status().queued === 0, 'надгробия подтверждены')
   group('движок: resendAll, forget и надгробия')
 }
@@ -495,6 +503,162 @@ async function engineReloadChecks(): Promise<void> {
   await second.engine.trigger('start')
   assert(second.server.calls.length === 0, 'после перезапуска подтверждённое помнится: повторной отправки нет')
   group('движок: очередь переживает перезапуск')
+}
+
+// ---- правки по ревью: токен, предохранитель, эпоха, 400, пауза -------------
+
+function controllerOf(token: { v: string }, stateOf: () => AppState, handler?: Parameters<typeof fakeServer>[0]) {
+  const clock = fakeClock()
+  const server = fakeServer(handler)
+  const storage = new FakeStorage()
+  const controller = createSyncController({
+    getState: stateOf, readToken: () => token.v, storage, fetchFn: server.fetchFn, base: 'https://w.example', now: clock.now, timers: clock.timers
+  })
+  return { controller, clock, server, storage }
+}
+
+const flush = async (): Promise<void> => { for (let i = 0; i < 20; i++) await Promise.resolve() }
+
+function authOf(call: ServerCall): string {
+  return (call.init.headers as Record<string, string>).authorization
+}
+
+async function tokenTypingChecks(): Promise<void> {
+  // каждый символ меняет состояние (токен в settings), дневник (log) тот же
+  let state = stateWith('')
+  const token = { v: '' }
+  const c = controllerOf(token, () => state)
+  for (const typed of ['s', 'se', 'sec', 'secret']) {
+    token.v = typed
+    state = { ...state, settings: { ...state.settings, shturmanToken: typed } }
+    c.controller.noteSaved()
+    c.controller.noteTokenInput()
+    await flush()
+  }
+  assert(c.server.calls.length === 0, `набор токена не шлёт запросов, получено ${c.server.calls.length}`)
+  assert(c.clock.pending().length === 1, 'висит один таймер устоявшегося токена (старые сняты)')
+  c.clock.advance(1500)
+  c.clock.fireNext()
+  await flush()
+  assert(c.server.calls.length === 1, `после паузы ровно один запрос, получено ${c.server.calls.length}`)
+  assert(authOf(c.server.calls[0]) === 'Bearer secret', 'уходит полный токен, не обрезок')
+
+  // потеря фокуса: отправка сразу, без ожидания
+  let st2 = stateWith('')
+  const tok2 = { v: '' }
+  const c2 = controllerOf(tok2, () => st2)
+  tok2.v = '  abc  '
+  st2 = { ...st2, settings: { ...st2.settings, shturmanToken: tok2.v } }
+  c2.controller.noteTokenInput()
+  c2.controller.commitToken()
+  await flush()
+  assert(c2.server.calls.length === 1 && authOf(c2.server.calls[0]) === 'Bearer abc', 'blur: отправка сразу, пробелы по краям срезаны')
+  assert(c2.clock.pending().length === 0, 'после blur таймер снят')
+
+  // сохранение без изменения дневника отправку не запускает вовсе
+  let st3 = stateWith('t')
+  const c3 = controllerOf({ v: 't' }, () => st3, () => 'throw')
+  await c3.controller.engine.trigger('start')
+  assert(c3.server.calls.length === 1, 'старт: одна неудачная попытка')
+  c3.clock.advance(RETRY_MAX_MS)
+  st3 = { ...st3, settings: { ...st3.settings, targetKcal: st3.settings.targetKcal + 100 } }
+  c3.controller.noteSaved()
+  await flush()
+  assert(c3.server.calls.length === 1, 'сохранение настроек (log тот же) запросов не шлёт')
+  st3 = addExtra(st3, '2026-10-19', extraEntry('x-9', { loggedAt: '2026-10-19T09:50:00.000Z' }), 3)
+  c3.controller.noteSaved()
+  await flush()
+  assert(c3.server.calls.length === 2, 'изменение дневника запускает отправку')
+  group('токен: отправка после паузы или blur, обрезки и сохранения настроек не шлют')
+}
+
+async function emptyDiaryGuardChecks(): Promise<void> {
+  const h = makeEngine()
+  await h.engine.trigger('start')
+  assert(h.server.calls.length === 1, 'первичная отправка')
+  // дневник пропал целиком (ключ потерян, очередь осталась)
+  h.setState({ ...h.getState(), log: {} })
+  await h.engine.trigger('start')
+  assert(h.server.calls.length === 1, 'пустой дневник при подтверждённом: надгробия не шлются')
+  assert(Object.keys(loadOutbox(h.storage).synced).length === 0, 'очередь забыла подтверждённое')
+  assert(h.engine.status().queued === 0, 'в очереди пусто')
+  // дневник наполнился снова: уходит как новое, без надгробий
+  h.setState(stateWith())
+  await h.engine.trigger('save')
+  assert(h.server.calls.length === 2 && h.server.calls[1].entries.every(e => !e.deleted), 'новые записи после пустого дневника уходят без надгробий')
+
+  const mark = { updatedAt: '2026-10-19T09:00:00.000Z', sig: 's', day: '2026-10-19', slot: 'lunch' as const, kind: 'meal' as const, title: 'x' }
+  const d = diffForSync([], { synced: { a: mark }, tombstones: {} }, T0)
+  assert(d.queue.length === 0 && d.forgetSynced, 'diffForSync: предохранитель на пустом дневнике')
+  group('предохранитель: пустой дневник не порождает надгробий на всю историю')
+}
+
+async function forgetInFlightChecks(): Promise<void> {
+  let release: (() => void) | null = null
+  const gate = new Promise<void>(r => { release = r })
+  const clock = fakeClock()
+  const calls: SyncEntry[][] = []
+  let state = stateWith()
+  const fetchFn = (async (_url: string, init: RequestInit) => {
+    const entries = (JSON.parse(String(init.body)) as { entries: SyncEntry[] }).entries
+    calls.push(entries)
+    if (calls.length === 1) await gate
+    return { ok: true, status: 200, json: async () => ({ ok: true, accepted: entries.map(e => e.id), days: [] }) } as unknown as Response
+  }) as typeof fetch
+  const storage = new FakeStorage()
+  const engine = createSyncEngine({ getState: () => state, getToken: () => 't', storage, fetchFn, base: 'https://w.example', now: clock.now, timers: clock.timers })
+  const first = engine.trigger('save')
+  assert(calls.length === 1 && engine.status().sending, 'запрос в полёте')
+  state = { ...state, log: {} }
+  engine.forget()
+  release!()
+  await first
+  assert(Object.keys(loadOutbox(storage).synced).length === 0, 'ответ на запрос до forget не записал accepted в synced')
+  await engine.trigger('save')
+  assert(calls.length === 1, `после forget надгробия не шлются, запросов ${calls.length}`)
+  group('эпоха очереди: ответ на запрос, начатый до forget, отбрасывается')
+}
+
+async function rejectedEntryChecks(): Promise<void> {
+  const base = defaultState()
+  const days: AppState['log'] = {}
+  for (let i = 0; i < 8; i++) days[`2026-10-0${i + 1}`] = { cycleDay: null, meals: { lunch: mealEntry() }, extras: [] }
+  let state: AppState = { ...base, settings: { ...base.settings, shturmanToken: 't' }, log: days }
+  const BAD = '2026-10-05:lunch'
+  const h = makeEngine({
+    state: () => state,
+    token: () => 't',
+    handler: call => (call.entries.some(e => e.id === BAD)
+      ? { status: 400, body: { ok: false, error: 'entries[0].title: плохое' } }
+      : { status: 200, body: { ok: true, accepted: call.entries.map(e => e.id), days: [] } })
+  })
+  await h.engine.trigger('manual')
+  let s = h.engine.status()
+  assert(s.queued === 0 && s.rejected === 1, `семь принято, одна отвергнута: queued ${s.queued}, rejected ${s.rejected}`)
+  assert(Object.keys(loadOutbox(h.storage).synced).length === 7, 'семь записей подтверждены')
+  assert(s.attempts === 0 && s.lastOkAt !== null, 'отвергнутая запись не считается сбоем сети')
+  assert(syncStatusText(s).includes('не принято сервером: 1'), syncStatusText(s))
+  const before = h.server.calls.length
+  await h.engine.trigger('manual')
+  await h.engine.trigger('save')
+  assert(h.server.calls.length === before, 'отвергнутая запись не повторяется, пока не изменилась')
+  assert(loadOutbox(h.storage).rejected[BAD] !== undefined, 'отметка сохранена в очереди')
+
+  // содержимое изменилось: запись снова отправляется
+  state = { ...state, log: { ...state.log, '2026-10-05': { cycleDay: null, meals: { lunch: mealEntry({ title: 'Борщ с чесноком' }) }, extras: [] } } }
+  assert(h.engine.status().rejected === 0 && h.engine.status().queued === 1, 'изменённая запись снова в очереди')
+  await h.engine.trigger('save')
+  assert(h.server.calls.length > before, 'изменённая запись отправлена повторно (и снова отвергнута)')
+  s = h.engine.status()
+  assert(s.rejected === 1 && s.queued === 0, 'вновь отвергнута, счётчик 1')
+  group('400: пакет делится до одной записи, отвергнутая не блокирует остальные и не повторяется')
+}
+
+async function reviewFixChecks(): Promise<void> {
+  await tokenTypingChecks()
+  await emptyDiaryGuardChecks()
+  await forgetInFlightChecks()
+  await rejectedEntryChecks()
 }
 
 async function main(): Promise<void> {
@@ -514,6 +678,7 @@ async function main(): Promise<void> {
   await engineBatchChecks()
   await engineResendAndForgetChecks()
   await engineReloadChecks()
+  await reviewFixChecks()
   console.log(`\nВсе проверки sync пройдены (${passed} групп).`)
 }
 

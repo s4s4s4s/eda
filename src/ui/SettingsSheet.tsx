@@ -26,6 +26,8 @@ interface SettingsSheetProps {
   sync: SyncStatus
   /** «Отправить весь дневник»: очередь забывает подтверждённое и шлёт заново. */
   onSyncAll: () => void
+  /** Поле токена потеряло фокус: ввод закончен, можно отправлять. */
+  onTokenCommit: () => void
   onClose: () => void
 }
 
@@ -62,7 +64,7 @@ function dishesWord(n: number): string {
   }
 }
 
-export default function SettingsSheet({ settings, cycleDays, log, customFoods, onChange, onClearLog, sync, onSyncAll, onClose }: SettingsSheetProps) {
+export default function SettingsSheet({ settings, cycleDays, log, customFoods, onChange, onClearLog, sync, onSyncAll, onTokenCommit, onClose }: SettingsSheetProps) {
   const today = todayLocal(new Date())
   const cycleOn = settings.menuCycleEnabled
   const todayCycleDay = cycleDay(settings.cycleStartDate, today, settings.cycleShift, cycleDays)
@@ -230,6 +232,7 @@ export default function SettingsSheet({ settings, cycleDays, log, customFoods, o
             autoComplete="off"
             value={settings.shturmanToken}
             onChange={e => patch({ shturmanToken: e.target.value })}
+            onBlur={onTokenCommit}
           />
           <span className="field__hint">
             Хранится только в этом браузере, нужен для разбора своей еды на домашнем компьютере

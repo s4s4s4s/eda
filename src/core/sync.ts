@@ -64,6 +64,10 @@ export interface SyncDiff {
   queue: SyncEntry[]
   /** Актуальное множество надгробий (старые, не отменённые возвратом записи, и новые). */
   tombstones: Record<string, SyncEntry>
+  /** Предохранитель сработал: дневник пуст, а подтверждённое есть. Это почти
+      наверняка потеря хранилища, а не «человек удалил всё по одной»: новых
+      надгробий нет, подтверждённое надо забыть (история на сервере остаётся). */
+  forgetSynced: boolean
 }
 
 function finiteOrZero(n: number): number {
@@ -150,7 +154,9 @@ function newerThan(prevUpdatedAt: string, candidate: string, nowMs: number): str
     либо она новее подтверждённой, либо её содержимое изменилось. Подтверждённый
     id, которого в дневнике больше нет, даёт надгробие; оно создаётся один раз
     и хранится (его updatedAt не плавает от вызова к вызову). Вернувшаяся запись
-    снимает своё неотправленное надгробие. Состояние не меняет. */
+    снимает своё неотправленное надгробие. Предохранитель: если дневник пуст, а
+    подтверждённое есть, новые надгробия не создаются (forgetSynced). Состояние
+    не меняет. */
 export function diffForSync(
   entries: readonly SyncEntry[],
   book: SyncBook,
@@ -172,7 +178,8 @@ export function diffForSync(
   for (const [id, t] of Object.entries(book.tombstones)) {
     if (!present.has(id)) tombstones[id] = t
   }
-  for (const [id, mark] of Object.entries(book.synced)) {
+  const forgetSynced = entries.length === 0 && Object.keys(book.synced).length > 0
+  for (const [id, mark] of Object.entries(forgetSynced ? {} : book.synced)) {
     if (present.has(id) || tombstones[id]) continue
     const at = newerThan(mark.updatedAt, mark.updatedAt, nowMs)
     tombstones[id] = {
@@ -192,7 +199,7 @@ export function diffForSync(
     }
   }
   for (const t of Object.values(tombstones)) queue.push(t)
-  return { queue, tombstones }
+  return { queue, tombstones, forgetSynced }
 }
 
 /** Учитывает подтверждение сервера: по каждому принятому id из отправленного
@@ -233,6 +240,8 @@ export type SyncBlock = 'no-token' | 'unauthorized' | null
 
 export interface SyncStatus {
   queued: number
+  /** Записи, которые сервер отверг (400) и которые не повторяются, пока не изменятся. */
+  rejected: number
   lastOkAt: string | null
   lastError: string | null
   attempts: number
@@ -272,6 +281,7 @@ export function syncStatusText(s: SyncStatus): string {
     parts.push('Токен не принят, отправка остановлена до смены токена')
   }
   parts.push(s.queued === 0 ? 'в очереди пусто' : `в очереди ${s.queued} ${recordsWord(s.queued)}`)
+  if (s.rejected > 0) parts.push(`не принято сервером: ${s.rejected}`)
   parts.push(s.lastOkAt ? `последняя отправка ${formatSyncTime(s.lastOkAt)}` : 'отправок ещё не было')
   if (s.sending) parts.push('отправляется сейчас')
   if (s.lastError && s.blocked !== 'unauthorized') parts.push(`ошибка: ${s.lastError}`)

@@ -8,14 +8,18 @@
    - один запрос в полёте: повторный пуск во время отправки лишь помечает, что
      после неё нужно ещё раз сверить дневник;
    - запись уходит из очереди только по `accepted` из ответа;
-   - после ошибки пауза 1 минута, дальше вдвое, не больше часа; пуск после
-     сохранения паузу уважает, пуск по online/visible/старту/кнопке - нет;
+   - после ошибки пауза 1 минута, дальше вдвое, не больше часа; пуски по
+     save/online/visible/timer паузу уважают, старт и кнопка - нет;
+   - 400 (и 413) на пакет: пакет делится пополам до одной записи; запись,
+     которую сервер отвергает и поодиночке, помечается отвергнутой (rejected) и
+     не повторяется, пока её содержимое не изменится;
+   - forget() заводит новую эпоху: ответ на запрос, начатый до неё, отбрасывается;
    - 401 останавливает повторы до смены токена. Факт остановки живёт только в
      памяти вкладки: токен (даже его хэш) в очередь не пишется, после
      перезагрузки будет одна пробная отправка и снова остановка. */
 
 import { MEALS_BATCH_MAX, postMeals, SHTURMAN_BASE } from '../core/healthClient'
-import { applyAccepted, diffForSync, mealEntriesOf, retryDelayMs } from '../core/sync'
+import { applyAccepted, diffForSync, entrySig, mealEntriesOf, retryDelayMs } from '../core/sync'
 import type { SyncBook, SyncEntry, SyncMark, SyncStatus } from '../core/sync'
 import type { AppState, Slot } from '../core/types'
 import { SLOTS } from '../core/types'
@@ -27,10 +31,18 @@ export interface OutboxState extends SyncBook {
   lastOkAt: string | null
   lastError: string | null
   attempts: number
+  /** Отвергнутые сервером записи: id -> ключ содержимого (rejectKey). */
+  rejected: Record<string, string>
 }
 
 export function emptyOutbox(): OutboxState {
-  return { synced: {}, tombstones: {}, lastOkAt: null, lastError: null, attempts: 0 }
+  return { synced: {}, tombstones: {}, lastOkAt: null, lastError: null, attempts: 0, rejected: {} }
+}
+
+/** Ключ содержимого записи для отметки «отвергнута»: версия (updatedAt) в него
+    не входит, она у неотправленной записи плавает от вызова к вызову. */
+function rejectKey(e: SyncEntry): string {
+  return `${e.deleted ? 'd' : 'u'}:${entrySig(e)}`
 }
 
 type OutboxStorage = Pick<Storage, 'getItem' | 'setItem'>
@@ -97,12 +109,19 @@ export function loadOutbox(storage: OutboxStorage | null): OutboxState {
       if (t && t.id === id) tombstones[id] = t
     }
   }
+  const rejected: Record<string, string> = {}
+  if (isPlainObject(json.rejected)) {
+    for (const [id, v] of Object.entries(json.rejected)) {
+      if (typeof v === 'string') rejected[id] = v
+    }
+  }
   return {
     synced,
     tombstones,
     lastOkAt: typeof json.lastOkAt === 'string' ? json.lastOkAt : null,
     lastError: typeof json.lastError === 'string' ? json.lastError : null,
-    attempts: typeof json.attempts === 'number' && Number.isInteger(json.attempts) && json.attempts >= 0 ? json.attempts : 0
+    attempts: typeof json.attempts === 'number' && Number.isInteger(json.attempts) && json.attempts >= 0 ? json.attempts : 0,
+    rejected
   }
 }
 
@@ -149,7 +168,7 @@ export interface SyncEngine {
   dispose(): void
 }
 
-const REASONS_RESPECTING_PAUSE: ReadonlySet<SyncTrigger> = new Set(['save'])
+const REASONS_RESPECTING_PAUSE: ReadonlySet<SyncTrigger> = new Set(['save', 'online', 'visible', 'timer'])
 
 export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
   const fetchFn = deps.fetchFn ?? fetch
@@ -166,6 +185,9 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
   let sending = false
   let running: Promise<void> | null = null
   let again = false
+  /* Эпоха очереди: forget() её сдвигает, и ответ на запрос, начатый раньше,
+     не должен ничего записать в очередь. */
+  let epoch = 0
   let timer: unknown = null
   let disposed = false
   const listeners = new Set<() => void>()
@@ -201,58 +223,94 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
     timer = timers.set(() => { timer = null; if (!disposed) void trigger('timer') }, delay)
   }
 
-  /** Одна отправка. true - можно сразу идти дальше (успех и в очереди ещё есть
-      или за время полёта пришли новые правки). */
-  async function attempt(reason: SyncTrigger): Promise<boolean> {
-    const token = deps.getToken()
-    if (blocked(token) !== null) { notify(); return false }
-
+  /** Что отправлять сейчас: очередь без отвергнутых сервером записей. */
+  function plan(): { diff: ReturnType<typeof diffForSync>; queue: SyncEntry[]; rejected: number } {
     const diff = diffForSync(mealEntriesOf(deps.getState()), outbox, now())
-    const tombstonesChanged = !sameKeys(diff.tombstones, outbox.tombstones)
-    if (tombstonesChanged) {
-      outbox = { ...outbox, tombstones: diff.tombstones }
-      persist()
-    }
-    if (diff.queue.length === 0) { notify(); return false }
-    if (REASONS_RESPECTING_PAUSE.has(reason) && now() < nextAttemptAt) { notify(); return false }
+    const queue = diff.queue.filter(e => outbox.rejected[e.id] !== rejectKey(e))
+    return { diff, queue, rejected: diff.queue.length - queue.length }
+  }
 
-    const batch = diff.queue.slice(0, MEALS_BATCH_MAX)
-    sending = true
-    notify()
-    let result: Awaited<ReturnType<typeof postMeals>>
-    try {
-      result = await postMeals(base, token, { entries: batch }, fetchFn)
-    } finally {
-      sending = false
+  /** Приводит сохранённое в порядок по результату plan: актуальные надгробия,
+      забытое подтверждённое (предохранитель), отметки «отвергнута» только для
+      записей, которые всё ещё в очереди с тем же содержимым. */
+  function reconcile(p: ReturnType<typeof plan>): void {
+    const rejected: Record<string, string> = {}
+    for (const e of p.diff.queue) {
+      if (outbox.rejected[e.id] === rejectKey(e)) rejected[e.id] = outbox.rejected[e.id]
     }
-
-    if (!result.ok) {
-      if (result.reason === 'unauthorized') {
-        haltedToken = token
-        clearTimer()
-        nextAttemptAt = 0
-        outbox = { ...outbox, attempts: outbox.attempts + 1, lastError: result.error }
-        persist()
-      } else {
-        fail(result.error)
-      }
-      notify()
-      return false
-    }
-
-    const sentIds = new Set(batch.map(e => e.id))
-    const accepted = result.accepted.filter(id => sentIds.has(id))
-    if (accepted.length === 0) {
-      fail('Сервер не принял ни одной записи.')
-      notify()
-      return false
-    }
-    const book = applyAccepted(outbox, batch, accepted)
+    const changed = !sameKeys(p.diff.tombstones, outbox.tombstones)
+      || p.diff.forgetSynced
+      || !sameKeys(rejected, outbox.rejected)
+    if (!changed) return
     outbox = {
       ...outbox,
-      synced: book.synced,
-      tombstones: book.tombstones,
-      lastOkAt: new Date(now()).toISOString(),
+      tombstones: p.diff.tombstones,
+      synced: p.diff.forgetSynced ? {} : outbox.synced,
+      rejected
+    }
+    persist()
+  }
+
+  /** Отправка пакета с делением при 400. Результат: 'done' - обработан весь
+      пакет (принято и/или отвергнуто); 'failed' - ошибка с паузой или остановка
+      по 401; 'stale' - во время полёта вызван forget(), ответ отброшен. */
+  async function deliver(batch: SyncEntry[], token: string): Promise<'done' | 'failed' | 'stale'> {
+    const startEpoch = epoch
+    const parts: SyncEntry[][] = [batch]
+    let acceptedAny = false
+    while (parts.length > 0) {
+      const part = parts.shift()!
+      sending = true
+      notify()
+      let result: Awaited<ReturnType<typeof postMeals>>
+      try {
+        result = await postMeals(base, token, { entries: part }, fetchFn)
+      } finally {
+        sending = false
+      }
+      if (epoch !== startEpoch) return 'stale'
+
+      if (!result.ok) {
+        if (result.reason === 'bad-request') {
+          if (part.length > 1) {
+            const mid = Math.ceil(part.length / 2)
+            parts.unshift(part.slice(0, mid), part.slice(mid))
+          } else {
+            outbox = { ...outbox, rejected: { ...outbox.rejected, [part[0].id]: rejectKey(part[0]) } }
+            persist()
+            notify()
+          }
+          continue
+        }
+        if (result.reason === 'unauthorized') {
+          haltedToken = token
+          clearTimer()
+          nextAttemptAt = 0
+          outbox = { ...outbox, attempts: outbox.attempts + 1, lastError: result.error }
+          persist()
+        } else {
+          fail(result.error)
+        }
+        notify()
+        return 'failed'
+      }
+
+      const sentIds = new Set(part.map(e => e.id))
+      const accepted = result.accepted.filter(id => sentIds.has(id))
+      if (accepted.length === 0) {
+        fail('Сервер не принял ни одной записи.')
+        notify()
+        return 'failed'
+      }
+      acceptedAny = true
+      const book = applyAccepted(outbox, part, accepted)
+      outbox = { ...outbox, synced: book.synced, tombstones: book.tombstones }
+      persist()
+      notify()
+    }
+    outbox = {
+      ...outbox,
+      lastOkAt: acceptedAny ? new Date(now()).toISOString() : outbox.lastOkAt,
       lastError: null,
       attempts: 0
     }
@@ -260,7 +318,24 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
     clearTimer()
     persist()
     notify()
-    return diff.queue.length > accepted.length || again
+    return 'done'
+  }
+
+  /** Одна отправка. true - можно сразу идти дальше (в очереди ещё есть записи,
+      за время полёта пришли новые правки или ответ отброшен после forget). */
+  async function attempt(reason: SyncTrigger): Promise<boolean> {
+    const token = deps.getToken()
+    if (blocked(token) !== null) { notify(); return false }
+
+    const first = plan()
+    reconcile(first)
+    if (first.queue.length === 0) { notify(); return false }
+    if (REASONS_RESPECTING_PAUSE.has(reason) && now() < nextAttemptAt) { notify(); return false }
+
+    const outcome = await deliver(first.queue.slice(0, MEALS_BATCH_MAX), token)
+    if (outcome === 'failed') return false
+    if (outcome === 'stale') return true
+    return plan().queue.length > 0 || again
   }
 
   async function loop(reason: SyncTrigger): Promise<void> {
@@ -288,7 +363,7 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
     // надгробия для уже исчезнувших записей фиксируем до сброса: иначе забытое
     // подтверждение стёрло бы единственную память о том, что их надо удалить
     const diff = diffForSync(mealEntriesOf(deps.getState()), outbox, now())
-    outbox = { ...outbox, synced: {}, tombstones: diff.tombstones, attempts: 0, lastError: null }
+    outbox = { ...outbox, synced: {}, tombstones: diff.tombstones, rejected: {}, attempts: 0, lastError: null }
     haltedToken = null
     nextAttemptAt = 0
     persist()
@@ -297,7 +372,8 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
   }
 
   function forget(): void {
-    outbox = { ...outbox, synced: {}, tombstones: {}, attempts: 0, lastError: null }
+    epoch++
+    outbox = { ...outbox, synced: {}, tombstones: {}, rejected: {}, attempts: 0, lastError: null }
     nextAttemptAt = 0
     clearTimer()
     persist()
@@ -306,9 +382,10 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
 
   function status(): SyncStatus {
     const token = deps.getToken()
-    const diff = diffForSync(mealEntriesOf(deps.getState()), outbox, now())
+    const p = plan()
     return {
-      queued: diff.queue.length,
+      queued: p.queue.length,
+      rejected: p.rejected,
       lastOkAt: outbox.lastOkAt,
       lastError: outbox.lastError,
       attempts: outbox.attempts,
@@ -330,6 +407,82 @@ export function createSyncEngine(deps: SyncEngineDeps): SyncEngine {
       disposed = true
       clearTimer()
       listeners.clear()
+    }
+  }
+}
+
+/** Пауза после последнего изменения токена, по истечении которой он считается
+    введённым до конца. */
+export const TOKEN_SETTLE_MS = 1500
+
+export interface SyncControllerDeps extends Omit<SyncEngineDeps, 'getToken'> {
+  /** Токен как он сейчас в настройках, включая недопечатанный. */
+  readToken: () => string
+  tokenSettleMs?: number
+}
+
+export interface SyncController {
+  engine: SyncEngine
+  /** Дневник сохранён на диск: отправка запускается, только если сам дневник
+      (state.log) изменился с прошлого вызова. Сохранения из-за настроек молчат. */
+  noteSaved(): void
+  /** Токен в поле изменился: отправка не раньше, чем он перестанет меняться. */
+  noteTokenInput(): void
+  /** Поле токена потеряло фокус: токен введён, отправка сразу. */
+  commitToken(): void
+  dispose(): void
+}
+
+/** Движок плюс правила пуска из интерфейса. Движку токен отдаётся только
+    «устоявшийся» (без пробелов по краям): пока человек печатает, на сервер не
+    уходят ни обрезки токена, ни запросы на каждый символ. */
+export function createSyncController(deps: SyncControllerDeps): SyncController {
+  const timers: TimerApi = deps.timers ?? {
+    set: (fn, ms) => setTimeout(fn, ms),
+    clear: handle => clearTimeout(handle as ReturnType<typeof setTimeout>)
+  }
+  const settleMs = deps.tokenSettleMs ?? TOKEN_SETTLE_MS
+  let settledToken = deps.readToken().trim()
+  let settleTimer: unknown = null
+  let lastLog = deps.getState().log
+  let disposed = false
+
+  const engine = createSyncEngine({ ...deps, timers, getToken: () => settledToken })
+
+  function clearSettleTimer(): void {
+    if (settleTimer !== null) {
+      timers.clear(settleTimer)
+      settleTimer = null
+    }
+  }
+
+  function settle(): void {
+    clearSettleTimer()
+    const typed = deps.readToken().trim()
+    if (typed === settledToken || disposed) return
+    settledToken = typed
+    // новый токен - явное действие человека: пауза повтора старого токена не мешает
+    void engine.trigger('manual')
+  }
+
+  return {
+    engine,
+    noteSaved() {
+      const log = deps.getState().log
+      if (log === lastLog) return
+      lastLog = log
+      void engine.trigger('save')
+    },
+    noteTokenInput() {
+      clearSettleTimer()
+      if (deps.readToken().trim() === settledToken) return
+      settleTimer = timers.set(() => { settleTimer = null; settle() }, settleMs)
+    },
+    commitToken: settle,
+    dispose() {
+      disposed = true
+      clearSettleTimer()
+      engine.dispose()
     }
   }
 }
